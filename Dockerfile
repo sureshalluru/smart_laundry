@@ -33,4 +33,4 @@ COPY services/api/ /app/services/api/
 EXPOSE 8000
 
 WORKDIR /app/services/api
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
