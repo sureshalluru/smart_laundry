@@ -1,0 +1,36 @@
+services:
+  - type: web
+    name: smart-laundry
+    runtime: python
+    buildCommand: |
+      cd apps/admin && npm install && REACT_APP_AWS_API_URL= REACT_APP_GOOGLE_MAPS_API_KEY=$REACT_APP_GOOGLE_MAPS_API_KEY npm run build &&
+      cd ../../apps/customer && npm install && REACT_APP_AWS_API_URL= REACT_APP_GOOGLE_MAPS_API_KEY=$REACT_APP_GOOGLE_MAPS_API_KEY npm run build &&
+      cd ../../services/api && pip install -r requirements.txt
+    startCommand: cd services/api && uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: DB_HOST
+        sync: false
+      - key: DB_PORT
+        value: "5432"
+      - key: DB_NAME
+        value: "smart_laundry"
+      - key: DB_USER
+        sync: false
+      - key: DB_PASSWORD
+        sync: false
+      - key: JWT_SECRET_KEY
+        sync: false
+      - key: TWILIO_ACCOUNT_SID
+        sync: false
+      - key: TWILIO_AUTH_TOKEN
+        sync: false
+      - key: TWILIO_PHONE_NUMBER
+        sync: false
+      - key: TWILIO_VERIFY_SERVICE_SID
+        sync: false
+      - key: CORS_ORIGINS
+        value: '["https://smart-laundry.onrender.com"]'
+      - key: AWS_REGION
+        value: "us-east-1"
+      - key: SOURCE_EMAIL
+        sync: false

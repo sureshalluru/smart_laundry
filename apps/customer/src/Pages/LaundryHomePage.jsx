@@ -1,0 +1,267 @@
+import React, {useContext, useState} from 'react';
+import {
+    Box,
+    Flex,
+    IconButton,
+    Button,
+    Stack,
+    Text,
+    useBreakpointValue,
+    Drawer,
+    DrawerOverlay,
+    DrawerContent,
+    DrawerHeader,
+    DrawerBody,
+    DrawerCloseButton,
+    useDisclosure
+} from '@chakra-ui/react';
+import {FiMenu, FiCalendar, FiList, FiUser, FiLogOut} from 'react-icons/fi';
+import {FaWallet} from "react-icons/fa";
+import {useAuthenticator} from "../Context/AuthContext";
+import {useNavigate, Routes, Route, useLocation} from "react-router-dom";
+import LaundryPickupPage from "./LaundryPickupPage";
+import MyOrders from "../Components/LaundryHome/MyOrders";
+import Account from "../Components/LaundryHome/Account";
+import OrderSuccess from "../Components/LaundryHome/OrderSuccess";
+import NoPage from "./NoPage";
+import {Elements} from "@stripe/react-stripe-js";
+import {loadStripe} from "@stripe/stripe-js";
+import {LaundryContext} from "../Components/Contexts/LaundryContext";
+import PaymentMethods from "../Components/LaundryHome/PaymentMethods";
+const LaundryHomePage = ({laundryId, customerId, customerPaymentId: initialCustomerPaymentId = '', specialInstructions: initialSpecialInstructions=''}) => {
+    const [isCollapsed, setIsCollapsed] = useState(false);
+    const [customerPaymentId, setCustomerPaymentId] = useState(initialCustomerPaymentId); // State for Customer Payment Intent Id
+    const [specialInstructions, setSpecialInstructions] = useState(initialSpecialInstructions); // State for special instructions
+    const [laundryTimeZone, setLaundryTimeZone] = useState(''); // State for laundryTimeZone
+    const navigate = useNavigate();
+    const location = useLocation();
+    const {signOut, isPending} = useAuthenticator((context) => [
+        context.signOut,
+        context.isPending,
+    ]);
+    const { laundryData } = useContext(LaundryContext);
+    const isSmallScreen = useBreakpointValue({base: true, md: false});
+    const {isOpen, onOpen, onClose} = useDisclosure();
+    // Toggle sidebar collapse (used on larger screens)
+    const toggleSidebar = () => {
+        setIsCollapsed(!isCollapsed);
+    };
+
+    // Sign-out logic with redirection
+    const handleSignOut = () => {
+        localStorage.removeItem('idToken');
+        signOut();
+        navigate(`/${laundryId}/login`);
+    };
+
+    // Sidebar items with routes
+    const sidebarItems = [
+        {label: 'Schedule Order', icon: FiCalendar, path: 'schedule-order'},
+        {label: 'My Orders', icon: FiList, path: 'my-orders'},
+        {label: 'Account', icon: FiUser, path: 'account'},
+        {label: 'Payment Methods', icon: FaWallet, path: 'payment'}
+    ];
+
+
+    return (
+        <Box bg="#AADDD9" minHeight="100vh">
+            <Flex minHeight="100vh" flexDirection={{base: "column", md: "row"}} bg="#AADDD9">
+                {isSmallScreen ? (
+                    // On small screens, just a minimal top bar with menu icon
+                    <>
+                        <Flex
+                            as="header"
+                            w="100%"
+                            bg="blue.700"
+                            color="white"
+                            p={[2,3]}
+                            height={["50px", "60px"]}
+                            alignItems="center"
+                            position="fixed"
+                            top="0"
+                            left="0"
+                            zIndex="999"
+                        >
+                            <IconButton
+                                aria-label="Open Menu"
+                                icon={<FiMenu/>}
+                                onClick={onOpen}
+                                variant="ghost"
+                                color="white"
+                            />
+                            <Text
+                                fontSize={["sm", "md"]}
+                                fontWeight="bold"
+                                isTruncated
+                                maxW="70%"
+                                textAlign="center"
+                            >
+                                {laundryData?.laundryName || ""}
+                            </Text>
+                        </Flex>
+
+                        {/* Drawer for the menu items on small screens */}
+                        <Drawer placement="left" onClose={onClose} isOpen={isOpen}>
+                            <DrawerOverlay/>
+                            <DrawerContent bg="blue.700" color="white" maxW={["60%", "300px"]} >
+                                <DrawerCloseButton/>
+                                <DrawerHeader borderBottomWidth="1px">Menu</DrawerHeader>
+                                <DrawerBody>
+                                    <Stack spacing={4} mt={4}>
+                                        {sidebarItems.map((item) => (
+                                            <Button
+                                                key={item.label}
+                                                onClick={() => {
+                                                    navigate(`/${laundryId}/user/${item.path}`);
+                                                    onClose();
+                                                }}
+                                                leftIcon={<item.icon/>}
+                                                justifyContent="flex-start"
+                                                variant="ghost"
+                                                colorScheme="whiteAlpha"
+                                                w="full"
+                                                isActive={location.pathname.includes(item.path)} // Highlight active tab
+                                            >
+                                                <Text>{item.label}</Text>
+                                            </Button>
+                                        ))}
+                                        {/* Sign Out button */}
+                                        <Button
+                                            leftIcon={<FiLogOut/>}
+                                            onClick={() => {
+                                                handleSignOut();
+                                                onClose();
+                                            }}
+                                            justifyContent="flex-start"
+                                            variant="ghost"
+                                            colorScheme="whiteAlpha"
+                                            w="full"
+                                            isLoading={isPending}
+                                        >
+                                            <Text>Sign Out</Text>
+                                        </Button>
+                                    </Stack>
+                                </DrawerBody>
+                            </DrawerContent>
+                        </Drawer>
+                    </>
+                ) : (
+                    // On medium and larger screens, use the collapsible sidebar on the left
+                    <Flex
+                        w={isCollapsed ? "80px" : "250px"}
+                        bg="blue.700"
+                        color="white"
+                        direction="column"
+                        p={4}
+                    >
+                        <IconButton
+                            aria-label="Toggle Sidebar"
+                            icon={<FiMenu/>}
+                            onClick={toggleSidebar}
+                            mb={4}
+                            bg="blue.800"
+                            _hover={{bg: 'blue.600'}}
+                        />
+
+                        {/* Sidebar items */}
+                        <Stack spacing={4} align="start">
+                            {sidebarItems.map((item) => (
+                                <Button
+                                    key={item.label}
+                                    onClick={() => navigate(`/${laundryId}/user/${item.path}`)}
+                                    leftIcon={<item.icon/>}
+                                    justifyContent={isCollapsed ? 'center' : 'flex-start'}
+                                    variant="ghost"
+                                    colorScheme="whiteAlpha"
+                                    w="full"
+                                    isActive={location.pathname.includes(item.path)} // Highlight active tab
+                                >
+                                    {!isCollapsed && <Text>{item.label}</Text>}
+                                </Button>
+                            ))}
+                            {/* Sign Out button */}
+                            <Button
+                                leftIcon={<FiLogOut/>}
+                                onClick={handleSignOut}
+                                justifyContent={isCollapsed ? 'center' : 'flex-start'}
+                                variant="ghost"
+                                colorScheme="whiteAlpha"
+                                w="full"
+                                isLoading={isPending}
+                            >
+                                {!isCollapsed && <Text>Sign Out</Text>}
+                            </Button>
+                        </Stack>
+                    </Flex>
+                )}
+
+                {/* Main Content */}
+                <Box flex="1" bg="gray.50" overflow="auto" pt={[ "50px", "0" ]}>
+                    <Routes>
+                        <Route
+                            index
+                            element={
+                                <LaundryPickupPage
+                                    customerPaymentId={customerPaymentId}
+                                    customerId={customerId}
+                                    laundryId={laundryId}
+                                    specialInstructions={specialInstructions}
+                                    setSpecialInstructions = {setSpecialInstructions}
+                                    setCustomerPaymentId={setCustomerPaymentId}
+                                    laundryTimeZone={laundryTimeZone}
+                                    setLaundryTimeZone={setLaundryTimeZone}
+                                />
+                            }
+                        />
+                        <Route
+                            path="schedule-order"
+                            element={
+                                <LaundryPickupPage
+                                    customerPaymentId={customerPaymentId}
+                                    customerId={customerId}
+                                    laundryId={laundryId}
+                                    specialInstructions={specialInstructions}
+                                    setSpecialInstructions={setSpecialInstructions}
+                                    setCustomerPaymentId={setCustomerPaymentId}
+                                    laundryTimeZone={laundryTimeZone}
+                                    setLaundryTimeZone={setLaundryTimeZone}
+                                />
+                            }
+                        />
+                        {/* My Orders Route using query parameters */}
+                        <Route
+                            path="my-orders"
+                            element={
+                                <Elements stripe={loadStripe(laundryData?.stripePublicKey)}>
+                                    <MyOrders customerId={customerId} laundryId={laundryId} laundryTimeZone={laundryTimeZone} />
+                                </Elements>
+                            }
+                        />
+                        <Route
+                            path="account"
+                            element={<Account customerId={customerId} laundryTimeZone={laundryTimeZone} />}
+                        />
+                        {/* Payment */}
+                        <Route
+                            path="payment"
+                            element={<Elements stripe={loadStripe(laundryData?.stripePublicKey)}>
+                                <PaymentMethods
+                                    customerId={customerId}
+                                    laundryId={laundryId}
+                                    customerPaymentId={customerPaymentId}
+                                    setCustomerPaymentId={setCustomerPaymentId}
+                                />
+                            </Elements>}
+                        />
+                        <Route path="order-success" element={<OrderSuccess laundryId={laundryId} />} />
+                        {/* Fallback */}
+                        <Route path="*" element={<NoPage />} />
+                    </Routes>
+                </Box>
+
+            </Flex>
+        </Box>
+    );
+};
+
+export default LaundryHomePage;

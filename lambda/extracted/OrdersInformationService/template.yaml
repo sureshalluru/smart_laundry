@@ -1,0 +1,110 @@
+# This AWS SAM template has been generated from your function's configuration.
+# If your function has one or more triggers, note that the AWS resources
+# associated with these triggers aren't fully specified in this template and
+# include placeholder values. Open this template in AWS Infrastructure Composer
+# or your favorite IDE and modify it to specify a serverless application with
+# other AWS resources.
+#
+# - SAM automatically generates permissions to interact with the resources
+#   defined in this template. If your function needs additional permissions, add
+#   Policies to the AWS::Serverless::Function resource.
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: An AWS Serverless Application Model (SAM) template describing your function.
+Resources:
+  OrdersInformationService:
+    Type: AWS::Serverless::Function
+    Properties:
+      Architectures:
+        - x86_64
+      CodeUri: ./src
+      Description: ''
+      Environment:
+        Variables:
+          DB_PORT: '5432'
+          DB_USER: smart_laundry
+          DB_NAME: smart_laundry
+          BASE_URL: https://main.d2th8pw9g4ufxz.amplifyapp.com
+          DB_HOST: smart-laundry.cpy626ke6rm6.us-east-1.rds.amazonaws.com
+          DB_PASSWORD: tNxSN6rX6eB0LTHlSDff
+      EphemeralStorage:
+        Size: 512
+      Handler: lambda_function.lambda_handler
+      Layers:
+        - arn:aws:lambda:us-east-1:471112833382:layer:requestsLayer:1
+        - arn:aws:lambda:us-east-1:471112833382:layer:aws-lsycopg2-layer:1
+      LoggingConfig:
+        LogFormat: Text
+        LogGroup: /aws/lambda/OrdersInformationService
+      MemorySize: 128
+      PackageType: Zip
+      RecursiveLoop: Terminate
+      Runtime: python3.12
+      RuntimeManagementConfig:
+        UpdateRuntimeOn: Auto
+      SnapStart:
+        ApplyOn: None
+      Tags: {}
+      Timeout: 21
+      Tracing: PassThrough
+      Events:
+        Trigger1Event:
+          Type: Api
+          Properties:
+            Method: GET
+            Path: /api/admin/orders-info
+        Trigger2Event:
+          Type: Api
+          Properties:
+            Method: GET
+            Path: /api/admin/single-order-info
+        Trigger3Event:
+          Type: Api
+          Properties:
+            Method: PUT
+            Path: /api/admin/update-order
+        Trigger4Event:
+          Type: HttpApi
+          Properties:
+            Method: ANY
+            Path: /MyResource
+        Trigger5Event:
+          Type: HttpApi
+          Properties:
+            Method: ANY
+            Path: /MyResource
+        Trigger6Event:
+          Type: Api
+          Properties:
+            Method: GET
+            Path: /api/admin/order-audit-history
+        Trigger7Event:
+          Type: Api
+          Properties:
+            Method: POST
+            Path: /api/driver/upload-image
+        Trigger8Event:
+          Type: Api
+          Properties:
+            Method: POST
+            Path: /api/admin/store-promo-validation
+        Trigger9Event:
+          Type: Api
+          Properties:
+            Method: PUT
+            Path: /api/payment/instore-payment
+        Trigger10Event:
+          Type: Api
+          Properties:
+            Method: PUT
+            Path: /api/payment/instore-online-payment
+        Trigger11Event:
+          Type: Api
+          Properties:
+            Method: POST
+            Path: /api/admin/generate-reports
+        Trigger12Event:
+          Type: HttpApi
+          Properties:
+            Method: ANY
+            Path: /MyResource

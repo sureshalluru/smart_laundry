@@ -1,0 +1,91 @@
+# This AWS SAM template has been generated from your function's configuration.
+# If your function has one or more triggers, note that the AWS resources
+# associated with these triggers aren't fully specified in this template and
+# include placeholder values. Open this template in AWS Infrastructure Composer
+# or your favorite IDE and modify it to specify a serverless application with
+# other AWS resources.
+#
+# - SAM automatically generates permissions to interact with the resources
+#   defined in this template. If your function needs additional permissions, add
+#   Policies to the AWS::Serverless::Function resource.
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: An AWS Serverless Application Model (SAM) template describing your function.
+Resources:
+  OrderService:
+    Type: AWS::Serverless::Function
+    Properties:
+      Architectures:
+        - x86_64
+      CodeUri: ./src
+      Description: ''
+      Environment:
+        Variables:
+          UBER_INTEGRATION_URL: https://eijb1e1yd6.execute-api.us-east-1.amazonaws.com/dev/api/uber
+          DB_PORT: '5432'
+          DB_USER: smart_laundry
+          DB_NAME: smart_laundry
+          DB_HOST: smart-laundry.cpy626ke6rm6.us-east-1.rds.amazonaws.com
+          DB_PASSWORD: tNxSN6rX6eB0LTHlSDff
+          UBER_INTERNAL_API_KEY: NhqwtQAsaX8xam97xe76P5gtKjBRJrH1NUz3Y31h
+      EphemeralStorage:
+        Size: 512
+      Handler: lambda_function.lambda_handler
+      Layers:
+        - arn:aws:lambda:us-east-1:471112833382:layer:requestsLayer:1
+        - arn:aws:lambda:us-east-1:471112833382:layer:aws-lsycopg2-layer:1
+      LoggingConfig:
+        LogFormat: Text
+        LogGroup: /aws/lambda/OrderService
+      MemorySize: 128
+      PackageType: Zip
+      RecursiveLoop: Terminate
+      Runtime: python3.12
+      RuntimeManagementConfig:
+        UpdateRuntimeOn: Auto
+      SnapStart:
+        ApplyOn: None
+      Tags: {}
+      Timeout: 18
+      Tracing: PassThrough
+      Events:
+        Trigger1Event:
+          Type: HttpApi
+          Properties:
+            Method: ANY
+            Path: /MyResource
+        Trigger2Event:
+          Type: HttpApi
+          Properties:
+            Method: ANY
+            Path: /MyResource
+        Trigger3Event:
+          Type: Api
+          Properties:
+            Method: POST
+            Path: /api/customer/place-order
+        Trigger4Event:
+          Type: Api
+          Properties:
+            Method: POST
+            Path: /api/admin/instore-place-order
+        Trigger5Event:
+          Type: Api
+          Properties:
+            Method: PUT
+            Path: /api/customer/cancel-order
+        Trigger6Event:
+          Type: Api
+          Properties:
+            Method: PUT
+            Path: /api/admin/commercial-order-update
+        Trigger7Event:
+          Type: HttpApi
+          Properties:
+            Method: ANY
+            Path: /MyResource
+        Trigger8Event:
+          Type: Api
+          Properties:
+            Method: PUT
+            Path: /api/admin/cancel-order-admin

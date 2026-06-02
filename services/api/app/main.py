@@ -1,0 +1,150 @@
+"""
+Smart Laundry — single-port application.
+Serves API routes + both React frontends from one process.
+
+Routes:
+  /api/*      → Backend API (FastAPI)
+  /admin/*    → Admin/POS React app
+  /*          → Customer ordering React app
+"""
+import os
+from pathlib import Path
+from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+from app.config import settings
+from app.routes import (
+    auth,
+    orders_info,
+    orders,
+    customers,
+    payments,
+    laundry_shop,
+    validation,
+    employees,
+    promotions,
+    notifications,
+    uber,
+    frequency,
+    admin_extra,
+    driver,
+    payment_operations,
+    customer_public,
+)
+
+app = FastAPI(
+    title="Smart Laundry API",
+    version="1.0.0",
+    description="Unified backend + frontend for Smart Laundry platform",
+)
+
+# CORS (still needed for local dev when React dev servers run separately)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.cors_origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# ── API Routes ────────────────────────────────────────────────────────────────
+app.include_router(auth.router, prefix="/api/auth", tags=["Authentication"])
+app.include_router(orders_info.router, prefix="/api/admin", tags=["Admin Orders"])
+app.include_router(admin_extra.router, prefix="/api/admin", tags=["Admin Extra"])
+app.include_router(orders.router, prefix="/api/orders", tags=["Order Placement"])
+app.include_router(customers.router, prefix="/api/customers", tags=["Customers"])
+app.include_router(customers.router, prefix="/api/customer", tags=["Customer Compat"])
+app.include_router(payments.router, prefix="/api/payments", tags=["Payments"])
+app.include_router(payment_operations.router, prefix="/api/payment", tags=["Payment Operations"])
+app.include_router(laundry_shop.router, prefix="/api/laundry", tags=["Laundry Shop"])
+app.include_router(validation.router, prefix="/api/laundry", tags=["Validation"])
+app.include_router(employees.router, prefix="/api/employees", tags=["Employees"])
+app.include_router(promotions.router, prefix="/api/promotions", tags=["Promotions"])
+app.include_router(notifications.router, prefix="/api/notifications", tags=["Notifications"])
+app.include_router(uber.router, prefix="/api/uber", tags=["Uber Integration"])
+app.include_router(frequency.router, prefix="/api/frequency", tags=["Order Frequency"])
+app.include_router(driver.router, prefix="/api/driver", tags=["Driver"])
+app.include_router(customer_public.router, prefix="/api/customer", tags=["Customer Public"])
+
+
+@app.get("/health")
+async def health_check():
+    return {"status": "healthy"}
+
+
+# ── Static File Serving (React builds) ────────────────────────────────────────
+# These paths are relative to where uvicorn runs from (services/api/)
+BASE_DIR = Path(__file__).resolve().parent.parent.parent.parent  # smart-laundry/
+ADMIN_BUILD = BASE_DIR / "apps" / "admin" / "build"
+CUSTOMER_BUILD = BASE_DIR / "apps" / "customer" / "build"
+
+# Static file serving — DON'T use app.mount (can only serve one directory)
+# Instead, handle /static requests in the catch-all by checking both builds
+
+# Admin SPA catch-all: /admin/* → admin/build/index.html
+@app.get("/admin")
+@app.get("/admin/{full_path:path}")
+async def serve_admin(request: Request, full_path: str = ""):
+    """Serve admin React app for all /admin/* routes."""
+    if full_path:
+        file_path = ADMIN_BUILD / full_path
+        if file_path.is_file():
+            return FileResponse(file_path)
+    index = ADMIN_BUILD / "index.html"
+    if index.exists():
+        return FileResponse(index)
+    return {"error": "Admin app not built. Run: cd apps/admin && npm run build"}
+
+
+# Customer SPA catch-all: /* → customer/build/index.html
+# This MUST be last so it doesn't override /api/* or /admin/*
+@app.get("/{full_path:path}")
+async def serve_customer(request: Request, full_path: str):
+    """Serve SPA for all non-API routes. Handles static files from both builds."""
+    # Don't intercept API routes
+    if full_path.startswith("api"):
+        return {"error": "Not found"}
+
+    # Serve static files — check BOTH builds (admin and customer have different bundles)
+    if full_path.startswith("static/"):
+        # Check admin build first
+        file_path = ADMIN_BUILD / full_path
+        if file_path.is_file():
+            return FileResponse(file_path)
+        # Then customer build
+        file_path = CUSTOMER_BUILD / full_path
+        if file_path.is_file():
+            return FileResponse(file_path)
+        return {"error": "Static file not found"}
+
+    # Check if it's a real file in customer build (favicon, manifest, etc.)
+    file_path = CUSTOMER_BUILD / full_path
+    if file_path.is_file():
+        return FileResponse(file_path)
+
+    # Check admin build files
+    file_path = ADMIN_BUILD / full_path
+    if file_path.is_file():
+        return FileResponse(file_path)
+
+    # Route decision: paths with /admin go to admin app, everything else to customer
+    if "/admin" in f"/{full_path}" or full_path.startswith("admin"):
+        index = ADMIN_BUILD / "index.html"
+        if index.exists():
+            return FileResponse(index)
+        return {"error": "Admin app not built. Run: cd apps/admin && npm run build"}
+
+    # Default: serve customer app
+    index = CUSTOMER_BUILD / "index.html"
+    if index.exists():
+        return FileResponse(index)
+
+    # Fallback to admin if customer isn't built
+    index = ADMIN_BUILD / "index.html"
+    if index.exists():
+        return FileResponse(index)
+
+    return {"error": "No app built. Run npm run build in apps/admin or apps/customer"}
+
+    return {"error": "No app built. Run: cd apps/admin && npm run build"}
