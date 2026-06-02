@@ -70,10 +70,13 @@ app.include_router(customer_public.router, prefix="/api/customer", tags=["Custom
 
 @app.get("/health")
 async def health_check():
+    import os
     return {
         "status": "healthy",
         "twilio_configured": bool(settings.twilio_account_sid and settings.twilio_auth_token),
         "email_configured": bool(settings.source_email),
+        "twilio_sid_from_env": os.environ.get("TWILIO_ACCOUNT_SID", "NOT SET")[:10] + "..." if os.environ.get("TWILIO_ACCOUNT_SID") else "NOT SET",
+        "twilio_sid_from_settings": settings.twilio_account_sid[:10] + "..." if settings.twilio_account_sid else "EMPTY",
     }
 
 

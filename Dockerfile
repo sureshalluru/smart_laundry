@@ -6,7 +6,7 @@ COPY apps/admin/package*.json ./
 RUN npm install
 COPY apps/admin/ ./
 ENV REACT_APP_AWS_API_URL=""
-ENV REACT_APP_GOOGLE_MAPS_API_KEY=""
+ENV REACT_APP_GOOGLE_MAPS_API_KEY="AIzaSyAiZ-5YYfKIPhpIexNoHRfym1mc-uXXr_g"
 RUN npm run build
 
 # Build customer app
@@ -15,7 +15,7 @@ COPY apps/customer/package*.json ./
 RUN npm install
 COPY apps/customer/ ./
 ENV REACT_APP_AWS_API_URL=""
-ENV REACT_APP_GOOGLE_MAPS_API_KEY=""
+ENV REACT_APP_GOOGLE_MAPS_API_KEY="AIzaSyAiZ-5YYfKIPhpIexNoHRfym1mc-uXXr_g"
 RUN npm run build
 
 # Python runtime
