@@ -387,7 +387,7 @@ export default function PaymentSelection({
                     openTerminalErrorModal();
                 } else if (statusResponse.data.status === "pending") {
                     // Payment is still pending; update status message and continue polling.
-                    setTerminalStatusMsg(`Payment is pending: ${statusResponse.data.payment_status}`);
+                    setTerminalStatusMsg(`Payment is pending : ${statusResponse.data.payment_status}`);
                 }
             } catch (error) {
                 clearInterval(interval);
