@@ -13,7 +13,7 @@ _pool = None
 def get_pool():
     global _pool
     if _pool is None:
-        conninfo = f"host={settings.db_host} port={settings.db_port} dbname={settings.db_name} user={settings.db_user} password={settings.db_password}"
+        conninfo = f"host={settings.db_host} port={settings.db_port} dbname={settings.db_name} user={settings.db_user} password={settings.db_password} sslmode=prefer"
         _pool = ConnectionPool(conninfo=conninfo, min_size=2, max_size=20)
     return _pool
 

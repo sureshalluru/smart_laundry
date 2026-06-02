@@ -17,7 +17,7 @@ def get_conn():
     """Get or create a connection for the current thread."""
     conn = getattr(_local, 'conn', None)
     if conn is None or conn.closed:
-        conninfo = f"host={settings.db_host} port={settings.db_port} dbname={settings.db_name} user={settings.db_user} password={settings.db_password}"
+        conninfo = f"host={settings.db_host} port={settings.db_port} dbname={settings.db_name} user={settings.db_user} password={settings.db_password} sslmode=prefer"
         conn = psycopg.connect(conninfo, autocommit=False, row_factory=dict_row)
         _local.conn = conn
     return conn
