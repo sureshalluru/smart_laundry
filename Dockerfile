@@ -5,6 +5,8 @@ WORKDIR /app/apps/admin
 COPY apps/admin/package*.json ./
 RUN npm install
 COPY apps/admin/ ./
+ENV REACT_APP_AWS_API_URL=""
+ENV REACT_APP_GOOGLE_MAPS_API_KEY=""
 RUN npm run build
 
 # Build customer app
@@ -12,6 +14,8 @@ WORKDIR /app/apps/customer
 COPY apps/customer/package*.json ./
 RUN npm install
 COPY apps/customer/ ./
+ENV REACT_APP_AWS_API_URL=""
+ENV REACT_APP_GOOGLE_MAPS_API_KEY=""
 RUN npm run build
 
 # Python runtime
