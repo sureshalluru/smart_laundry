@@ -205,6 +205,19 @@ async def send_otp(body: dict = Body(...)):
                 settings.twilio_verify_service_sid
             ).verifications.create(to=phone, channel="sms")
             return {"status": "success", "message": "OTP sent", "sid": verification.sid}
+        elif settings.twilio_account_sid and settings.twilio_auth_token:
+            # Use regular Twilio SMS to send OTP
+            import random
+            from twilio.rest import Client
+            otp = str(random.randint(100000, 999999))
+            _otp_store[phone] = {"otp": otp, "attempts": 0}
+            client = Client(settings.twilio_account_sid, settings.twilio_auth_token)
+            client.messages.create(
+                body=f"Your Smart Laundry verification code is: {otp}",
+                from_=settings.twilio_phone_number,
+                to=phone,
+            )
+            return {"status": "success", "message": "OTP sent"}
         else:
             # Dev mode: generate OTP and log it (no SMS sent)
             import random
@@ -241,7 +254,7 @@ async def verify_otp(body: dict = Body(...)):
             ).verification_checks.create(to=phone, code=otp_code)
             verified = verification_check.status == "approved"
         else:
-            # Dev mode: check in-memory store
+            # Use in-memory store (both dev mode and regular SMS mode)
             stored = _otp_store.get(phone)
             if stored and stored["otp"] == otp_code and stored["attempts"] < 3:
                 verified = True

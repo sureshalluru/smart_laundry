@@ -28,9 +28,12 @@ class Settings(BaseSettings):
     twilio_phone_number: str = ""
     twilio_verify_service_sid: str = ""
 
-    # AWS SES (Email)
+    # AWS SES (Email) — DEPRECATED, use Brevo instead
     source_email: str = ""
     aws_region: str = "us-east-1"
+
+    # Brevo (email — replaces AWS SES)
+    brevo_api_key: str = ""
 
     # Uber
     uber_client_id: str = ""
