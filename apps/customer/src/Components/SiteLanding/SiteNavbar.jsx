@@ -5,12 +5,13 @@ import {
     HStack,
     Button,
     Text,
+    Icon,
     IconButton,
     VStack,
     Collapse,
     useDisclosure,
 } from '@chakra-ui/react';
-import { FiMenu, FiX } from 'react-icons/fi';
+import { FiMenu, FiX, FiMapPin } from 'react-icons/fi';
 
 const navLinks = [
     { label: 'Services', href: '#services' },
@@ -45,11 +46,25 @@ export default function SiteNavbar({ config }) {
                 justify="space-between"
             >
                 {/* Logo / Brand */}
-                <HStack spacing={2}>
+                <VStack spacing={0} align="flex-start">
                     <Text fontSize={{ base: 'md', md: 'lg' }} fontWeight="800" color="blue.600">
                         {laundryName}
                     </Text>
-                </HStack>
+                    <HStack spacing={1} display={{ base: 'none', md: 'flex' }}>
+                        <Icon as={FiMapPin} color="gray.400" boxSize={3} />
+                        <Text
+                            as="a"
+                            href="https://www.google.com/maps/dir/?api=1&destination=900+E+Palm+Valley+Blvd+Ste+1006+Round+Rock+TX+78664"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            fontSize="xs"
+                            color="gray.400"
+                            _hover={{ color: 'blue.500' }}
+                        >
+                            900 E Palm Valley Blvd, Ste 1006, Round Rock, TX
+                        </Text>
+                    </HStack>
+                </VStack>
 
                 {/* Desktop Nav */}
                 <HStack spacing={6} display={{ base: 'none', md: 'flex' }}>

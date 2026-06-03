@@ -11,7 +11,7 @@ import {
     Icon,
     Flex,
 } from '@chakra-ui/react';
-import { FiTruck, FiClock, FiStar } from 'react-icons/fi';
+import { FiTruck, FiClock, FiStar, FiMapPin, FiNavigation } from 'react-icons/fi';
 
 export default function SiteHero({ config }) {
     const laundryId = config?.laundryId || '1';
@@ -131,6 +131,62 @@ export default function SiteHero({ config }) {
                             <Text fontSize="sm" fontWeight="500">120 lb Commercial Machines</Text>
                         </HStack>
                     </Flex>
+
+                    {/* Address highlight bar */}
+                    <Box
+                        mt={6}
+                        bg="white"
+                        borderRadius="2xl"
+                        px={{ base: 4, md: 6 }}
+                        py={{ base: 3, md: 4 }}
+                        boxShadow="md"
+                        border="1px solid"
+                        borderColor="blue.100"
+                        w="100%"
+                        maxW="520px"
+                    >
+                        <Flex
+                            align="center"
+                            justify="space-between"
+                            direction={{ base: 'column', sm: 'row' }}
+                            gap={3}
+                        >
+                            <HStack spacing={3}>
+                                <Box
+                                    bg="blue.50"
+                                    borderRadius="full"
+                                    p={2}
+                                    display="flex"
+                                    alignItems="center"
+                                    justifyContent="center"
+                                >
+                                    <Icon as={FiMapPin} color="blue.500" boxSize={5} />
+                                </Box>
+                                <VStack align="flex-start" spacing={0}>
+                                    <Text fontSize={{ base: 'sm', md: 'md' }} fontWeight="700" color="gray.800">
+                                        900 E Palm Valley Blvd, Ste 1006
+                                    </Text>
+                                    <Text fontSize="xs" color="gray.500">
+                                        Round Rock, TX 78664 — Open 24/7
+                                    </Text>
+                                </VStack>
+                            </HStack>
+                            <Button
+                                as="a"
+                                href="https://www.google.com/maps/dir/?api=1&destination=900+E+Palm+Valley+Blvd+Ste+1006+Round+Rock+TX+78664"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                size="sm"
+                                colorScheme="blue"
+                                variant="outline"
+                                borderRadius="full"
+                                leftIcon={<FiNavigation size={14} />}
+                                flexShrink={0}
+                            >
+                                Get Directions
+                            </Button>
+                        </Flex>
+                    </Box>
                 </VStack>
             </Container>
         </Box>
