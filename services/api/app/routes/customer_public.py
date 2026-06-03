@@ -352,6 +352,7 @@ async def cancel_customer_order(
     order_id = body.get("orderId")
     customer_id = body.get("customerId")
     cancel_reason = body.get("cancelReason", "")
+    is_recurring = body.get("isRecurring", "false")  # "true" = cancel future orders too
 
     if not order_id:
         return {"status": "error", "message": "Missing orderId"}
@@ -359,9 +360,9 @@ async def cancel_customer_order(
     with get_db() as conn:
         cur = get_cursor(conn)
 
-        # Get the laundry_id for Stripe key lookup
+        # Get the laundry_id and address_id for Stripe key lookup
         cur.execute("""
-            SELECT laundry_id FROM orders.orders
+            SELECT laundry_id, address_id FROM orders.orders
             WHERE order_id = %s AND customer_id = %s
         """, (order_id, customer_id))
         order_row = cur.fetchone()
@@ -369,6 +370,7 @@ async def cancel_customer_order(
             return {"status": "error", "message": "Order not found or not yours"}
 
         laundry_id = order_row["laundry_id"]
+        address_id = order_row["address_id"]
 
         # Cancel the order
         cur.execute("""
@@ -377,6 +379,17 @@ async def cancel_customer_order(
                 cancel_reason = %s, updated_at = NOW()
             WHERE order_id = %s AND customer_id = %s
         """, (cancel_reason, order_id, customer_id))
+
+        # If customer chose to cancel all future recurring orders, deactivate the frequency
+        if str(is_recurring).lower() == 'true':
+            cur.execute("""
+                UPDATE orders.laundry_frequency
+                SET is_active = FALSE, updated_at = NOW()
+                WHERE customer_id = %s AND laundry_id = %s AND is_active = TRUE
+            """, (customer_id, laundry_id))
+            deactivated = cur.rowcount
+            if deactivated:
+                logger.info(f"Deactivated {deactivated} frequency subscription(s) for customer {customer_id}")
 
         # Reverse any uncaptured payment holds
         cur.execute("""

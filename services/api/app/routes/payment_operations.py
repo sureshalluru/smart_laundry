@@ -79,6 +79,31 @@ async def instore_payment(
                 method = p.get("paymentMethod", "Cash")
                 intent_id = p.get("paymentIntentId")
                 if amt > 0:
+                    # For card payments where frontend sent a PaymentMethod ID (pm_*),
+                    # we need to create and confirm a PaymentIntent server-side.
+                    if method == "Card" and intent_id and str(intent_id).startswith("pm_"):
+                        try:
+                            from app.services.payment_service import _init_stripe
+                            import stripe as stripe_lib
+                            _init_stripe(laundryId)
+                            amount_cents = int(round(Decimal(str(amt)) * 100))
+                            payment_intent = stripe_lib.PaymentIntent.create(
+                                amount=amount_cents,
+                                currency='usd',
+                                payment_method=intent_id,
+                                description=f"In-store card payment for order {orderId}",
+                                confirm=True,
+                                automatic_payment_methods={
+                                    "enabled": True,
+                                    "allow_redirects": "never",
+                                },
+                            )
+                            intent_id = payment_intent.id
+                            logger.info(f"Card payment charged for order {orderId}: {intent_id}, amount: ${amt}")
+                        except Exception as card_err:
+                            logger.exception(f"Card payment failed for order {orderId}")
+                            return {"statusCode": 200, "body": {"status": "error", "message": f"Card payment failed: {str(card_err)}"}}
+
                     cur.execute("""
                         INSERT INTO orders.order_payments (order_id, payment_intent_id, amount, payment_method)
                         VALUES (%s, %s, %s, %s)

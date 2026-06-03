@@ -51,6 +51,70 @@ async def get_order_audit_history(
         }}
 
 
+@router.put("/cancel-order-admin")
+async def cancel_order_admin(
+    body: dict = Body({}),
+):
+    """Cancel an order from the admin panel. Reverses hold and optionally cancels frequency."""
+    order_id = body.get("orderId")
+    customer_id = body.get("customerId")
+    laundry_id = body.get("laundryId")
+    cancel_reason = body.get("cancelReason", "")
+    is_recurring = body.get("isRecurring", "false")
+
+    if not order_id or not laundry_id:
+        return {"status": "error", "message": "Missing orderId or laundryId"}
+
+    with get_db() as conn:
+        cur = get_cursor(conn)
+
+        # Cancel the order
+        cur.execute("""
+            UPDATE orders.orders
+            SET order_status = 'OrderCanceled', status_category = 'Cancelled',
+                cancel_reason = %s, updated_at = NOW()
+            WHERE order_id = %s AND laundry_id = %s
+        """, (cancel_reason, order_id, laundry_id))
+
+        if cur.rowcount == 0:
+            return {"status": "error", "message": "Order not found"}
+
+        # If canceling all future recurring orders, deactivate the frequency
+        if str(is_recurring).lower() == 'true' and customer_id:
+            cur.execute("""
+                UPDATE orders.laundry_frequency
+                SET is_active = FALSE, updated_at = NOW()
+                WHERE customer_id = %s AND laundry_id = %s AND is_active = TRUE
+            """, (customer_id, laundry_id))
+            if cur.rowcount:
+                logger.info(f"Admin deactivated frequency for customer {customer_id}, laundry {laundry_id}")
+
+        # Get holds to reverse
+        cur.execute("""
+            SELECT payment_intent_id FROM orders.order_payments
+            WHERE order_id = %s AND payment_method = 'hold'
+        """, (order_id,))
+        holds = cur.fetchall()
+
+    # Reverse Stripe holds
+    if holds:
+        try:
+            import stripe
+            from app.services.payment_service import get_stripe_key
+            key, _ = get_stripe_key(laundry_id)
+            stripe.api_key = key
+            for hold in holds:
+                try:
+                    stripe.PaymentIntent.cancel(hold["payment_intent_id"])
+                    logger.info(f"Reversed hold {hold['payment_intent_id']} for order {order_id}")
+                except Exception as e:
+                    logger.warning(f"Could not cancel hold {hold['payment_intent_id']}: {e}")
+        except Exception as e:
+            logger.warning(f"Error reversing holds for order {order_id}: {e}")
+
+    return {"status": "success", "message": "Order canceled successfully"}
+
+
 @router.get("/show-all-employees")
 async def show_all_employees(
     laundryId: str = Query(...),
