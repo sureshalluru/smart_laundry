@@ -578,7 +578,7 @@ async def update_order_endpoint(
             values = list(update_fields.values()) + [orderId]
             cur.execute(f"UPDATE orders.orders SET {set_clause} WHERE order_id = %s", values)
 
-            # Fetch updated order to return
+            # Fetch updated order to return (will be re-fetched after capture if needed)
             result = get_single_order(cur, laundryId, orderId)
 
             # Check if we need to auto-capture (collect vars before leaving DB block)
@@ -590,9 +590,44 @@ async def update_order_endpoint(
             capture_customer_id = current_order["customer_id"] if should_auto_capture else None
             capture_grand_total = grand_total if should_auto_capture else 0
 
+            # Get the existing $1 hold payment intent ID
+            hold_intent_id = None
+            if should_auto_capture:
+                cur.execute("""
+                    SELECT payment_intent_id FROM orders.order_payments
+                    WHERE order_id = %s AND payment_method = 'hold'
+                    LIMIT 1
+                """, (orderId,))
+                hold_row = cur.fetchone()
+                if hold_row:
+                    hold_intent_id = hold_row["payment_intent_id"]
+
+                # Also check if already charged (prevent double charge)
+                cur.execute("""
+                    SELECT payment_intent_id FROM orders.order_payments
+                    WHERE order_id = %s AND payment_method = 'card'
+                    LIMIT 1
+                """, (orderId,))
+                if cur.fetchone():
+                    should_auto_capture = False  # Already charged, skip
+
         # Auto-capture payment OUTSIDE the DB block to avoid nested connection issues
         if should_auto_capture and capture_grand_total > 0:
             try:
+                from app.services.payment_service import _init_stripe
+                import stripe
+                _init_stripe(laundryId)
+
+                # Cancel the $1 hold (can't capture for more than hold amount)
+                if hold_intent_id:
+                    try:
+                        stripe.PaymentIntent.cancel(hold_intent_id)
+                        logger.info(f"Canceled $1 hold {hold_intent_id} for order {orderId}")
+                    except Exception:
+                        pass  # May already be expired/canceled
+
+                # Get customer's payment info and charge the real amount
+                captured_intent_id = None
                 with get_db() as conn2:
                     cur2 = get_cursor(conn2)
                     cur2.execute("""
@@ -602,14 +637,8 @@ async def update_order_endpoint(
                     payment_row = cur2.fetchone()
 
                 if payment_row and payment_row["stripe_customer_id"]:
-                    from app.services.payment_service import _init_stripe
-                    import stripe
-                    _init_stripe(laundryId)
-
-                    # Get default payment method
                     customer_obj = stripe.Customer.retrieve(payment_row["stripe_customer_id"])
                     default_pm = customer_obj.get('invoice_settings', {}).get('default_payment_method')
-
                     if default_pm:
                         amount_cents = int(round(capture_grand_total * 100))
                         intent = stripe.PaymentIntent.create(
@@ -622,35 +651,35 @@ async def update_order_endpoint(
                             confirm=True,
                         )
                         if intent['status'] == 'succeeded':
-                            with get_db() as conn3:
-                                cur3 = get_cursor(conn3)
-                                cur3.execute("""
-                                    UPDATE orders.orders SET payment_status = 'Paid', updated_at = NOW()
-                                    WHERE order_id = %s
-                                """, (orderId,))
-                                cur3.execute("""
-                                    INSERT INTO orders.order_payments (order_id, payment_intent_id, amount, payment_method)
-                                    VALUES (%s, %s, %s, 'card') ON CONFLICT DO NOTHING
-                                """, (orderId, intent.id, capture_grand_total))
-                                # Cancel $1 hold
-                                cur3.execute("""
-                                    SELECT payment_intent_id FROM orders.order_payments
-                                    WHERE order_id = %s AND payment_method = 'hold'
-                                """, (orderId,))
-                                for hold in cur3.fetchall():
-                                    try:
-                                        stripe.PaymentIntent.cancel(hold["payment_intent_id"])
-                                    except Exception:
-                                        pass
-                            logger.info(f"Auto-captured ${capture_grand_total} for order {orderId}")
-                            # Re-fetch order to return updated payment status
-                            with get_db() as conn4:
-                                cur4 = get_cursor(conn4)
-                                result = get_single_order(cur4, laundryId, orderId)
+                            captured_intent_id = intent.id
+                            logger.info(f"Charged ${capture_grand_total} for order {orderId}: {intent.id}")
+
+                # Update DB if payment succeeded
+                if captured_intent_id:
+                    with get_db() as conn3:
+                        cur3 = get_cursor(conn3)
+                        cur3.execute("""
+                            UPDATE orders.orders SET payment_status = 'Paid', updated_at = NOW()
+                            WHERE order_id = %s
+                        """, (orderId,))
+                        # Replace the hold record with the real payment
+                        if hold_intent_id:
+                            cur3.execute("""
+                                UPDATE orders.order_payments
+                                SET payment_intent_id = %s, amount = %s, payment_method = 'card'
+                                WHERE order_id = %s AND payment_intent_id = %s
+                            """, (captured_intent_id, capture_grand_total, orderId, hold_intent_id))
                         else:
-                            logger.warning(f"Auto-capture status unexpected for {orderId}: {intent['status']}")
-                    else:
-                        logger.warning(f"No default payment method for customer, skipping auto-capture for {orderId}")
+                            cur3.execute("""
+                                INSERT INTO orders.order_payments (order_id, payment_intent_id, amount, payment_method)
+                                VALUES (%s, %s, %s, 'card') ON CONFLICT DO NOTHING
+                            """, (orderId, captured_intent_id, capture_grand_total))
+
+                    # Re-fetch order with updated payment status
+                    with get_db() as conn4:
+                        cur4 = get_cursor(conn4)
+                        result = get_single_order(cur4, laundryId, orderId)
+
             except Exception as capture_err:
                 logger.warning(f"Payment auto-capture error for {orderId}: {capture_err}")
 
