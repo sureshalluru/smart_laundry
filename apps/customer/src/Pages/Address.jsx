@@ -12,7 +12,7 @@ import {
     Box,
     Heading
 } from '@chakra-ui/react';
-import { LoadScript, StandaloneSearchBox } from '@react-google-maps/api';
+import { LoadScriptNext, StandaloneSearchBox } from '@react-google-maps/api';
 import axios from "axios";
 import AddressImage from "../images/address.png";
 
@@ -134,7 +134,7 @@ const Address = () => {
             px={[7, 9, 11]}
             py={[12, 16, 20]}
         >
-            <LoadScript googleMapsApiKey={googleApiKey} libraries={libraries}>
+            <LoadScriptNext googleMapsApiKey={googleApiKey} libraries={libraries}>
                 <Box w="full" maxW="600px">
                     {/* Top section: image + heading in a VStack */}
                     <VStack spacing={[4, 6, 8]} align="center">
@@ -176,7 +176,8 @@ const Address = () => {
                                     placeholder="Type and select your Address"
                                     value={address}
                                     onChange={handleAddressChange}
-                                    size="md"
+                                    autoComplete="off"
+                                    size="lg"
                                     boxShadow="sm"
                                     focusBorderColor="blue.500"
                                     borderColor="blue.300"
@@ -199,7 +200,7 @@ const Address = () => {
                         </Button>
                     </VStack>
                 </Box>
-            </LoadScript>
+            </LoadScriptNext>
         </Box>
     );
 };

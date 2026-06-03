@@ -181,21 +181,26 @@ button.chakra-button[aria-label="Add Service"] {
 /* Google Places Autocomplete - fix mobile dropdown visibility */
 .pac-container {
   z-index: 10000 !important;
-  position: fixed !important;
-  width: calc(100% - 32px) !important;
-  max-width: 600px;
-  border-radius: 12px;
+  border-radius: 8px;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
   border: 1px solid #E2E8F0;
-  margin-top: 4px;
+  margin-top: 2px;
+  font-family: 'Inter', -apple-system, sans-serif;
 }
 
 .pac-item {
-  padding: 10px 12px;
+  padding: 12px;
   font-size: 14px;
+  line-height: 1.4;
   cursor: pointer;
 }
 
 .pac-item:hover {
   background: #EBF8FF;
+}
+
+/* Ensure Google autocomplete input doesn't get clipped on mobile */
+.chakra-input__group,
+.chakra-form-control {
+  overflow: visible !important;
 }

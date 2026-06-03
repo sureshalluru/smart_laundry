@@ -568,6 +568,7 @@ export default function LaundryPickupPage({laundryId,customerId,customerPaymentI
                                                 placeholder="Enter your address"
                                                 value={address}
                                                 size="lg"
+                                                autoComplete="off"
                                                 onChange={(e) => setAddress(e.target.value)}
                                             />
                                         </StandaloneSearchBox>
