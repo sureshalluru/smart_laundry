@@ -93,7 +93,7 @@ export default function LaundryPickupPage({laundryId,customerId,customerPaymentI
     const [address, setAddress] = useState(localStorage.getItem('customerAddress') || ''); // Store the user address
     const [addressInstructions,setAddressInstructions] = useState(''); // Store the address instructions
     const [doorNumber, setDoorNumber] = useState('');// Store the Address Door Number
-    const [isAddressValidated, setIsAddressValidated] = useState(false); // Track if the address is validated
+    const [isAddressValidated, setIsAddressValidated] = useState(!!localStorage.getItem('customerAddress')); // Auto-validate if address exists
 
     // For Google Maps API
     const searchBoxRef = useRef(null);
