@@ -50,7 +50,7 @@ export default function SiteNavbar({ config }) {
                     <Text fontSize={{ base: 'md', md: 'lg' }} fontWeight="800" color="blue.600">
                         {laundryName}
                     </Text>
-                    <HStack spacing={1} display={{ base: 'none', md: 'flex' }}>
+                    <HStack spacing={1}>
                         <Icon as={FiMapPin} color="gray.400" boxSize={3} />
                         <Text
                             as="a"
