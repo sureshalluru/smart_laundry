@@ -90,11 +90,14 @@ const LaundryHomePage = ({laundryId, customerId, customerPaymentId: initialCusto
                                 color="white"
                             />
                             <Text
+                                as="a"
+                                href={`/${laundryId}/site`}
                                 fontSize={["sm", "md"]}
                                 fontWeight="bold"
                                 isTruncated
                                 maxW="70%"
                                 textAlign="center"
+                                _hover={{ opacity: 0.8 }}
                             >
                                 {laundryData?.laundryName || ""}
                             </Text>
