@@ -643,9 +643,10 @@ async def update_order_endpoint(
                                     except Exception:
                                         pass
                             logger.info(f"Auto-captured ${capture_grand_total} for order {orderId}")
-                            # Update the result to reflect paid status
-                            if result.get("body"):
-                                result["body"]["paymentStatus"] = "Paid"
+                            # Re-fetch order to return updated payment status
+                            with get_db() as conn4:
+                                cur4 = get_cursor(conn4)
+                                result = get_single_order(cur4, laundryId, orderId)
                         else:
                             logger.warning(f"Auto-capture status unexpected for {orderId}: {intent['status']}")
                     else:
