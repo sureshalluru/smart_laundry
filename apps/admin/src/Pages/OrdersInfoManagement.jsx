@@ -824,7 +824,7 @@ useEffect(() => {
 
     // Define a function to check if the current status allows editing
     const isEditableStatus = (orderStatus) => {
-        const editableStatuses = ["ReadyForIntake", "ReceivedAtFacility", "ProcessingStarted"];
+        const editableStatuses = ["OrderSubmitted", "ReadyForIntake", "ReceivedAtFacility", "ProcessingStarted"];
         return editableStatuses.includes(orderStatus);
     };
 
@@ -1183,7 +1183,7 @@ const { open: openCancelUber, ModalUI: CancelUberModal } = useCancelUberHandoff(
                     status === "ordercanceled" ||
                     status === "delivered" ||
                     status === "orderpickedup" ||
-                    ((status === "ordersubmitted" || status === "enroutetodelivery") && orderType === "online")
+                    (status === "enroutetodelivery" && orderType === "online")
                 )
             );
 
