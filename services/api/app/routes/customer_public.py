@@ -310,7 +310,7 @@ async def get_customer_order_detail(
 async def cancel_customer_order(
     body: dict = Body({}),
 ):
-    """Cancel a customer order."""
+    """Cancel a customer order and reverse any payment hold."""
     order_id = body.get("orderId")
     customer_id = body.get("customerId")
     cancel_reason = body.get("cancelReason", "")
@@ -320,6 +320,19 @@ async def cancel_customer_order(
 
     with get_db() as conn:
         cur = get_cursor(conn)
+
+        # Get the laundry_id for Stripe key lookup
+        cur.execute("""
+            SELECT laundry_id FROM orders.orders
+            WHERE order_id = %s AND customer_id = %s
+        """, (order_id, customer_id))
+        order_row = cur.fetchone()
+        if not order_row:
+            return {"status": "error", "message": "Order not found or not yours"}
+
+        laundry_id = order_row["laundry_id"]
+
+        # Cancel the order
         cur.execute("""
             UPDATE orders.orders
             SET order_status = 'OrderCanceled', status_category = 'Cancelled',
@@ -327,8 +340,30 @@ async def cancel_customer_order(
             WHERE order_id = %s AND customer_id = %s
         """, (cancel_reason, order_id, customer_id))
 
-        if cur.rowcount == 0:
-            return {"status": "error", "message": "Order not found or not yours"}
+        # Reverse any uncaptured payment holds
+        cur.execute("""
+            SELECT payment_intent_id FROM orders.order_payments
+            WHERE order_id = %s AND payment_method = 'hold'
+        """, (order_id,))
+        holds = cur.fetchall()
+
+    # Cancel Stripe holds outside the DB transaction
+    if holds:
+        try:
+            import stripe
+            from app.services.payment_service import get_stripe_key
+            key, _ = get_stripe_key(laundry_id)
+            stripe.api_key = key
+            for hold in holds:
+                pi_id = hold["payment_intent_id"]
+                try:
+                    stripe.PaymentIntent.cancel(pi_id)
+                    logger.info(f"Reversed hold {pi_id} for canceled order {order_id}")
+                except Exception as e:
+                    # Hold may have already expired or been captured
+                    logger.warning(f"Could not cancel hold {pi_id}: {e}")
+        except Exception as e:
+            logger.warning(f"Error reversing holds for order {order_id}: {e}")
 
     return {"status": "success", "message": "Order canceled"}
 
