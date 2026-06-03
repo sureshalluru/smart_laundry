@@ -605,7 +605,7 @@ async def update_order_endpoint(
                 # Also check if already charged (prevent double charge)
                 cur.execute("""
                     SELECT payment_intent_id FROM orders.order_payments
-                    WHERE order_id = %s AND payment_method = 'card'
+                    WHERE order_id = %s AND payment_method = 'Card'
                     LIMIT 1
                 """, (orderId,))
                 if cur.fetchone():
@@ -666,13 +666,13 @@ async def update_order_endpoint(
                         if hold_intent_id:
                             cur3.execute("""
                                 UPDATE orders.order_payments
-                                SET payment_intent_id = %s, amount = %s, payment_method = 'card'
+                                SET payment_intent_id = %s, amount = %s, payment_method = 'Card'
                                 WHERE order_id = %s AND payment_intent_id = %s
                             """, (captured_intent_id, capture_grand_total, orderId, hold_intent_id))
                         else:
                             cur3.execute("""
                                 INSERT INTO orders.order_payments (order_id, payment_intent_id, amount, payment_method)
-                                VALUES (%s, %s, %s, 'card') ON CONFLICT DO NOTHING
+                                VALUES (%s, %s, %s, 'Card') ON CONFLICT DO NOTHING
                             """, (orderId, captured_intent_id, capture_grand_total))
 
                     # Re-fetch order with updated payment status
