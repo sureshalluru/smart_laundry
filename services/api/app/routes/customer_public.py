@@ -162,6 +162,31 @@ async def customer_place_order(
                 """, (order_id, tip_amount, tip_data.get("tipPercentage"),
                       tip_data.get("tipType"), tip_data.get("tipMethod")))
 
+        # Create $1 hold on customer's card to verify payment method
+        if customer_payment_id:
+            try:
+                from app.services.payment_service import create_hold
+                hold_result = create_hold(
+                    customer_payment_id=customer_payment_id,
+                    amount=1.00,
+                    description=f"$1 auth hold for order {order_id}",
+                    laundry_id=laundry_id,
+                )
+                if hold_result.get("status") == "success":
+                    # Store the hold payment intent ID on the order
+                    with get_db() as conn2:
+                        cur2 = get_cursor(conn2)
+                        cur2.execute("""
+                            INSERT INTO orders.order_payments (order_id, payment_intent_id, amount, payment_method)
+                            VALUES (%s, %s, %s, 'hold')
+                            ON CONFLICT DO NOTHING
+                        """, (order_id, hold_result["paymentIntentId"], 1.00))
+                else:
+                    logger.warning(f"$1 hold failed for order {order_id}: {hold_result.get('message')}")
+            except Exception as hold_err:
+                logger.warning(f"$1 hold error for order {order_id}: {hold_err}")
+                # Don't fail the order if hold fails — just log it
+
         return {"status": "success", "orderId": order_id}
 
     except Exception as e:

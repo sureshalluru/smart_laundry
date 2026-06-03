@@ -298,6 +298,7 @@ export default function LaundryPickupPage({laundryId,customerId,customerPaymentI
                 coupon: '',
                 pickupService: pickupService || 'LaundryDriver',
                 dropoffService: dropoffService || 'LaundryDriver',
+                customerPaymentId: customerPaymentId,
             };
         } else {
             // Per-pound order payload (existing logic)
@@ -366,6 +367,7 @@ export default function LaundryPickupPage({laundryId,customerId,customerPaymentI
                 dropoffService: dropoffService,
                 uberPickupFrequency: uberPickupFrequency,
                 uberDropoffFrequency: uberDropoffFrequency,
+                customerPaymentId: customerPaymentId,
             };
         }
 
