@@ -337,9 +337,29 @@ async def instore_place_order(
             final_payments = [{"amount": amount_to_collect, "paymentIntentId": terminal_intent_id, "paymentMethod": "Terminal"}]
             payment_status = "Paid"
         elif card_payment_method_id:
-            # TODO: call payment service for card capture
-            final_payments = [{"amount": amount_to_collect, "paymentIntentId": None, "paymentMethod": "Card"}]
-            payment_status = "Paid"
+            # Charge the card via Stripe
+            try:
+                from app.services.payment_service import _init_stripe
+                import stripe as stripe_lib
+                _init_stripe(laundry_id)
+                amount_cents = int(round(amount_to_collect * 100))
+                payment_intent = stripe_lib.PaymentIntent.create(
+                    amount=amount_cents,
+                    currency='usd',
+                    payment_method=card_payment_method_id,
+                    description=f"In-store order {order_id}",
+                    confirm=True,
+                    automatic_payment_methods={
+                        "enabled": True,
+                        "allow_redirects": "never",
+                    },
+                )
+                final_payments = [{"amount": amount_to_collect, "paymentIntentId": payment_intent.id, "paymentMethod": "Card"}]
+                payment_status = "Paid"
+                logger.info(f"Card charged for in-store order {order_id}: {payment_intent.id}, ${amount_to_collect}")
+            except Exception as card_err:
+                logger.exception(f"Card charge failed for in-store order")
+                return {"status": "error", "message": f"Card payment failed: {str(card_err)}"}
         elif is_pay_now:
             final_payments = [{"amount": amount_to_collect, "paymentIntentId": None, "paymentMethod": "Cash"}]
             payment_status = "Paid"
