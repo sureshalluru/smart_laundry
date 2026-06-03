@@ -71,6 +71,9 @@ async def customer_place_order(
         laundry_id = body.get("laundryId")
         services = body.get("services", [])
         address_id = body.get("addressId")
+        address_text = body.get("address", "")
+        door_number = body.get("doorNumber", "")
+        address_instructions = body.get("addressInstructions", "")
         special_instructions = body.get("specialInstructions", "")
         pickup_date = body.get("pickupDate")
         pickup_time_interval = body.get("pickupTimeInterval")
@@ -123,6 +126,26 @@ async def customer_place_order(
 
         with get_db() as conn:
             cur = get_cursor(conn)
+
+            # Resolve address_id: look up or create customer_addresses record
+            if not address_id and address_text and customer_id:
+                cur.execute("""
+                    SELECT address_id FROM shop.customer_addresses
+                    WHERE customer_id = %s AND address = %s AND is_active = TRUE
+                    LIMIT 1
+                """, (customer_id, address_text))
+                addr_row = cur.fetchone()
+                if addr_row:
+                    address_id = addr_row["address_id"]
+                else:
+                    # Create new address record
+                    new_addr_id = str(uuid.uuid4())
+                    cur.execute("""
+                        INSERT INTO shop.customer_addresses (address_id, customer_id, address, door_number, address_instructions, is_active)
+                        VALUES (%s, %s, %s, %s, %s, TRUE)
+                    """, (new_addr_id, customer_id, address_text, door_number, address_instructions))
+                    address_id = new_addr_id
+
             cur.execute("""
                 INSERT INTO orders.orders (
                     order_id, laundry_id, customer_id, address_id,
