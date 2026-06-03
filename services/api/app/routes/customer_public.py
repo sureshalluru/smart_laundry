@@ -162,6 +162,44 @@ async def customer_place_order(
                 """, (order_id, tip_amount, tip_data.get("tipPercentage"),
                       tip_data.get("tipType"), tip_data.get("tipMethod")))
 
+            # Create frequency subscription if customer selected recurring
+            if frequency and frequency.strip():
+                from datetime import datetime, timedelta
+
+                # Calculate future pickup date based on frequency
+                freq_days = 7 if frequency.lower() == 'weekly' else 14  # biweekly = 14 days
+                pickup_dt = datetime.strptime(pickup_date, '%Y-%m-%d') if pickup_date else datetime.now()
+                future_pickup = (pickup_dt + timedelta(days=freq_days)).strftime('%Y-%m-%d')
+
+                # Deactivate any existing frequency for this customer+laundry+address
+                cur.execute("""
+                    UPDATE orders.laundry_frequency
+                    SET is_active = FALSE, updated_at = NOW()
+                    WHERE customer_id = %s AND laundry_id = %s AND address_id = %s AND is_active = TRUE
+                """, (customer_id, laundry_id, address_id))
+
+                # Create new frequency subscription
+                cur.execute("""
+                    INSERT INTO orders.laundry_frequency (
+                        customer_id, laundry_id, address_id, frequency,
+                        frequency_created_date, frequency_start_date,
+                        pickup_date, pickup_time_interval,
+                        dropoff_time_interval, future_pickup_date,
+                        is_active, created_at, updated_at
+                    ) VALUES (
+                        %s, %s, %s, %s,
+                        NOW(), %s,
+                        %s, %s,
+                        %s, %s,
+                        TRUE, NOW(), NOW()
+                    )
+                """, (
+                    customer_id, laundry_id, address_id, frequency,
+                    pickup_date,
+                    pickup_date, pickup_time_interval,
+                    dropoff_time_interval, future_pickup,
+                ))
+
         # Create $1 hold on customer's card to verify payment method
         if customer_payment_id:
             try:

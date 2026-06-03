@@ -34,3 +34,16 @@ services:
         value: "us-east-1"
       - key: SOURCE_EMAIL
         sync: false
+
+  # Cron job: Process recurring orders daily at 6 AM CT (11:00 UTC)
+  - type: cron
+    name: frequency-processor
+    runtime: python
+    buildCommand: cd services/api && pip install -r requirements.txt
+    schedule: "0 11 * * *"
+    command: cd services/api && python -c "import requests; r = requests.post('https://smart-laundry.onrender.com/api/frequency/process'); print(r.json())"
+    envVars:
+      - fromService:
+          type: web
+          name: smart-laundry
+          property: host

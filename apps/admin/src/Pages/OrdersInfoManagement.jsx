@@ -1842,8 +1842,7 @@ const { open: openCancelUber, ModalUI: CancelUberModal } = useCancelUberHandoff(
                                         </Badge>
 
                                         {/* Payment Button - Placed next to Order Status */}
-                                        {orderStatusMap[selectedOrderDetails?.orderId] === "ProcessingCompleted" &&
-                                            isInStoreOrder && !paymentButtonDisplay && (
+                                        {isInStoreOrder && !paymentButtonDisplay && (
                                                 <Tooltip
                                                     label={isEditMode ? "" : "Enable Edit Mode"}
                                                     aria-label="Payment Button Tooltip"
