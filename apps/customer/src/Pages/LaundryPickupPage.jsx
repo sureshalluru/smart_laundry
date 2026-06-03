@@ -16,23 +16,43 @@ import {
 import ServicePage from '../Components/LaundryPickup/ServicePage';
 import PaymentPage from '../Components/LaundryPickup/PaymentPage';
 import ReviewOrderPage from '../Components/LaundryPickup/ReviewOrderPage';
+import PricingChoice from '../Components/LaundryPickup/PricingChoice';
+import BagOrderPage from '../Components/LaundryPickup/BagOrderPage';
+import BagReviewOrderPage from '../Components/LaundryPickup/BagReviewOrderPage';
 import {useNavigate} from "react-router-dom";
 import { Elements } from '@stripe/react-stripe-js';
 import { loadStripe } from '@stripe/stripe-js';
 import axios from "axios";
 import {LoadScriptNext, StandaloneSearchBox} from "@react-google-maps/api";
-import AddressImage from "../images/address.png";
+import LaundryPickupImage from "../images/laundry-pickup.svg";
 import {formatISO, parseISO} from "date-fns";
 import { toZonedTime, format } from 'date-fns-tz';
 import {addDays} from 'date-fns';
 import {LaundryContext} from "../Components/Contexts/LaundryContext";
 
 export default function LaundryPickupPage({laundryId,customerId,customerPaymentId,setCustomerPaymentId, laundryTimeZone, setLaundryTimeZone, specialInstructions, setSpecialInstructions}) {
-    const steps = [
-        {title: 'Service'},
-        {title: 'Payment'},
-        {title: 'Review Order'},
-    ];
+    // Pricing type: "per_bag" or "per_pound"
+    const [pricingType, setPricingType] = useState(null); // null = not yet chosen
+    const [bagPrice, setBagPrice] = useState(30.00);
+
+    // Steps depend on pricing type
+    const getSteps = () => {
+        if (pricingType === 'per_bag') {
+            return [
+                {title: 'Pricing'},
+                {title: 'Bags & Schedule'},
+                {title: 'Payment'},
+                {title: 'Review'},
+            ];
+        }
+        return [
+            {title: 'Pricing'},
+            {title: 'Service'},
+            {title: 'Payment'},
+            {title: 'Review Order'},
+        ];
+    };
+    const steps = getSteps();
     const { laundryData } = useContext(LaundryContext);
     const {activeStep, setActiveStep} = useSteps({index: 0});
     const [isPlaceOrderEnabled, setIsPlaceOrderEnabled] = useState(false);
@@ -134,6 +154,10 @@ export default function LaundryPickupPage({laundryId,customerId,customerPaymentI
                         const env = response?.data?.uberEnv;
                         const creds = response?.data?.uberCredentials;
                         setUberExists(response.data?.uberCredentialsExist === true);
+                        // Set bag price from API (configurable per laundry)
+                        if (response.data.bagPrice) {
+                            setBagPrice(parseFloat(response.data.bagPrice));
+                        }
 
                         // Initialize Stripe with the fetched public key
                         if (laundryData?.stripePublicKey){
@@ -194,86 +218,157 @@ export default function LaundryPickupPage({laundryId,customerId,customerPaymentI
 
     // Proceed to the next step only if the current step is valid
     const handleNextStep = () => {
-        if (activeStep === 0 && isServiceStepValid) {
-            setActiveStep(activeStep + 1);
-        } else if (activeStep === 1 && isPaymentStepValid) {
-            setActiveStep(activeStep + 1);
+        if (activeStep === 0) {
+            // Pricing choice step — handled by PricingChoice callback
+            setActiveStep(1);
+        } else if (activeStep === 1 && isServiceStepValid) {
+            setActiveStep(2);
+        } else if (activeStep === 2 && isPaymentStepValid) {
+            setActiveStep(3);
             setIsPlaceOrderEnabled(true);
         }
     };
 
+    // Handle pricing choice selection
+    const handlePricingChoice = (type) => {
+        setPricingType(type);
+        setActiveStep(1);
+    };
+
     // Order placement function
     const handlePlaceOrder = async () => {
-        const filledServices = services.filter(service => service.service && service.count && service.cost);
-        const total = Number(services.reduce((sum, service) => sum + parseFloat(service.cost || 0), 0)).toFixed(2);
-        // Check if all required fields are filled
-        if (!filledServices.length || !pickupDate || !pickupTime || !dropoffDate || !dropoffTime || !laundryBags) {
-            toast({
-                title: "Error",
-                description: "Please fill in all required fields and select at least one service.",
-                status: "error",
-                duration: 3000,
-                isClosable: true,
-            });
-            setOrderProcessing(false);  // Stop processing on error
-            return false;
-        }
-        // Convert pickupDate and drop offDate to UTC
-        const pickupDateUTC = formatISO(parseISO(pickupDate), { representation: 'date' });
-        const dropoffDateUTC = formatISO(parseISO(dropoffDate), { representation: 'date' });
-        // Check if customerPaymentId is available
-        if (!customerPaymentId) {
-            toast({
-                title: "Payment Information Missing",
-                description: "Please add payment information before placing the order.",
-                status: "error",
-                duration: 3000,
-                isClosable: true,
-            });
-            setOrderProcessing(false);  // Stop processing on error
-            return false;
+        let payload;
+
+        if (pricingType === 'per_bag') {
+            // Per-bag order payload
+            const bagTotal = Number(laundryBags * bagPrice).toFixed(2);
+            if (!pickupDate || !pickupTime || !dropoffDate || !dropoffTime || laundryBags < 1) {
+                toast({
+                    title: "Error",
+                    description: "Please fill in all required fields.",
+                    status: "error",
+                    duration: 3000,
+                    isClosable: true,
+                });
+                setOrderProcessing(false);
+                return false;
+            }
+            if (!customerPaymentId) {
+                toast({
+                    title: "Payment Information Missing",
+                    description: "Please add payment information before placing the order.",
+                    status: "error",
+                    duration: 3000,
+                    isClosable: true,
+                });
+                setOrderProcessing(false);
+                return false;
+            }
+            const pickupDateUTC = formatISO(parseISO(pickupDate), { representation: 'date' });
+            const dropoffDateUTC = formatISO(parseISO(dropoffDate), { representation: 'date' });
+
+            payload = {
+                operation: "placeOrder",
+                pricingType: "per_bag",
+                customerId: customerId,
+                laundryId: laundryId,
+                address: address,
+                doorNumber: doorNumber,
+                addressInstructions: addressInstructions,
+                specialInstructions: specialInstructions,
+                services: [],
+                pickupDate: pickupDateUTC,
+                pickupTimeInterval: pickupTime,
+                dropoffDate: dropoffDateUTC,
+                dropoffTimeInterval: dropoffTime,
+                frequency: null,
+                laundryBags: laundryBags,
+                bagPrice: bagPrice,
+                totalCost: bagTotal,
+                subTotal: bagTotal,
+                grandTotal: bagTotal,
+                saveSpecialInstructions: saveSpecialInstructions,
+                tip: {
+                    tipAmount: tip.tipAmount,
+                    tipPercentage: tip.tipPercentage,
+                    tipType: tip.tipType,
+                    tipMethod: tip.tipMethod,
+                    tipReceiverId: tip.tipReceivedId,
+                },
+                coupon: '',
+                pickupService: pickupService || 'LaundryDriver',
+                dropoffService: dropoffService || 'LaundryDriver',
+            };
+        } else {
+            // Per-pound order payload (existing logic)
+            const filledServices = services.filter(service => service.service && service.count && service.cost);
+            const total = Number(services.reduce((sum, service) => sum + parseFloat(service.cost || 0), 0)).toFixed(2);
+            if (!filledServices.length || !pickupDate || !pickupTime || !dropoffDate || !dropoffTime || !laundryBags) {
+                toast({
+                    title: "Error",
+                    description: "Please fill in all required fields and select at least one service.",
+                    status: "error",
+                    duration: 3000,
+                    isClosable: true,
+                });
+                setOrderProcessing(false);
+                return false;
+            }
+            const pickupDateUTC = formatISO(parseISO(pickupDate), { representation: 'date' });
+            const dropoffDateUTC = formatISO(parseISO(dropoffDate), { representation: 'date' });
+            if (!customerPaymentId) {
+                toast({
+                    title: "Payment Information Missing",
+                    description: "Please add payment information before placing the order.",
+                    status: "error",
+                    duration: 3000,
+                    isClosable: true,
+                });
+                setOrderProcessing(false);
+                return false;
+            }
+
+            payload = {
+                operation: pickupService === "Uber" || dropoffService === "Uber"
+                    ? "uberPlaceOrder"
+                    : "placeOrder",
+                pricingType: "per_pound",
+                customerId: customerId,
+                laundryId: laundryId,
+                address: address,
+                doorNumber: doorNumber,
+                addressInstructions: addressInstructions,
+                specialInstructions: specialInstructions,
+                services: filledServices.map(service => ({
+                    serviceName: service.service,
+                    weightOrCount: service.count,
+                    servicePrice: service.basePrice,
+                })),
+                pickupDate: pickupDateUTC,
+                pickupTimeInterval: pickupTime,
+                dropoffDate: dropoffDateUTC,
+                dropoffTimeInterval: dropoffTime,
+                frequency: frequency,
+                laundryBags: laundryBags,
+                totalCost: total,
+                subTotal: total,
+                grandTotal: total,
+                saveSpecialInstructions: saveSpecialInstructions,
+                tip: {
+                    tipAmount: tip.tipAmount,
+                    tipPercentage: tip.tipPercentage,
+                    tipType: tip.tipType,
+                    tipMethod: tip.tipMethod,
+                    tipReceiverId: tip.tipReceivedId,
+                },
+                coupon: promoCode,
+                pickupService: pickupService,
+                dropoffService: dropoffService,
+                uberPickupFrequency: uberPickupFrequency,
+                uberDropoffFrequency: uberDropoffFrequency,
+            };
         }
 
-        // Create payload for the API call
-        const payload = {
-            // operation: pickupService === "Uber" ? "uberPlaceOrder" : "placeOrder",
-            operation: pickupService === "Uber" || dropoffService === "Uber"
-                ? "uberPlaceOrder"
-                : "placeOrder",
-            customerId: customerId,
-            laundryId: laundryId,
-            address: address,
-            doorNumber: doorNumber,
-            addressInstructions:addressInstructions,
-            specialInstructions: specialInstructions,
-            services: filledServices.map(service => ({
-                serviceName: service.service,
-                weightOrCount: service.count,
-                servicePrice: service.basePrice,
-            })),
-            pickupDate: pickupDateUTC,
-            pickupTimeInterval: pickupTime,
-            dropoffDate: dropoffDateUTC,
-            dropoffTimeInterval: dropoffTime,
-            frequency: frequency,
-            laundryBags: laundryBags,
-            totalCost: total,
-            subTotal: total,
-            grandTotal: total,
-            saveSpecialInstructions: saveSpecialInstructions,
-            tip: {
-                tipAmount: tip.tipAmount,
-                tipPercentage: tip.tipPercentage,
-                tipType: tip.tipType,
-                tipMethod: tip.tipMethod,
-                tipReceiverId: tip.tipReceivedId,
-            },
-            coupon: promoCode,
-            pickupService: pickupService,
-            dropoffService: dropoffService,
-            uberPickupFrequency: uberPickupFrequency,
-            uberDropoffFrequency:uberDropoffFrequency
-        };
         console.log("payload for placing the order:", payload);
 
         try {
@@ -414,64 +509,103 @@ export default function LaundryPickupPage({laundryId,customerId,customerPaymentI
     };
 
     return (
-        <Box padding={[2,4,6]} bg = "#AADDD9" minHeight="100vh">
-            <Stack spacing={[4,6,8]}  maxWidth={["100%", "600px", "800px"]} margin="auto" px={[2, 4, 6]} py={[4, 6, 8]}>
+        <Box padding={[2,4,6]} bg="linear-gradient(180deg, #EBF8FF 0%, #F7FAFC 100%)" minHeight="100vh">
+            <Stack spacing={[4,6,8]} maxWidth={["100%", "600px", "800px"]} margin="auto" px={[2, 4, 6]} py={[4, 6, 8]}>
                 {!isAddressValidated ? (
                     // Address Input Form
                     <LoadScriptNext googleMapsApiKey={googleApiKey} libraries={['places']}>
-                        <VStack as="form" onSubmit={handleAddressSubmit} spacing={[4,6]}>
-                            <Image
-                                src={AddressImage}
-                                alt="Laundry Service"
-                                borderRadius="lg"
-                                objectFit="cover"
-                                boxSize={["150px", "350px"]}
-                            />
-                            <Box textAlign="center" >
-                                <Heading  size={['md','lg']} color="blue.600" mb={4}>
+                        <VStack as="form" onSubmit={handleAddressSubmit} spacing={0}>
+                            {/* Hero banner with illustration */}
+                            <Box
+                                w="100%"
+                                bg="linear-gradient(135deg, #EBF8FF 0%, #BEE3F8 100%)"
+                                borderRadius="2xl"
+                                pt={{ base: 6, md: 10 }}
+                                pb={{ base: 4, md: 6 }}
+                                px={4}
+                                textAlign="center"
+                                mb={6}
+                            >
+                                <Image
+                                    src={LaundryPickupImage}
+                                    alt="Free Laundry Pickup & Delivery"
+                                    mx="auto"
+                                    w={{ base: '260px', md: '340px' }}
+                                    h={{ base: '180px', md: '220px' }}
+                                    objectFit="contain"
+                                />
+                                <Heading size={{ base: 'md', md: 'lg' }} color="blue.700" mt={4}>
                                     Welcome to {laundryData?.laundryName}
                                 </Heading>
-
+                                <Box fontSize="sm" color="gray.500" mt={1}>
+                                    Free pickup & delivery — enter your address to get started
+                                </Box>
                             </Box>
 
-                            <FormControl id="address" isRequired>
-                                <FormLabel fontSize={['md','lg']} >
-                                    Enter your address for free pickup
-                                </FormLabel>
-                                <StandaloneSearchBox
-                                    onLoad={ref => (searchBoxRef.current = ref)}
-                                    onPlacesChanged={handlePlacesChanged}
-                                >
-                                    <Input
-                                        type="text"
-                                        placeholder="Enter your Address for Free Pickup"
-                                        value={address}
-                                        fontSize={['md','lg']}
-                                        onChange={(e) => setAddress(e.target.value)}
-                                    />
-                                </StandaloneSearchBox>
-                            </FormControl>
-                            <FormControl id="doorNumber" >
-                                <FormLabel fontSize={['md','lg']} >Apartment or Unit Number</FormLabel>
-                                <Input
-                                    type="text"
-                                    placeholder="Apt or Unit Number"
-                                    value={doorNumber}
-                                    onChange={(e) => setDoorNumber(e.target.value)}
-                                    fontSize={['md','lg']}
-                                />
-                            </FormControl>
-                            <FormControl id="addressInstructions" >
-                                <FormLabel fontSize={['md','lg']} >Delivery Instructions</FormLabel>
-                                <Input
-                                    type="text"
-                                    placeholder="Delivery Instructions"
-                                    value={addressInstructions}
-                                    onChange={(e) => setAddressInstructions(e.target.value)}
-                                    fontSize={['md','lg']}
-                                />
-                            </FormControl>
-                            <Button type="submit" colorScheme="blue" isLoading={isAddressValidating} loadingText="Validating Address">Continue</Button>
+                            {/* Form card */}
+                            <Box
+                                w="100%"
+                                bg="white"
+                                borderRadius="2xl"
+                                boxShadow="sm"
+                                border="1px solid"
+                                borderColor="gray.100"
+                                p={{ base: 5, md: 8 }}
+                            >
+                                <VStack spacing={5} align="stretch">
+                                    <FormControl id="address" isRequired>
+                                        <FormLabel fontSize="sm" fontWeight="600" color="gray.700">
+                                            Pickup Address
+                                        </FormLabel>
+                                        <StandaloneSearchBox
+                                            onLoad={ref => (searchBoxRef.current = ref)}
+                                            onPlacesChanged={handlePlacesChanged}
+                                        >
+                                            <Input
+                                                type="text"
+                                                placeholder="Enter your address"
+                                                value={address}
+                                                size="lg"
+                                                onChange={(e) => setAddress(e.target.value)}
+                                            />
+                                        </StandaloneSearchBox>
+                                    </FormControl>
+                                    <FormControl id="doorNumber">
+                                        <FormLabel fontSize="sm" fontWeight="600" color="gray.700">
+                                            Apartment or Unit Number
+                                        </FormLabel>
+                                        <Input
+                                            type="text"
+                                            placeholder="Apt, Suite, Unit (optional)"
+                                            value={doorNumber}
+                                            onChange={(e) => setDoorNumber(e.target.value)}
+                                        />
+                                    </FormControl>
+                                    <FormControl id="addressInstructions">
+                                        <FormLabel fontSize="sm" fontWeight="600" color="gray.700">
+                                            Delivery Instructions
+                                        </FormLabel>
+                                        <Input
+                                            type="text"
+                                            placeholder="e.g. Leave at front door"
+                                            value={addressInstructions}
+                                            onChange={(e) => setAddressInstructions(e.target.value)}
+                                        />
+                                    </FormControl>
+                                    <Button
+                                        type="submit"
+                                        colorScheme="blue"
+                                        size="lg"
+                                        borderRadius="xl"
+                                        w="100%"
+                                        isLoading={isAddressValidating}
+                                        loadingText="Validating..."
+                                        boxShadow="md"
+                                    >
+                                        Continue
+                                    </Button>
+                                </VStack>
+                            </Box>
                         </VStack>
                     </LoadScriptNext>
                 ) : (
@@ -483,14 +617,53 @@ export default function LaundryPickupPage({laundryId,customerId,customerPaymentI
                                     <StepIndicator>
                                         <StepStatus complete={<StepIcon />} incomplete={<StepNumber />} active={<StepNumber />} />
                                     </StepIndicator>
-                                    <StepTitle fontSize={['md','lg']}>{step.title}</StepTitle>
+                                    <StepTitle fontSize={['xs','sm','md']}>{step.title}</StepTitle>
                                     {index !== steps.length - 1 && <StepSeparator />}
                                 </Step>
                             ))}
                         </Stepper>
 
-                        <Box border="1px" borderColor="gray.200" borderRadius="md" padding={[2,4,6]}>
+                        <Box bg="white" borderRadius="2xl" boxShadow="sm" border="1px solid" borderColor="gray.100" padding={[4,5,6]}>
+                            {/* Step 0: Pricing Choice */}
                             {activeStep === 0 && (
+                                <PricingChoice
+                                    pricingType={pricingType}
+                                    setPricingType={setPricingType}
+                                    bagPrice={bagPrice}
+                                    onContinue={handlePricingChoice}
+                                />
+                            )}
+
+                            {/* Step 1: Service (per-pound) or Bags & Schedule (per-bag) */}
+                            {activeStep === 1 && pricingType === 'per_bag' && (
+                                <BagOrderPage
+                                    bagPrice={bagPrice}
+                                    laundryBags={laundryBags}
+                                    setLaundryBags={setLaundryBags}
+                                    pickupDate={pickupDate}
+                                    setPickupDate={setPickupDate}
+                                    pickupTime={pickupTime}
+                                    setPickupTime={setPickupTime}
+                                    dropoffDate={dropoffDate}
+                                    setDropoffDate={setDropoffDate}
+                                    dropoffTime={dropoffTime}
+                                    setDropoffTime={setDropoffTime}
+                                    specialInstructions={specialInstructions}
+                                    setSpecialInstructions={setSpecialInstructions}
+                                    deliveryTimeSlots={deliveryTimeSlots}
+                                    deliveryTimeInterval={deliveryTimeInterval}
+                                    laundryTimeZone={laundryTimeZone}
+                                    setIsServiceStepValid={setIsServiceStepValid}
+                                    handleNextStep={handleNextStep}
+                                    isServiceStepValid={isServiceStepValid}
+                                    pickupService={pickupService}
+                                    setPickupService={setPickupService}
+                                    dropoffService={dropoffService}
+                                    setDropoffService={setDropoffService}
+                                />
+                            )}
+
+                            {activeStep === 1 && pricingType === 'per_pound' && (
                                 <ServicePage
                                     setIsServiceStepValid={setIsServiceStepValid}
                                     handleNextStep={handleNextStep}
@@ -539,7 +712,8 @@ export default function LaundryPickupPage({laundryId,customerId,customerPaymentI
                                 />
                             )}
 
-                            {activeStep === 1 && stripePromise && (
+                            {/* Step 2: Payment */}
+                            {activeStep === 2 && stripePromise && (
                                 <Elements stripe={stripePromise}>
                                     <PaymentPage
                                         customerId={customerId}
@@ -555,7 +729,27 @@ export default function LaundryPickupPage({laundryId,customerId,customerPaymentI
                                 </Elements>
                             )}
 
-                            {activeStep === 2 && (
+                            {/* Step 3: Review Order */}
+                            {activeStep === 3 && pricingType === 'per_bag' && (
+                                <BagReviewOrderPage
+                                    laundryBags={laundryBags}
+                                    bagPrice={bagPrice}
+                                    pickupDate={pickupDate}
+                                    pickupTime={pickupTime}
+                                    dropoffDate={dropoffDate}
+                                    dropoffTime={dropoffTime}
+                                    handlePlaceOrder={handlePlaceOrder}
+                                    orderProcessing={orderProcessing}
+                                    isPlaceOrderEnabled={isPlaceOrderEnabled}
+                                    setActiveStep={setActiveStep}
+                                    tip={tip}
+                                    setTip={setTip}
+                                    pickupService={pickupService}
+                                    dropoffService={dropoffService}
+                                />
+                            )}
+
+                            {activeStep === 3 && pricingType === 'per_pound' && (
                                 <ReviewOrderPage
                                     services={services}
                                     pickupDate={pickupDate}
@@ -565,7 +759,7 @@ export default function LaundryPickupPage({laundryId,customerId,customerPaymentI
                                     handlePlaceOrder={handlePlaceOrder}
                                     orderProcessing={orderProcessing}
                                     isPlaceOrderEnabled={isPlaceOrderEnabled}
-                                    setActiveStep ={setActiveStep}
+                                    setActiveStep={setActiveStep}
                                     laundryBags={laundryBags}
                                     promoCode={promoCode}
                                     frequency={frequency}
@@ -581,7 +775,12 @@ export default function LaundryPickupPage({laundryId,customerId,customerPaymentI
                         </Box>
 
                         <Flex justify="space-between" mt={4}>
-                            <Button onClick={() => setActiveStep(activeStep - 1)} isDisabled={activeStep === 0}>
+                            <Button
+                                onClick={() => setActiveStep(activeStep - 1)}
+                                isDisabled={activeStep === 0}
+                                variant="ghost"
+                                colorScheme="gray"
+                            >
                                 Previous
                             </Button>
                         </Flex>

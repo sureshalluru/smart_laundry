@@ -111,7 +111,7 @@ const PaymentMethods = ({
     const cancelRef = useRef(); // For focusing the cancel button
     const [cardToDelete, setCardToDelete] = useState(null);
 
-    const bgColor = "#AADDD9"; // Main background color
+    const bgColor = "#EBF8FF"; // Main background color
     const cardBgColor = "white"; // Card background color
     const borderColor = "gray.200"; // Border color
 

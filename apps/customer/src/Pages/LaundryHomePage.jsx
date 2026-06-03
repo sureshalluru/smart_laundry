@@ -64,8 +64,8 @@ const LaundryHomePage = ({laundryId, customerId, customerPaymentId: initialCusto
 
 
     return (
-        <Box bg="#AADDD9" minHeight="100vh">
-            <Flex minHeight="100vh" flexDirection={{base: "column", md: "row"}} bg="#AADDD9">
+        <Box bg="#EBF8FF" minHeight="100vh">
+            <Flex minHeight="100vh" flexDirection={{base: "column", md: "row"}} bg="#EBF8FF">
                 {isSmallScreen ? (
                     // On small screens, just a minimal top bar with menu icon
                     <>

@@ -1,12 +1,15 @@
 FROM node:18 AS frontend-build
 
+# Build args from Render env vars
+ARG REACT_APP_GOOGLE_MAPS_API_KEY=""
+
 # Build admin app
 WORKDIR /app/apps/admin
 COPY apps/admin/package*.json ./
 RUN npm install
 COPY apps/admin/ ./
 ENV REACT_APP_AWS_API_URL=""
-ENV REACT_APP_GOOGLE_MAPS_API_KEY="AIzaSyAiZ-5YYfKIPhpIexNoHRfym1mc-uXXr_g"
+ENV REACT_APP_GOOGLE_MAPS_API_KEY=$REACT_APP_GOOGLE_MAPS_API_KEY
 RUN npm run build
 
 # Build customer app
@@ -15,7 +18,7 @@ COPY apps/customer/package*.json ./
 RUN npm install
 COPY apps/customer/ ./
 ENV REACT_APP_AWS_API_URL=""
-ENV REACT_APP_GOOGLE_MAPS_API_KEY="AIzaSyAiZ-5YYfKIPhpIexNoHRfym1mc-uXXr_g"
+ENV REACT_APP_GOOGLE_MAPS_API_KEY=$REACT_APP_GOOGLE_MAPS_API_KEY
 RUN npm run build
 
 # Python runtime

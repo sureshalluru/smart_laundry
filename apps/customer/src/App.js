@@ -14,19 +14,26 @@ import LearnMore from "./Components/Landing/LearnMore";
 import BookDemo from "./Components/Landing/BookDemo";
 import GetStarted from "./Components/Landing/GetStarted";
 import LandingPage from './Pages/LandingPage';
+import LaundryLandingWrapper from './Pages/LaundryLandingWrapper';
+import { Navigate } from 'react-router-dom';
+import theme from './theme';
 
 function App() {
     return (
-        <ChakraProvider>
+        <ChakraProvider theme={theme}>
             <CustomerAuthProvider>
                 <BrowserRouter>
                     <Routes>
+                        {/* Public site landing page — default laundry (for roundrocklaundry.com) */}
+                        <Route path="/" element={<Navigate to="/1/site" replace />} />
+
                         <Route path="/invalid" element={<NoPage />} />
 
                         <Route path="/:laundryId/*" element={
                             <LaundryProvider>
                                 <Routes>
                                     <Route index element={<Address />} />
+                                    <Route path="site" element={<LaundryLandingWrapper />} />
                                     <Route path="login" element={<AuthenticationPage />} />
                                     <Route path="user/*" element={
                                         <CustomerAuthCheck>
@@ -38,12 +45,12 @@ function App() {
                             </LaundryProvider>
                         } />
 
-                        <Route path="*" element={<NoPage />} />
                         <Route path="/Welcome" element={<SLBLanding />} />
                         <Route path="/LearnMore" element={<LearnMore />} />
                         <Route path="/BookDemo" element={<BookDemo />} />
                         <Route path="/GetStarted" element={<GetStarted />} />
                         <Route path="/slb" element={<LandingPage />} />
+                        <Route path="*" element={<NoPage />} />
                     </Routes>
                 </BrowserRouter>
             </CustomerAuthProvider>

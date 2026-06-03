@@ -239,7 +239,7 @@ const Account = ({customerId, laundryTimeZone}) => {
             w="100%"
             display="flex"
             flexDirection="column"
-            bg="#AADDD9"
+            bg="#EBF8FF"
             overflow="hidden"
         >
             {/* Sticky top heading "Account" */}
@@ -249,7 +249,7 @@ const Account = ({customerId, laundryTimeZone}) => {
                 zIndex="1"
                 position="sticky"
                 top="0"
-                bg="#AADDD9"
+                bg="#EBF8FF"
             >
                 <Text
                     fontSize={["xl", "2xl"]}
@@ -267,7 +267,7 @@ const Account = ({customerId, laundryTimeZone}) => {
             </Flex>
     ):
     (
-        <Box p={[2,4]} flex="1" overflowY="auto" maxWidth={["100%", "77%"]} mx="auto" mt={[2,4]}  bg="#AADDD9">
+        <Box p={[2,4]} flex="1" overflowY="auto" maxWidth={["100%", "77%"]} mx="auto" mt={[2,4]}  bg="#EBF8FF">
             {/* Personal Information Section */}
             <Box bg="#ccf0ed" p={[2,4]} borderRadius="md" boxShadow="md" mb={[4,6]} >
                 <Heading as="h2" size="md" color="green.800" mb={[2,4]}>

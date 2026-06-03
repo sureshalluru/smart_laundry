@@ -75,7 +75,7 @@ def _check_laundry_id(cur, laundry_id):
     """Verify laundry exists — exact port from Lambda."""
     cur.execute("""
         SELECT laundry_name, stripe_public_key, stripe_terminal_id,
-               laundry_timezone, user_domain
+               laundry_timezone, user_domain, bag_price
         FROM shop.laundry_shops WHERE laundry_id = %s
     """, (laundry_id,))
     row = cur.fetchone()
@@ -89,6 +89,7 @@ def _check_laundry_id(cur, laundry_id):
         "stripePublicKey": row["stripe_public_key"] or "",
         "laundryUserDomain": row["user_domain"],
         "stripeTerminalExists": bool(row["stripe_terminal_id"]),
+        "bagPrice": float(row["bag_price"]) if row.get("bag_price") else 30.00,
     }
 
 
@@ -97,7 +98,7 @@ def _get_laundry_info(cur, laundry_id, is_customer=None):
     cur.execute("""
         SELECT laundry_name, laundry_timezone, stripe_public_key, stripe_terminal_id,
                delivery_time_interval, user_domain,
-               street, city, state, zip_code, country, serviceable_zip_codes
+               street, city, state, zip_code, country, serviceable_zip_codes, bag_price
         FROM shop.laundry_shops WHERE laundry_id = %s
     """, (laundry_id,))
     shop = cur.fetchone()
@@ -175,6 +176,7 @@ def _get_laundry_info(cur, laundry_id, is_customer=None):
         "frequencyPromotions": frequency_promotions,
         "uberEnv": uber_row["env"] if uber_row else "",
         "uberCredentialsExist": bool(uber_row),
+        "bagPrice": float(shop["bag_price"]) if shop.get("bag_price") else 30.00,
     }
 
 

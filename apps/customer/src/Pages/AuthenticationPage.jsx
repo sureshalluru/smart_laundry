@@ -1,9 +1,8 @@
 import React, { useEffect, useState } from "react";
-import { Box, Stack, Image, Flex, useToast, Text } from "@chakra-ui/react";
+import { Box, Flex, useToast } from "@chakra-ui/react";
 import LoginPage from "../Components/Authentication/LoginPage";
 import SignupPage from "../Components/Authentication/SignupPage";
 import OTPValidationPage from "../Components/Authentication/OTPValidationPage";
-import Signing from "../images/Signup.png";
 import {
     handlePhoneNumberCheck,
     initiateSignUp,
@@ -40,14 +39,12 @@ export default function AuthenticationPage() {
                 const otpResponse = await initiateSignIn(phone);
                 if (!otpResponse.isSignedIn) {
                     setCurrentPage("otpValidation");
-                } else {
-                    toast({ title: "Error", description: "Unable to send OTP.", status: "error", duration: 5000, isClosable: true });
                 }
             } else {
                 setCurrentPage("signup");
             }
         } catch (error) {
-            toast({ title: "Error", description: "Failed to check phone number.", status: "error", duration: 5000, isClosable: true });
+            toast({ title: "Error", description: "Something went wrong. Please try again.", status: "error", duration: 4000, isClosable: true });
         } finally {
             setIsLoginLoading(false);
         }
@@ -59,18 +56,18 @@ export default function AuthenticationPage() {
             const result = await verifyOTP(otp);
             if (result.isSignedIn) {
                 onOTPVerified(result);
-                toast({ title: 'OTP verified!', status: 'success', duration: 3000, isClosable: true });
+                toast({ title: "Verified!", status: "success", duration: 2000, isClosable: true });
             } else if (result.nextStep?.additionalInfo) {
                 const remaining = result.nextStep.additionalInfo.attemptsLeft || 0;
                 if (remaining > 0) {
-                    toast({ title: `Incorrect OTP. ${remaining} attempts left.`, status: 'warning', duration: 3000, isClosable: true });
+                    toast({ title: `Wrong code. ${remaining} tries left.`, status: "warning", duration: 3000, isClosable: true });
                 } else {
-                    toast({ title: 'Too many failed attempts.', status: 'error', duration: 5000, isClosable: true });
+                    toast({ title: "Too many attempts. Try again.", status: "error", duration: 4000, isClosable: true });
                     setCurrentPage("login");
                 }
             }
         } catch (error) {
-            toast({ title: 'Error during OTP verification', description: error.message, status: 'error', duration: 5000, isClosable: true });
+            toast({ title: "Verification failed", description: error.message, status: "error", duration: 4000, isClosable: true });
         } finally {
             setIsOTPLoading(false);
         }
@@ -79,33 +76,24 @@ export default function AuthenticationPage() {
     const handleSignupSubmit = async (phone, firstName, lastName, email, receivePhoneNotification) => {
         setIsSignUpLoading(true);
         try {
-            const { isSignUpComplete, nextStep, error } = await initiateSignUp(laundryId, email, phone, firstName, lastName, false, receivePhoneNotification);
+            const { error } = await initiateSignUp(laundryId, email, phone, firstName, lastName, false, receivePhoneNotification);
             if (error) {
                 if (error.includes("UsernameExistsException")) {
-                    toast({ title: "User Already Exists", description: "Please verify your account to login.", status: "warning", duration: 5000, isClosable: true });
-                    setPendingAuth(phone, laundryId);
-                    const otpResponse = await initiateSignIn(phone);
-                    if (!otpResponse.isSignedIn) {
-                        setPhoneNumber(phone);
-                        setCustomerFirstName(firstName);
-                        setCurrentPage("otpValidation");
-                    }
+                    toast({ title: "Account exists", description: "Sending verification code...", status: "info", duration: 3000, isClosable: true });
                 } else {
-                    toast({ title: "Sign Up Error", description: error, status: "error", duration: 5000, isClosable: true });
+                    toast({ title: "Error", description: error, status: "error", duration: 4000, isClosable: true });
+                    return;
                 }
-                return;
             }
-            if (nextStep === "CONFIRM_SIGN_UP") {
-                setPendingAuth(phone, laundryId);
-                const otpResponse = await initiateSignIn(phone);
-                if (!otpResponse.isSignedIn) {
-                    setPhoneNumber(phone);
-                    setCustomerFirstName(firstName);
-                    setCurrentPage("otpValidation");
-                }
+            setPendingAuth(phone, laundryId);
+            const otpResponse = await initiateSignIn(phone);
+            if (!otpResponse.isSignedIn) {
+                setPhoneNumber(phone);
+                setCustomerFirstName(firstName);
+                setCurrentPage("otpValidation");
             }
         } catch (error) {
-            toast({ title: "Sign Up Error", description: error.message, status: "error", duration: 5000, isClosable: true });
+            toast({ title: "Error", description: error.message, status: "error", duration: 4000, isClosable: true });
         } finally {
             setIsSignUpLoading(false);
         }
@@ -113,46 +101,52 @@ export default function AuthenticationPage() {
 
     useEffect(() => {
         if (authStatus === "authenticated") {
-            if (redirectTo) {
-                navigate(redirectTo);
-            } else {
-                navigate(`/${laundryId}/user`);
-            }
+            navigate(redirectTo || `/${laundryId}/user`);
         }
     }, [authStatus, navigate, laundryId, redirectTo]);
 
     useEffect(() => {
-        if (currentPage === "otpValidation") {
-            setOtpTimer(180);
-        }
+        if (currentPage === "otpValidation") setOtpTimer(180);
     }, [currentPage]);
 
     return (
-        <Box minHeight="100vh" display="flex" flexDirection={{ base: "column", md: "row" }} bg="#AADDD9">
-            <Stack width={{ base: "100%", md: "50%" }} justify="center" alignSelf="center">
-                <Image objectFit="cover" src={Signing} alt="Signup" />
-            </Stack>
-            <Flex width={{ base: "100%", md: "30%" }} alignItems="center" justifyContent="center">
-                <Box width={{ base: "100%", md: "95%" }}>
-                    {authStatus === "configuring" && <Text fontSize="xl">Loading...</Text>}
-                    {authStatus === "unauthenticated" && currentPage === "login" && (
-                        <LoginPage onLoginSubmit={handleLoginSubmit} isLoginLoading={isLoginLoading} initialPhoneNumber={phoneNumber} />
-                    )}
-                    {authStatus === "unauthenticated" && currentPage === "signup" && (
-                        <SignupPage onSubmit={handleSignupSubmit} phoneNumber={phoneNumber} isSignUpLoading={isSignUpLoading} />
-                    )}
-                    {authStatus === "unauthenticated" && currentPage === "otpValidation" && (
-                        <OTPValidationPage
-                            phoneNumber={phoneNumber}
-                            onOTPSubmit={handleOTPSubmit}
-                            isOTPLoading={isOTPLoading}
-                            customerFirstName={customerFirstName}
-                            otpTimer={otpTimer}
-                            setOtpTimer={setOtpTimer}
-                        />
-                    )}
-                </Box>
-            </Flex>
-        </Box>
+        <Flex
+            minH="100vh"
+            bg="linear-gradient(180deg, #EBF8FF 0%, #BEE3F8 50%, #90CDF4 100%)"
+            align="center"
+            justify="center"
+            p={4}
+        >
+            <Box
+                bg="white"
+                borderRadius="2xl"
+                boxShadow="xl"
+                w="100%"
+                maxW="440px"
+                overflow="hidden"
+            >
+                {authStatus === "configuring" && (
+                    <Flex h="200px" align="center" justify="center">
+                        <Box className="spinner" />
+                    </Flex>
+                )}
+                {authStatus === "unauthenticated" && currentPage === "login" && (
+                    <LoginPage onLoginSubmit={handleLoginSubmit} isLoginLoading={isLoginLoading} initialPhoneNumber={phoneNumber} />
+                )}
+                {authStatus === "unauthenticated" && currentPage === "signup" && (
+                    <SignupPage onSubmit={handleSignupSubmit} phoneNumber={phoneNumber} isSignUpLoading={isSignUpLoading} />
+                )}
+                {authStatus === "unauthenticated" && currentPage === "otpValidation" && (
+                    <OTPValidationPage
+                        phoneNumber={phoneNumber}
+                        onOTPSubmit={handleOTPSubmit}
+                        isOTPLoading={isOTPLoading}
+                        customerFirstName={customerFirstName}
+                        otpTimer={otpTimer}
+                        setOtpTimer={setOtpTimer}
+                    />
+                )}
+            </Box>
+        </Flex>
     );
 }

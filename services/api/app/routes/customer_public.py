@@ -85,22 +85,39 @@ async def customer_place_order(
         frequency = body.get("frequency")
         customer_payment_id = body.get("customerPaymentId")
 
+        # Per-bag pricing fields
+        pricing_type = body.get("pricingType", "per_pound")  # "per_bag" or "per_pound"
+        laundry_bags = int(body.get("laundryBags", 1) or 1)
+        bag_price = round(float(str(body.get("bagPrice", 0) or 0)), 2)
+
         if not laundry_id or not customer_id:
             return {"status": "error", "message": "Missing required parameters"}
 
         tip_amount = round(float(str(tip_data.get("tipAmount", 0) or 0)), 2)
 
-        # Calculate totals from services if not provided
-        if sub_total == 0 and services:
-            for svc in services:
-                price = float(str(svc.get("servicePrice") or svc.get("price", 0) or 0))
-                weight = float(str(svc.get("weightOrCount") or svc.get("weight", 0) or 0))
-                sub_total += price * weight
-            sub_total = round(sub_total, 2)
-        if total_cost == 0:
-            total_cost = sub_total
-        if grand_total == 0:
-            grand_total = round(total_cost + tip_amount, 2)
+        # Calculate totals based on pricing type
+        if pricing_type == "per_bag":
+            # Per-bag pricing: bags × bag_price
+            if sub_total == 0:
+                sub_total = round(laundry_bags * bag_price, 2)
+            if total_cost == 0:
+                total_cost = sub_total
+            if grand_total == 0:
+                grand_total = round(total_cost + tip_amount, 2)
+            # Create a single service entry for bag pricing
+            services = [{"serviceName": "Per Bag Service", "servicePrice": bag_price, "weightOrCount": laundry_bags}]
+        else:
+            # Per-pound pricing: existing logic
+            if sub_total == 0 and services:
+                for svc in services:
+                    price = float(str(svc.get("servicePrice") or svc.get("price", 0) or 0))
+                    weight = float(str(svc.get("weightOrCount") or svc.get("weight", 0) or 0))
+                    sub_total += price * weight
+                sub_total = round(sub_total, 2)
+            if total_cost == 0:
+                total_cost = sub_total
+            if grand_total == 0:
+                grand_total = round(total_cost + tip_amount, 2)
 
         order_id = f"OL-{uuid.uuid4().hex[:8].upper()}"
 
@@ -113,18 +130,19 @@ async def customer_place_order(
                     pickup_date, pickup_time_interval, dropoff_date, dropoff_time_interval,
                     laundry_bags, special_instructions, coupon, frequency,
                     sub_total, discounted_price, total_cost, grand_total,
-                    auto_generated, is_reviewed, cancel_reason,
+                    pricing_type, auto_generated, is_reviewed, cancel_reason,
                     created_at, updated_at
                 ) VALUES (
                     %s,%s,%s,%s,'Online','OrderSubmitted','Active','Unpaid',
-                    %s,%s,%s,%s,1,%s,%s,%s,%s,%s,%s,%s,
-                    FALSE,FALSE,'',NOW(),NOW()
+                    %s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,
+                    %s,FALSE,FALSE,'',NOW(),NOW()
                 )
             """, (
                 order_id, laundry_id, customer_id, address_id,
                 pickup_date, pickup_time_interval, dropoff_date, dropoff_time_interval,
-                special_instructions, coupon, frequency,
+                laundry_bags, special_instructions, coupon, frequency,
                 sub_total, discounted_price, total_cost, grand_total,
+                pricing_type,
             ))
 
             for svc in services:
@@ -167,7 +185,7 @@ async def get_customer_orders(
             SELECT o.order_id, o.order_type, o.order_status, o.payment_status,
                    o.pickup_date, o.pickup_time_interval, o.dropoff_date, o.dropoff_time_interval,
                    o.total_cost, o.grand_total, o.created_at, o.special_instructions,
-                   o.laundry_bags, o.coupon, o.image_url
+                   o.laundry_bags, o.coupon, o.image_url, o.pricing_type
             FROM orders.orders o
             WHERE o.customer_id = %s AND o.laundry_id = %s
             ORDER BY o.created_at DESC
@@ -196,6 +214,7 @@ async def get_customer_orders(
                 "laundryBags": r["laundry_bags"],
                 "coupon": r["coupon"],
                 "imageUrl": r["image_url"],
+                "pricingType": r.get("pricing_type", "per_pound"),
             })
 
         return {"statusCode": 200, "body": {"status": "success", "data": orders, "lastKey": None}}

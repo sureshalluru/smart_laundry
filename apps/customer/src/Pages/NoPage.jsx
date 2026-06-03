@@ -3,7 +3,7 @@ import { Box, Heading, Text } from '@chakra-ui/react';
 
 const NoPage = () => {
     return (       
-    <Box bg="#AADDD9" minHeight="100vh" display="flex" justifyContent="center" alignItems="center">
+    <Box bg="#EBF8FF" minHeight="100vh" display="flex" justifyContent="center" alignItems="center">
         <Box textAlign="center" p={10}>
             <Heading as="h1" size="2xl" mb={4}>
             Invalid Request

@@ -1,30 +1,22 @@
-import React, {useContext, useEffect, useState} from "react";
+import React, { useContext, useEffect, useState, useRef } from "react";
 import {
-    Stack,
-    FormControl,
-    FormLabel,
-    Button,
-    useToast,
-    HStack,
-    Text,
-    Heading
+    Box, VStack, Button, useToast, HStack, Text, Icon, Flex, PinInput, PinInputField
 } from "@chakra-ui/react";
-import {LaundryContext} from "../Contexts/LaundryContext";
+import { LaundryContext } from "../Contexts/LaundryContext";
+import { FiShield } from "react-icons/fi";
 
-export default function OTPValidationPage({phoneNumber, onOTPSubmit, isOTPLoading, customerFirstName,otpTimer,setOtpTimer}) {
+export default function OTPValidationPage({ phoneNumber, onOTPSubmit, isOTPLoading, customerFirstName, otpTimer, setOtpTimer }) {
     const [otp, setOtp] = useState("");
-    const toast = useToast(); // Use Chakra toast for error notifications
+    const toast = useToast();
     const { laundryData } = useContext(LaundryContext);
 
     useEffect(() => {
         let timer;
         if (otpTimer > 0) {
-            timer = setInterval(() => {
-                setOtpTimer((prev) => prev - 1);
-            }, 1000);
+            timer = setInterval(() => setOtpTimer((prev) => prev - 1), 1000);
         }
         return () => clearInterval(timer);
-    }, [otpTimer,setOtpTimer]);
+    }, [otpTimer, setOtpTimer]);
 
     const formatTime = (seconds) => {
         const minutes = Math.floor(seconds / 60);
@@ -32,71 +24,93 @@ export default function OTPValidationPage({phoneNumber, onOTPSubmit, isOTPLoadin
         return `${minutes}:${secs < 10 ? "0" : ""}${secs}`;
     };
 
-    // Make handleSubmit an async function
-    const handleOTPSubmit = async () => {
+    const handleOTPSubmit = () => {
         if (otp.length === 6) {
             onOTPSubmit(otp);
         } else {
             toast({
-                title: 'Incorrect OTP',
-                description: "Please enter a valid 6-digit OTP verification code",
-                status: 'error',
-                duration: 5000,
+                title: "Incorrect OTP",
+                description: "Please enter the 6-digit code.",
+                status: "error",
+                duration: 4000,
                 isClosable: true,
             });
         }
     };
+
     useEffect(() => {
-        if (!isOTPLoading) {
-            setOtp('');
-        }
+        if (!isOTPLoading) setOtp('');
     }, [isOTPLoading]);
 
     return (
-        <Stack pl={7} pr={7} spacing={3}>
-            <Heading  size={['md','lg']} color="blue.600" mb={4}>
-                {laundryData?.laundryName}
-            </Heading>
-            {customerFirstName && (
-                <Text fontSize={['md','lg']} fontWeight="bold">
-                    Welcome {customerFirstName}!
-                </Text>
-            )}
-            <FormControl id="otp">
-                <FormLabel fontSize={['sm','lg']}>OTP Sent Successfully to {phoneNumber}</FormLabel>
+        <Box w="100%" maxW="400px" mx="auto" px={6} py={8}>
+            <VStack spacing={6} align="stretch">
+                {/* Header */}
+                <VStack spacing={2} mb={2}>
+                    <Flex
+                        w="64px" h="64px" borderRadius="full"
+                        bg="green.50" align="center" justify="center"
+                    >
+                        <Icon as={FiShield} boxSize={6} color="green.500" />
+                    </Flex>
+                    {customerFirstName && (
+                        <Text fontSize="xl" fontWeight="700" color="gray.800">
+                            Welcome back, {customerFirstName}!
+                        </Text>
+                    )}
+                    <Text fontSize="sm" color="gray.500" textAlign="center">
+                        We sent a 6-digit code to
+                    </Text>
+                    <Text fontSize="sm" fontWeight="600" color="gray.700">
+                        {phoneNumber}
+                    </Text>
+                </VStack>
 
-                <HStack>
-                    <input
-                        type="tel"
-                        inputMode="numeric"
-                        pattern="[0-9]*"
-                        autoComplete="one-time-code"
-                        style={{
-                            width: '100%',
-                            fontSize: '1.5em',
-                            padding: '0.5em',
-                            letterSpacing: '0.5em',
-                            textAlign: 'center',
-                        }}
+                {/* OTP Input - Pin Style */}
+                <HStack justify="center" spacing={2}>
+                    <PinInput
+                        size="lg"
                         value={otp}
-                        onChange={(e) => {
-                            // Replace any non-digit characters with an empty string.
-                            const numericValue = e.target.value.replace(/\D/g, '');
-                            setOtp(numericValue);
-                        }}
-                        placeholder="------"
-                        maxLength={6}
-                    />
+                        onChange={setOtp}
+                        onComplete={handleOTPSubmit}
+                        type="number"
+                        otp
+                    >
+                        <PinInputField bg="white" border="2px solid" borderColor="gray.200" _focus={{ borderColor: "blue.400" }} />
+                        <PinInputField bg="white" border="2px solid" borderColor="gray.200" _focus={{ borderColor: "blue.400" }} />
+                        <PinInputField bg="white" border="2px solid" borderColor="gray.200" _focus={{ borderColor: "blue.400" }} />
+                        <PinInputField bg="white" border="2px solid" borderColor="gray.200" _focus={{ borderColor: "blue.400" }} />
+                        <PinInputField bg="white" border="2px solid" borderColor="gray.200" _focus={{ borderColor: "blue.400" }} />
+                        <PinInputField bg="white" border="2px solid" borderColor="gray.200" _focus={{ borderColor: "blue.400" }} />
+                    </PinInput>
                 </HStack>
-            </FormControl>
-            <Text fontSize={['md', 'lg']}>Time remaining: {formatTime(otpTimer)}</Text>
-            <Button onClick={handleOTPSubmit}
+
+                {/* Timer */}
+                <Flex justify="center">
+                    <Text fontSize="sm" color={otpTimer > 30 ? "gray.500" : "red.500"} fontWeight="500">
+                        {otpTimer > 0 ? `Code expires in ${formatTime(otpTimer)}` : "Code expired. Please request a new one."}
+                    </Text>
+                </Flex>
+
+                {/* Verify Button */}
+                <Button
+                    onClick={handleOTPSubmit}
                     isLoading={isOTPLoading}
-                    loadingText='Verifying OTP'
-                    fontSize={['md', 'lg']}
-                    colorScheme='teal'>
-                Validate OTP
-            </Button>
-        </Stack>
+                    loadingText="Verifying..."
+                    bg="linear-gradient(135deg, #4299E1 0%, #63B3ED 100%)"
+                    color="white"
+                    size="lg"
+                    w="full"
+                    borderRadius="xl"
+                    fontWeight="600"
+                    _hover={{ transform: "translateY(-1px)", boxShadow: "lg" }}
+                    _active={{ transform: "translateY(0)" }}
+                    transition="all 0.2s"
+                    isDisabled={otp.length < 6}
+                >
+                    Verify Code
+                </Button>
+            </VStack>
+        </Box>
     );
 }

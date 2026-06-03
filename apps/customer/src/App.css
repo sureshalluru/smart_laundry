@@ -1,49 +1,179 @@
-.App {
-  text-align: center;
-  background-color: #3ef6e7 !important;
-  display: flex;
-  flex-direction: column;
-  min-height: 100vh;
+/* Modern Clean Laundry Theme */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+* {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 }
 
-.App-logo {
-  height: 40vmin;
-  pointer-events: none;
+body {
+  background: #F7FAFC;
+  -webkit-font-smoothing: antialiased;
 }
 
-@media (prefers-reduced-motion: no-preference) {
-  .App-logo {
-    animation: App-logo-spin infinite 20s linear;
+/* Modern card-style containers */
+.chakra-stack,
+.chakra-form-control {
+  transition: all 0.2s ease;
+}
+
+/* Upgrade all buttons */
+button.chakra-button {
+  border-radius: 12px !important;
+  font-weight: 600 !important;
+  transition: all 0.2s ease !important;
+}
+
+button.chakra-button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(66, 153, 225, 0.3);
+}
+
+/* Input fields - modern rounded style */
+input.chakra-input,
+select.chakra-select__field,
+textarea.chakra-textarea {
+  border-radius: 10px !important;
+  border: 1.5px solid #E2E8F0 !important;
+  transition: all 0.2s ease !important;
+}
+
+input.chakra-input:focus,
+select.chakra-select__field:focus,
+textarea.chakra-textarea:focus {
+  border-color: #63B3ED !important;
+  box-shadow: 0 0 0 3px rgba(99, 179, 237, 0.15) !important;
+}
+
+/* Number input stepper buttons */
+.chakra-numberinput__field {
+  border-radius: 10px !important;
+}
+
+/* Menu dropdowns */
+.chakra-menu__menu-list {
+  border-radius: 12px !important;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1) !important;
+  border: 1px solid #E2E8F0 !important;
+}
+
+.chakra-menu__menuitem {
+  border-radius: 8px !important;
+  margin: 2px 6px !important;
+}
+
+.chakra-menu__menuitem:hover {
+  background: #EBF8FF !important;
+}
+
+/* Form labels - lighter and smaller */
+label.chakra-form__label {
+  font-size: 0.85rem !important;
+  font-weight: 500 !important;
+  color: #4A5568 !important;
+  margin-bottom: 4px !important;
+}
+
+/* Headings */
+.chakra-heading {
+  font-weight: 700 !important;
+}
+
+/* Cards and sections - subtle shadows */
+[class*="border"][class*="rounded"],
+.chakra-stack[style*="border"] {
+  border-radius: 16px !important;
+}
+
+/* Radio buttons - modern style */
+.chakra-radio__control {
+  border-width: 2px !important;
+}
+
+.chakra-radio__control[data-checked] {
+  background: #4299E1 !important;
+  border-color: #4299E1 !important;
+}
+
+/* Tabs - if used */
+.chakra-tabs__tab {
+  border-radius: 10px !important;
+  font-weight: 500 !important;
+}
+
+.chakra-tabs__tab[aria-selected="true"] {
+  background: #EBF8FF !important;
+  color: #2B6CB0 !important;
+}
+
+/* Toast notifications */
+.chakra-alert {
+  border-radius: 12px !important;
+}
+
+/* Stepper / Progress indicators */
+.chakra-progress__filledTrack {
+  background: linear-gradient(135deg, #4299E1 0%, #63B3ED 100%) !important;
+}
+
+/* Service page specific improvements */
+.chakra-menu__menu-button {
+  border-radius: 10px !important;
+  border: 1.5px solid #E2E8F0 !important;
+  background: white !important;
+  font-weight: 500 !important;
+}
+
+/* Delete/Add icon buttons */
+button.chakra-button[aria-label="Remove Service"] {
+  border-radius: 10px !important;
+}
+
+button.chakra-button[aria-label="Add Service"] {
+  border-radius: 10px !important;
+}
+
+/* Smooth page transitions */
+#root > div {
+  animation: fadeIn 0.3s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Mobile optimizations */
+@media (max-width: 768px) {
+  .chakra-stack {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+  
+  button.chakra-button {
+    min-height: 48px !important;
+    font-size: 1rem !important;
+  }
+  
+  input.chakra-input {
+    min-height: 48px !important;
+    font-size: 16px !important; /* prevents iOS zoom */
   }
 }
 
-.App-header {
-  background-color: #282c34;
-  min-height: 100vh;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  font-size: calc(10px + 2vmin);
-  color: white;
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
 }
 
-.App-link {
-  color: #61dafb;
+::-webkit-scrollbar-track {
+  background: #F7FAFC;
 }
 
-.css-1kqwgcy {
-  padding: 0 !important;
-  background: transparent !important;
-  margin: 0 !important;
+::-webkit-scrollbar-thumb {
+  background: #CBD5E0;
+  border-radius: 3px;
 }
 
-
-@keyframes App-logo-spin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
+::-webkit-scrollbar-thumb:hover {
+  background: #A0AEC0;
 }

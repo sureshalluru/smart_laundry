@@ -125,7 +125,7 @@ const Address = () => {
 
     return (
         <Box
-            bg="#AADDD9"
+            bg="linear-gradient(180deg, #EBF8FF 0%, #BEE3F8 100%)"
             minH="100vh"
             display="flex"
             flexDirection="column"

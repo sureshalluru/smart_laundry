@@ -37,7 +37,24 @@
 
 ---
 
-## 🔲 Next: Customer App Migration
+## 🔲 Next: Per-Bag Pricing + Order Flow Redesign
+
+### New Feature: Per-Bag Pricing Option
+- [x] Add "Choose Pricing" step at start of order flow:
+  - Option A: "Per Bag" — flat $30/bag (configurable per laundry in DB)
+  - Option B: "Per Pound" — existing per-lb service selection
+- [x] Per Bag flow: select # bags → schedule pickup/dropoff → payment → place order
+- [x] Per Pound flow: existing service selection → schedule → payment → place order
+- [x] Backend: store bag_price in shop.laundry_shops table
+- [x] Backend: handle bag-based orders in place-order endpoint
+- [ ] Admin: show bag orders properly in order list (auto-handled via "Per Bag Service" in order_services)
+- [x] Mobile-first UI with clean card selection (inspired by HappyNest)
+
+### Customer App UI Polish (continued)
+- [ ] Redesign service selection page layout
+- [ ] Redesign checkout/review page
+- [ ] Redesign My Orders page cards
+- [ ] Redesign Account page sections
 
 ### 1. Auth — Replace Cognito OTP with Twilio Verify
 - [ ] Backend: Add `/api/auth/send-otp` endpoint (uses Twilio Verify to send code)

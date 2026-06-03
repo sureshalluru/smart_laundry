@@ -61,7 +61,7 @@ export default function OrderSuccess({laundryId}) {
         //         </VStack>
         //     </Center>
         // </Box>
-        <Box bg="#AADDD9" minHeight="100vh" padding={6}>
+        <Box bg="#EBF8FF" minHeight="100vh" padding={6}>
       <Center h="100%">
         <VStack spacing={6} textAlign="center">
           {/* Tick Mark Animation */}

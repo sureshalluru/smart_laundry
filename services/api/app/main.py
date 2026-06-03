@@ -106,6 +106,15 @@ async def serve_admin(request: Request, full_path: str = ""):
 
 # Customer SPA catch-all: /* → customer/build/index.html
 # This MUST be last so it doesn't override /api/* or /admin/*
+@app.get("/")
+async def serve_customer_root(request: Request):
+    """Serve customer React app for root URL."""
+    index = CUSTOMER_BUILD / "index.html"
+    if index.exists():
+        return FileResponse(index)
+    return {"error": "Customer app not built. Run: cd apps/customer && npm run build"}
+
+
 @app.get("/{full_path:path}")
 async def serve_customer(request: Request, full_path: str):
     """Serve SPA for all non-API routes. Handles static files from both builds."""
@@ -153,5 +162,3 @@ async def serve_customer(request: Request, full_path: str):
         return FileResponse(index)
 
     return {"error": "No app built. Run npm run build in apps/admin or apps/customer"}
-
-    return {"error": "No app built. Run: cd apps/admin && npm run build"}

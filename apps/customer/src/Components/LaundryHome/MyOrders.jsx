@@ -836,14 +836,14 @@ const MyOrders = ({ customerId, laundryId, laundryTimeZone }) => {
         );
     };
     return (
-        <Box p={[2, 4]} w="100%" display="flex" flexDirection="column" bg="#AADDD9" overflow="hidden">
+        <Box p={[2, 4]} w="100%" display="flex" flexDirection="column" bg="#EBF8FF" overflow="hidden">
             <Box p={[2, 4]} borderBottomWidth="1px" zIndex="1" position="sticky" top="0">
                 <Text fontSize={["xl", "2xl"]} fontWeight="bold" textAlign="center" color="blue.700">
                     My Orders
                 </Text>
             </Box>
 
-            <Box p={[2, 4]} overflowY="auto" mt={[2, 10]} flex="1" bg="#AADDD9">
+            <Box p={[2, 4]} overflowY="auto" mt={[2, 10]} flex="1" bg="#EBF8FF">
                 {loading && orders.length === 0 ? (
                     <Flex justify="center" align="center" h="50vh">
                         <Spinner size="xl" />
