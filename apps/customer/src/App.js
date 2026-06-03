@@ -9,6 +9,7 @@ import LaundryHomePage from "./Pages/LaundryHomePage";
 import CustomerAuthCheck from "./Components/LaundryHome/CustomerAuthCheck";
 import { CustomerAuthProvider } from "./Context/AuthContext";
 import { LaundryProvider } from "./Components/Contexts/LaundryContext";
+import { GoogleMapsProvider } from "./Components/Contexts/GoogleMapsProvider";
 import SLBLanding from "./Components/Landing/SLBLanding";
 import LearnMore from "./Components/Landing/LearnMore";
 import BookDemo from "./Components/Landing/BookDemo";
@@ -21,6 +22,7 @@ import theme from './theme';
 function App() {
     return (
         <ChakraProvider theme={theme}>
+            <GoogleMapsProvider>
             <CustomerAuthProvider>
                 <BrowserRouter>
                     <Routes>
@@ -54,6 +56,7 @@ function App() {
                     </Routes>
                 </BrowserRouter>
             </CustomerAuthProvider>
+            </GoogleMapsProvider>
         </ChakraProvider>
     );
 }

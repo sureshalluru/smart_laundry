@@ -23,7 +23,8 @@ import {useNavigate} from "react-router-dom";
 import { Elements } from '@stripe/react-stripe-js';
 import { loadStripe } from '@stripe/stripe-js';
 import axios from "axios";
-import {LoadScriptNext, StandaloneSearchBox} from "@react-google-maps/api";
+import {StandaloneSearchBox} from "@react-google-maps/api";
+import { useGoogleMaps } from "../Components/Contexts/GoogleMapsProvider";
 import LaundryPickupImage from "../images/laundry-pickup.svg";
 import {formatISO, parseISO} from "date-fns";
 import { toZonedTime, format } from 'date-fns-tz';
@@ -96,7 +97,7 @@ export default function LaundryPickupPage({laundryId,customerId,customerPaymentI
 
     // For Google Maps API
     const searchBoxRef = useRef(null);
-    const googleApiKey = process.env.REACT_APP_GOOGLE_MAPS_API_KEY;
+    const { isLoaded: isGoogleMapsLoaded } = useGoogleMaps();
     // State variables for laundry info
     const [laundryServices, setLaundryServices] = useState([]); // set the laundry services information
     const [deliveryTimeSlots, setDeliveryTimeSlots] = useState([]); // set the delivery time slots information
@@ -515,7 +516,7 @@ export default function LaundryPickupPage({laundryId,customerId,customerPaymentI
             <Stack spacing={[4,6,8]} maxWidth={["100%", "600px", "800px"]} margin="auto" px={[2, 4, 6]} py={[4, 6, 8]}>
                 {!isAddressValidated ? (
                     // Address Input Form
-                    <LoadScriptNext googleMapsApiKey={googleApiKey} libraries={['places']}>
+                    
                         <VStack as="form" onSubmit={handleAddressSubmit} spacing={0}>
                             {/* Hero banner with illustration */}
                             <Box
@@ -559,19 +560,28 @@ export default function LaundryPickupPage({laundryId,customerId,customerPaymentI
                                         <FormLabel fontSize="sm" fontWeight="600" color="gray.700">
                                             Pickup Address
                                         </FormLabel>
-                                        <StandaloneSearchBox
-                                            onLoad={ref => (searchBoxRef.current = ref)}
-                                            onPlacesChanged={handlePlacesChanged}
-                                        >
+                                        {isGoogleMapsLoaded ? (
+                                            <StandaloneSearchBox
+                                                onLoad={ref => (searchBoxRef.current = ref)}
+                                                onPlacesChanged={handlePlacesChanged}
+                                            >
+                                                <Input
+                                                    type="text"
+                                                    placeholder="Enter your address"
+                                                    value={address}
+                                                    size="lg"
+                                                    autoComplete="off"
+                                                    onChange={(e) => setAddress(e.target.value)}
+                                                />
+                                            </StandaloneSearchBox>
+                                        ) : (
                                             <Input
                                                 type="text"
-                                                placeholder="Enter your address"
-                                                value={address}
+                                                placeholder="Loading maps..."
+                                                isDisabled
                                                 size="lg"
-                                                autoComplete="off"
-                                                onChange={(e) => setAddress(e.target.value)}
                                             />
-                                        </StandaloneSearchBox>
+                                        )}
                                     </FormControl>
                                     <FormControl id="doorNumber">
                                         <FormLabel fontSize="sm" fontWeight="600" color="gray.700">
@@ -610,7 +620,7 @@ export default function LaundryPickupPage({laundryId,customerId,customerPaymentI
                                 </VStack>
                             </Box>
                         </VStack>
-                    </LoadScriptNext>
+                    
                 ) : (
                     // Existing Stepper Steps Code
                     <>

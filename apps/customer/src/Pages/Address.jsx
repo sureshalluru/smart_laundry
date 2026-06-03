@@ -1,6 +1,7 @@
 import React, { useState, useRef, useContext } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { LaundryContext } from '../Components/Contexts/LaundryContext';
+import { useGoogleMaps } from '../Components/Contexts/GoogleMapsProvider';
 import {
     FormControl,
     FormLabel,
@@ -10,21 +11,21 @@ import {
     Image,
     useToast,
     Box,
-    Heading
+    Heading,
+    Spinner,
 } from '@chakra-ui/react';
-import { LoadScriptNext, StandaloneSearchBox } from '@react-google-maps/api';
+import { StandaloneSearchBox } from '@react-google-maps/api';
 import axios from "axios";
 import AddressImage from "../images/address.png";
 
 const Address = () => {
     const { laundryData } = useContext(LaundryContext);
     const { laundryId } = useParams();
+    const { isLoaded } = useGoogleMaps();
     const [address, setAddress] = useState('');
-    const [isAddressSelected, setIsAddressSelected] = useState(false); // <-- Track if user picked from suggestions
+    const [isAddressSelected, setIsAddressSelected] = useState(false);
     const navigate = useNavigate();
-    const libraries = ['places'];
     const searchBoxRef = useRef(null);
-    const googleApiKey = process.env.REACT_APP_GOOGLE_MAPS_API_KEY;
     const toast = useToast();
     const [validatingAddress, setValidatingAddress] = useState(false);
 
@@ -134,8 +135,7 @@ const Address = () => {
             px={[7, 9, 11]}
             py={[12, 16, 20]}
         >
-            <LoadScriptNext googleMapsApiKey={googleApiKey} libraries={libraries}>
-                <Box w="full" maxW="600px">
+            <Box w="full" maxW="600px">
                     {/* Top section: image + heading in a VStack */}
                     <VStack spacing={[4, 6, 8]} align="center">
                         <Image
@@ -154,7 +154,7 @@ const Address = () => {
                         </Heading>
                     </VStack>
 
-                    {/* Form section in its own VStack */}
+                    {/* Form section */}
                     <VStack
                         as="form"
                         onSubmit={handleSubmit}
@@ -167,23 +167,27 @@ const Address = () => {
                             <FormLabel fontSize={["sm", "md", "lg"]} color="blue.600" mb={2}>
                                 Enter your address for free pickup
                             </FormLabel>
-                            <StandaloneSearchBox
-                                onLoad={ref => (searchBoxRef.current = ref)}
-                                onPlacesChanged={handlePlacesChanged}
-                            >
-                                <Input
-                                    type="text"
-                                    placeholder="Type and select your Address"
-                                    value={address}
-                                    onChange={handleAddressChange}
-                                    autoComplete="off"
-                                    size="lg"
-                                    boxShadow="sm"
-                                    focusBorderColor="blue.500"
-                                    borderColor="blue.300"
-                                    fontSize={["sm", "md"]}
-                                />
-                            </StandaloneSearchBox>
+                            {isLoaded ? (
+                                <StandaloneSearchBox
+                                    onLoad={ref => (searchBoxRef.current = ref)}
+                                    onPlacesChanged={handlePlacesChanged}
+                                >
+                                    <Input
+                                        type="text"
+                                        placeholder="Type and select your Address"
+                                        value={address}
+                                        onChange={handleAddressChange}
+                                        autoComplete="off"
+                                        size="lg"
+                                        boxShadow="sm"
+                                        focusBorderColor="blue.500"
+                                        borderColor="blue.300"
+                                        fontSize={["sm", "md"]}
+                                    />
+                                </StandaloneSearchBox>
+                            ) : (
+                                <Spinner size="sm" color="blue.500" />
+                            )}
                         </FormControl>
 
                         <Button
@@ -200,7 +204,6 @@ const Address = () => {
                         </Button>
                     </VStack>
                 </Box>
-            </LoadScriptNext>
         </Box>
     );
 };
