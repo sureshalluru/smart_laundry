@@ -52,18 +52,40 @@ export default function SiteLocation({ config }) {
                 </VStack>
 
                 <SimpleGrid columns={{ base: 1, lg: 2 }} spacing={8}>
-                    {/* Map */}
-                    <Box borderRadius="2xl" overflow="hidden" boxShadow="md" minH="300px">
-                        <iframe
-                            title="Eco Spin Round Rock Laundry Location"
-                            src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3438.8!2d-97.678!3d30.51!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x0%3A0x0!2zMzDCsDMwJzM2LjAiTiA5N8KwNDAnNDAuOCJX!5e0!3m2!1sen!2sus!4v1700000000000"
-                            width="100%"
-                            height="100%"
-                            style={{ border: 0, minHeight: '300px' }}
-                            allowFullScreen=""
-                            loading="lazy"
-                            referrerPolicy="no-referrer-when-downgrade"
+                    {/* Map - static image with link to Google Maps */}
+                    <Box
+                        as="a"
+                        href="https://www.google.com/maps/dir/?api=1&destination=900+E+Palm+Valley+Blvd+Ste+1006+Round+Rock+TX+78664"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        borderRadius="2xl"
+                        overflow="hidden"
+                        boxShadow="md"
+                        minH="300px"
+                        display="block"
+                        position="relative"
+                        bg="blue.50"
+                        _hover={{ boxShadow: 'lg', transform: 'translateY(-2px)' }}
+                        transition="all 0.2s"
+                    >
+                        <img
+                            src={`https://maps.googleapis.com/maps/api/staticmap?center=900+E+Palm+Valley+Blvd+Round+Rock+TX+78664&zoom=15&size=600x400&markers=color:blue%7C900+E+Palm+Valley+Blvd+Round+Rock+TX+78664&key=${process.env.REACT_APP_GOOGLE_MAPS_API_KEY || ''}`}
+                            alt="Eco Spin Round Rock Laundry Map"
+                            style={{ width: '100%', height: '100%', objectFit: 'cover', minHeight: '300px' }}
                         />
+                        <Box
+                            position="absolute"
+                            bottom="0"
+                            left="0"
+                            right="0"
+                            bg="rgba(0,0,0,0.6)"
+                            color="white"
+                            py={2}
+                            px={4}
+                            textAlign="center"
+                        >
+                            <Text fontSize="sm" fontWeight="600">Tap for Directions →</Text>
+                        </Box>
                     </Box>
 
                     {/* Info */}
