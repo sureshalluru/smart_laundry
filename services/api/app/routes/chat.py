@@ -28,6 +28,20 @@ async def customer_send_message(body: dict = Body(...)):
     with get_db() as conn:
         cur = get_cursor(conn)
 
+        # Look up customer name/phone from DB if not provided
+        if (not customer_name or customer_name == '') and not customer_id.startswith('visitor-'):
+            cur.execute("""
+                SELECT first_name, last_name, phone_number
+                FROM shop.customers WHERE customer_id = %s
+            """, (customer_id,))
+            cust_row = cur.fetchone()
+            if cust_row:
+                customer_name = f"{cust_row['first_name']} {cust_row['last_name'] or ''}".strip()
+                customer_phone = cust_row['phone_number'] or customer_phone
+
+        if not customer_name:
+            customer_name = "Website Visitor"
+
         # Get or create conversation
         cur.execute("""
             INSERT INTO chat.conversations (laundry_id, customer_id, customer_name, customer_phone, last_message_at, unread_admin)
@@ -35,8 +49,8 @@ async def customer_send_message(body: dict = Body(...)):
             ON CONFLICT (laundry_id, customer_id) DO UPDATE SET
                 last_message_at = NOW(),
                 unread_admin = chat.conversations.unread_admin + 1,
-                customer_name = COALESCE(EXCLUDED.customer_name, chat.conversations.customer_name),
-                customer_phone = COALESCE(EXCLUDED.customer_phone, chat.conversations.customer_phone),
+                customer_name = COALESCE(NULLIF(EXCLUDED.customer_name, ''), chat.conversations.customer_name),
+                customer_phone = COALESCE(NULLIF(EXCLUDED.customer_phone, ''), chat.conversations.customer_phone),
                 status = 'active',
                 updated_at = NOW()
             RETURNING conversation_id

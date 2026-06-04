@@ -8,7 +8,6 @@ import {
     Input,
     Flex,
     Badge,
-    Slide,
 } from '@chakra-ui/react';
 import { FiMessageCircle, FiX, FiSend } from 'react-icons/fi';
 import axios from 'axios';
@@ -106,7 +105,7 @@ export default function ChatWidget({ customerId, laundryId, customerName, custom
     return (
         <>
             {/* Chat Panel */}
-            <Slide direction="bottom" in={isOpen} style={{ zIndex: 1500 }}>
+            {isOpen && (
                 <Box
                     position="fixed"
                     bottom={{ base: '0', md: '80px' }}
@@ -121,6 +120,7 @@ export default function ChatWidget({ customerId, laundryId, customerName, custom
                     display="flex"
                     flexDirection="column"
                     overflow="hidden"
+                    zIndex="1500"
                 >
                     {/* Header */}
                     <Flex
@@ -215,7 +215,7 @@ export default function ChatWidget({ customerId, laundryId, customerName, custom
                         />
                     </HStack>
                 </Box>
-            </Slide>
+            )}
 
             {/* Floating button */}
             {!isOpen && (
