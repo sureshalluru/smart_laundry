@@ -128,10 +128,10 @@ async def create_laundry(body: dict = Body(...), x_platform_key: str = Header(No
             stripe_public_key, stripe_private_key,
         ))
 
-        # Create owner employee
+        # Create owner employee (using 'Admin' role which exists in the enum)
         cur.execute("""
             INSERT INTO shop.employees (emp_id, first_name, last_name, role, passcode, laundry_id, is_active, email)
-            VALUES (%s, %s, %s, 'owner', %s, %s, TRUE, %s)
+            VALUES (%s, %s, %s, 'Admin', %s, %s, TRUE, %s)
         """, (owner_emp_id, owner_first_name, owner_last_name, owner_passcode, next_id, owner_email))
 
         # Create default serviceable zip codes (owner can update later)
