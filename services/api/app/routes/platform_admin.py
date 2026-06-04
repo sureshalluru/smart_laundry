@@ -119,13 +119,14 @@ async def create_laundry(body: dict = Body(...), x_platform_key: str = Header(No
                 street, city, state, zip_code, country,
                 device_registration_code, bag_price,
                 stripe_public_key, stripe_private_key,
-                delivery_time_interval
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 120)
+                delivery_time_interval, emp_prefix
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 120, %s)
         """, (
             next_id, laundry_name, timezone,
             street, city, state, zip_code, country,
             reg_code, bag_price,
             stripe_public_key, stripe_private_key,
+            emp_prefix,
         ))
 
         # Create owner employee (using 'Admin' role which exists in the enum)
