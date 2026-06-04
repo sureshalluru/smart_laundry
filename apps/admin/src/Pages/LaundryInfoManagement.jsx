@@ -272,7 +272,7 @@ const LaundryInfoManagement = ({ validateEmpCredentials, type, empPrefix }) => {
         try {
             const fullEmpId = empPrefix + empId
             const { isValidated, role } = await validateEmpCredentials(laundryId, fullEmpId, passcode);
-            if (isValidated && ( role === "Manager" )) {
+            if (isValidated && ( role === "Manager" || role === "Admin" )) {
                 toast({
                     title: "Access Granted",
                     description: `Role: ${role}. You may now edit the logo and domain.`,

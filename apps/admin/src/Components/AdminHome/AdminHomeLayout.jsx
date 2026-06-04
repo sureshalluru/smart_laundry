@@ -93,7 +93,7 @@ const AdminLayout = ({ validateEmpCredentials, empPrefix }) => {
             const { isValidated, role } = await validateEmpCredentials(laundryId, fullEmpId, passcode);
     
             if (isValidated) {
-                if ((isDriverAccess && role === "Delivery Driver") || (!isDriverAccess && role === "Manager")) {
+                if ((isDriverAccess && role === "Delivery Driver") || (!isDriverAccess && (role === "Manager" || role === "Admin"))) {
                     toast({
                         title: "Validation Success",
                         description: `Access granted. Role: ${role}`,
