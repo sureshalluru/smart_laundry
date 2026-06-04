@@ -152,25 +152,66 @@ def _customer_login(body: dict):
 
 
 def _employee_login(body: dict):
-    """Login an employee with employee ID + passcode."""
+    """Login an employee with employee ID + passcode. Requires device registration."""
     emp_id = body.get("employeeId")
     passcode = body.get("passcode")
+    device_fingerprint = body.get("deviceFingerprint", "")
+    laundry_id = body.get("laundryId")
 
     if not emp_id or not passcode:
         raise HTTPException(status_code=400, detail="Employee ID and passcode required")
 
+    if not device_fingerprint:
+        raise HTTPException(status_code=400, detail="Device identification required")
+
     with get_db() as conn:
         cur = get_cursor(conn)
+
+        # Rate limiting: check failed attempts in last 15 minutes
+        cur.execute("""
+            SELECT COUNT(*) as fail_count FROM shop.login_attempts
+            WHERE device_fingerprint = %s AND success = FALSE
+              AND attempted_at > NOW() - INTERVAL '15 minutes'
+        """, (device_fingerprint,))
+        fails = cur.fetchone()
+        if fails and fails["fail_count"] >= 5:
+            raise HTTPException(status_code=429, detail="Too many failed attempts. Please try again in 15 minutes.")
+
+        # Check if device is registered for this laundry
+        if laundry_id:
+            cur.execute("""
+                SELECT device_id FROM shop.registered_devices
+                WHERE laundry_id = %s AND device_fingerprint = %s AND is_active = TRUE
+            """, (laundry_id, device_fingerprint))
+            device = cur.fetchone()
+            if not device:
+                raise HTTPException(status_code=403, detail="DEVICE_NOT_REGISTERED")
+
+        # Validate employee credentials
         cur.execute("""
             SELECT emp_id, first_name, last_name, role, passcode, laundry_id, is_active
             FROM shop.employees WHERE UPPER(emp_id) = UPPER(%s)
         """, (emp_id,))
         emp = cur.fetchone()
 
-    if not emp or not emp["is_active"]:
-        raise HTTPException(status_code=401, detail="Invalid credentials")
-    if emp["passcode"] != passcode:
-        raise HTTPException(status_code=401, detail="Invalid credentials")
+        if not emp or not emp["is_active"] or emp["passcode"] != passcode:
+            # Log failed attempt
+            cur.execute("""
+                INSERT INTO shop.login_attempts (laundry_id, device_fingerprint, emp_id, success)
+                VALUES (%s, %s, %s, FALSE)
+            """, (laundry_id or '', device_fingerprint, emp_id))
+            raise HTTPException(status_code=401, detail="Invalid credentials")
+
+        # Log successful attempt and update device last_login
+        cur.execute("""
+            INSERT INTO shop.login_attempts (laundry_id, device_fingerprint, emp_id, success)
+            VALUES (%s, %s, %s, TRUE)
+        """, (emp["laundry_id"], device_fingerprint, emp_id))
+
+        cur.execute("""
+            UPDATE shop.registered_devices SET last_login_at = NOW()
+            WHERE laundry_id = %s AND device_fingerprint = %s
+        """, (emp["laundry_id"], device_fingerprint))
 
     token_data = {
         "sub": emp["emp_id"],
@@ -184,6 +225,67 @@ def _employee_login(body: dict):
         "refreshToken": create_refresh_token(token_data),
         "user": token_data,
     }
+
+
+# ── Device Registration (for admin security) ──────────────────────────────────
+
+@router.post("/check-device")
+async def check_device(body: dict = Body(...)):
+    """Check if a device is registered for a laundry."""
+    laundry_id = body.get("laundryId")
+    device_fingerprint = body.get("deviceFingerprint")
+
+    if not laundry_id or not device_fingerprint:
+        return {"status": "error", "registered": False}
+
+    with get_db() as conn:
+        cur = get_cursor(conn)
+        cur.execute("""
+            SELECT device_id FROM shop.registered_devices
+            WHERE laundry_id = %s AND device_fingerprint = %s AND is_active = TRUE
+        """, (laundry_id, device_fingerprint))
+        device = cur.fetchone()
+
+    return {"status": "success", "registered": bool(device)}
+
+
+@router.post("/register-device")
+async def register_device(body: dict = Body(...)):
+    """Register a new device using the laundry's registration code."""
+    laundry_id = body.get("laundryId")
+    device_fingerprint = body.get("deviceFingerprint")
+    device_name = body.get("deviceName", "Unknown Device")
+    registration_code = body.get("registrationCode")
+
+    if not laundry_id or not device_fingerprint or not registration_code:
+        raise HTTPException(status_code=400, detail="Missing required fields")
+
+    with get_db() as conn:
+        cur = get_cursor(conn)
+
+        # Verify registration code
+        cur.execute("""
+            SELECT device_registration_code FROM shop.laundry_shops
+            WHERE laundry_id = %s
+        """, (laundry_id,))
+        shop = cur.fetchone()
+
+        if not shop:
+            raise HTTPException(status_code=404, detail="Laundry not found")
+
+        if shop["device_registration_code"] != registration_code:
+            raise HTTPException(status_code=401, detail="Invalid registration code")
+
+        # Register the device
+        cur.execute("""
+            INSERT INTO shop.registered_devices (laundry_id, device_fingerprint, device_name, registered_by)
+            VALUES (%s, %s, %s, %s)
+            ON CONFLICT (laundry_id, device_fingerprint) DO UPDATE SET
+                is_active = TRUE, device_name = EXCLUDED.device_name, registered_at = NOW()
+            RETURNING device_id
+        """, (laundry_id, device_fingerprint, device_name, "self-registration"))
+
+    return {"status": "success", "message": "Device registered successfully"}
 
 
 # ── OTP Authentication (for customers) ────────────────────────────────────────

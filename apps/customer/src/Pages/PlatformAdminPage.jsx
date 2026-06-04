@@ -1,0 +1,248 @@
+import React, { useState, useEffect } from 'react';
+import {
+    Box, VStack, HStack, Heading, Text, Button, Input, FormControl, FormLabel,
+    SimpleGrid, Badge, Divider, useToast, Flex, IconButton,
+    Modal, ModalOverlay, ModalContent, ModalHeader, ModalBody, ModalFooter, ModalCloseButton,
+    useDisclosure, Table, Thead, Tbody, Tr, Th, Td, Select, Spinner,
+} from '@chakra-ui/react';
+import { FiPlus, FiRefreshCw, FiUsers, FiMonitor, FiKey } from 'react-icons/fi';
+import axios from 'axios';
+
+const API_URL = process.env.REACT_APP_AWS_API_URL || '';
+
+export default function PlatformAdminPage() {
+    const [platformKey, setPlatformKey] = useState(localStorage.getItem('platformKey') || '');
+    const [isAuthenticated, setIsAuthenticated] = useState(false);
+    const [laundries, setLaundries] = useState([]);
+    const [loading, setLoading] = useState(false);
+    const [selectedLaundry, setSelectedLaundry] = useState(null);
+    const { isOpen, onOpen, onClose } = useDisclosure();
+    const toast = useToast();
+
+    const headers = { 'x-platform-key': platformKey };
+
+    // Auth check
+    const handleAuth = () => {
+        localStorage.setItem('platformKey', platformKey);
+        setIsAuthenticated(true);
+        fetchLaundries();
+    };
+
+    const fetchLaundries = async () => {
+        setLoading(true);
+        try {
+            const res = await axios.get(`${API_URL}/api/platform/laundries`, { headers });
+            if (res.data.status === 'success') setLaundries(res.data.laundries);
+        } catch (err) {
+            if (err.response?.status === 403) {
+                setIsAuthenticated(false);
+                toast({ title: 'Invalid platform key', status: 'error' });
+            }
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        if (platformKey) { setIsAuthenticated(true); fetchLaundries(); }
+    }, []);
+
+    // Create laundry state
+    const [newLaundry, setNewLaundry] = useState({
+        laundryName: '', timezone: 'America/Chicago', street: '', city: '', state: '', zipCode: '',
+        bagPrice: 30, ownerFirstName: '', ownerLastName: '', ownerEmail: '', ownerPhone: '',
+        stripePublicKey: '', stripePrivateKey: '',
+    });
+    const [creating, setCreating] = useState(false);
+    const [createResult, setCreateResult] = useState(null);
+
+    const handleCreate = async () => {
+        setCreating(true);
+        try {
+            const res = await axios.post(`${API_URL}/api/platform/laundries`, newLaundry, { headers });
+            if (res.data.status === 'success') {
+                setCreateResult(res.data);
+                fetchLaundries();
+                toast({ title: 'Laundry created!', status: 'success' });
+            } else {
+                toast({ title: res.data.message, status: 'error' });
+            }
+        } catch (err) {
+            toast({ title: err.response?.data?.message || 'Error', status: 'error' });
+        } finally {
+            setCreating(false);
+        }
+    };
+
+    const resetRegCode = async (laundryId) => {
+        try {
+            const res = await axios.post(`${API_URL}/api/platform/laundries/${laundryId}/reset-registration-code`, {}, { headers });
+            if (res.data.status === 'success') {
+                toast({ title: `New code: ${res.data.newCode}`, status: 'success', duration: 10000 });
+                fetchLaundries();
+            }
+        } catch (err) {
+            toast({ title: 'Error', status: 'error' });
+        }
+    };
+
+    if (!isAuthenticated) {
+        return (
+            <Box minH="100vh" bg="gray.900" display="flex" alignItems="center" justifyContent="center" p={4}>
+                <Box bg="white" p={8} borderRadius="2xl" maxW="400px" w="full" boxShadow="2xl">
+                    <VStack spacing={5}>
+                        <Heading size="md" color="gray.800">Platform Admin</Heading>
+                        <Text fontSize="sm" color="gray.500">Enter your platform admin key to continue.</Text>
+                        <FormControl>
+                            <Input
+                                type="password"
+                                placeholder="Platform admin key"
+                                value={platformKey}
+                                onChange={(e) => setPlatformKey(e.target.value)}
+                                onKeyPress={(e) => e.key === 'Enter' && handleAuth()}
+                            />
+                        </FormControl>
+                        <Button colorScheme="blue" w="full" onClick={handleAuth}>Access</Button>
+                    </VStack>
+                </Box>
+            </Box>
+        );
+    }
+
+    return (
+        <Box minH="100vh" bg="gray.50" p={{ base: 4, md: 8 }}>
+            <Flex justify="space-between" align="center" mb={6}>
+                <Heading size="lg" color="gray.800">Platform Admin</Heading>
+                <HStack>
+                    <IconButton icon={<FiRefreshCw />} onClick={fetchLaundries} size="sm" variant="ghost" />
+                    <Button leftIcon={<FiPlus />} colorScheme="blue" size="sm" onClick={onOpen}>
+                        New Laundry
+                    </Button>
+                </HStack>
+            </Flex>
+
+            {loading ? (
+                <Flex justify="center" py={10}><Spinner size="xl" /></Flex>
+            ) : (
+                <SimpleGrid columns={{ base: 1, md: 2, lg: 3 }} spacing={4}>
+                    {laundries.map((l) => (
+                        <Box key={l.laundryId} bg="white" borderRadius="xl" p={5} boxShadow="sm" border="1px solid" borderColor="gray.100">
+                            <VStack align="stretch" spacing={3}>
+                                <Flex justify="space-between" align="center">
+                                    <Text fontWeight="700" fontSize="md">{l.laundryName}</Text>
+                                    <Badge colorScheme="blue" fontSize="xs">ID: {l.laundryId}</Badge>
+                                </Flex>
+                                <Text fontSize="xs" color="gray.500">{l.address}</Text>
+                                <Divider />
+                                <HStack justify="space-between" fontSize="xs" color="gray.600">
+                                    <HStack><FiUsers /><Text>{l.employeeCount} employees</Text></HStack>
+                                    <Text>{l.activeOrders} active orders</Text>
+                                </HStack>
+                                <HStack justify="space-between" fontSize="xs">
+                                    <HStack><FiKey /><Text color="orange.500">Code: {l.deviceRegistrationCode}</Text></HStack>
+                                    <Button size="xs" variant="ghost" onClick={() => resetRegCode(l.laundryId)}>Reset</Button>
+                                </HStack>
+                                <HStack fontSize="xs" color="gray.500">
+                                    <Badge colorScheme={l.hasStripe ? 'green' : 'red'} fontSize="xs">
+                                        Stripe {l.hasStripe ? '✓' : '✗'}
+                                    </Badge>
+                                    <Badge colorScheme={l.hasTerminal ? 'green' : 'gray'} fontSize="xs">
+                                        Terminal {l.hasTerminal ? '✓' : '—'}
+                                    </Badge>
+                                    <Text>${l.bagPrice}/bag</Text>
+                                </HStack>
+                            </VStack>
+                        </Box>
+                    ))}
+                </SimpleGrid>
+            )}
+
+            {/* Create Laundry Modal */}
+            <Modal isOpen={isOpen} onClose={() => { onClose(); setCreateResult(null); }} size="xl">
+                <ModalOverlay />
+                <ModalContent>
+                    <ModalHeader>Onboard New Laundry</ModalHeader>
+                    <ModalCloseButton />
+                    <ModalBody>
+                        {createResult ? (
+                            <VStack spacing={4} align="stretch" bg="green.50" p={4} borderRadius="lg">
+                                <Text fontWeight="700" color="green.700">✅ Laundry Created Successfully!</Text>
+                                <Divider />
+                                <Text fontSize="sm"><strong>Laundry ID:</strong> {createResult.laundry.laundryId}</Text>
+                                <Text fontSize="sm"><strong>Admin URL:</strong> {createResult.laundry.adminUrl}</Text>
+                                <Text fontSize="sm"><strong>Customer URL:</strong> {createResult.laundry.customerUrl}</Text>
+                                <Text fontSize="sm"><strong>Device Reg Code:</strong> {createResult.laundry.deviceRegistrationCode}</Text>
+                                <Divider />
+                                <Text fontSize="sm" fontWeight="600">Owner Credentials:</Text>
+                                <Text fontSize="sm"><strong>Employee ID:</strong> {createResult.owner.employeeId}</Text>
+                                <Text fontSize="sm"><strong>Passcode:</strong> {createResult.owner.passcode}</Text>
+                                <Text fontSize="xs" color="red.500" mt={2}>
+                                    ⚠️ Save these credentials! The passcode cannot be retrieved later.
+                                </Text>
+                            </VStack>
+                        ) : (
+                            <VStack spacing={4} align="stretch">
+                                <FormControl isRequired>
+                                    <FormLabel fontSize="sm">Laundry Name</FormLabel>
+                                    <Input value={newLaundry.laundryName} onChange={(e) => setNewLaundry({ ...newLaundry, laundryName: e.target.value })} />
+                                </FormControl>
+                                <HStack>
+                                    <FormControl><FormLabel fontSize="sm">Street</FormLabel>
+                                        <Input value={newLaundry.street} onChange={(e) => setNewLaundry({ ...newLaundry, street: e.target.value })} />
+                                    </FormControl>
+                                    <FormControl><FormLabel fontSize="sm">City</FormLabel>
+                                        <Input value={newLaundry.city} onChange={(e) => setNewLaundry({ ...newLaundry, city: e.target.value })} />
+                                    </FormControl>
+                                </HStack>
+                                <HStack>
+                                    <FormControl><FormLabel fontSize="sm">State</FormLabel>
+                                        <Input value={newLaundry.state} onChange={(e) => setNewLaundry({ ...newLaundry, state: e.target.value })} />
+                                    </FormControl>
+                                    <FormControl><FormLabel fontSize="sm">Zip Code</FormLabel>
+                                        <Input value={newLaundry.zipCode} onChange={(e) => setNewLaundry({ ...newLaundry, zipCode: e.target.value })} />
+                                    </FormControl>
+                                    <FormControl><FormLabel fontSize="sm">Bag Price ($)</FormLabel>
+                                        <Input type="number" value={newLaundry.bagPrice} onChange={(e) => setNewLaundry({ ...newLaundry, bagPrice: e.target.value })} />
+                                    </FormControl>
+                                </HStack>
+                                <Divider />
+                                <Text fontWeight="600" fontSize="sm">Owner Details</Text>
+                                <HStack>
+                                    <FormControl isRequired><FormLabel fontSize="sm">First Name</FormLabel>
+                                        <Input value={newLaundry.ownerFirstName} onChange={(e) => setNewLaundry({ ...newLaundry, ownerFirstName: e.target.value })} />
+                                    </FormControl>
+                                    <FormControl><FormLabel fontSize="sm">Last Name</FormLabel>
+                                        <Input value={newLaundry.ownerLastName} onChange={(e) => setNewLaundry({ ...newLaundry, ownerLastName: e.target.value })} />
+                                    </FormControl>
+                                </HStack>
+                                <HStack>
+                                    <FormControl><FormLabel fontSize="sm">Email</FormLabel>
+                                        <Input value={newLaundry.ownerEmail} onChange={(e) => setNewLaundry({ ...newLaundry, ownerEmail: e.target.value })} />
+                                    </FormControl>
+                                    <FormControl><FormLabel fontSize="sm">Phone</FormLabel>
+                                        <Input value={newLaundry.ownerPhone} onChange={(e) => setNewLaundry({ ...newLaundry, ownerPhone: e.target.value })} />
+                                    </FormControl>
+                                </HStack>
+                                <Divider />
+                                <Text fontWeight="600" fontSize="sm">Stripe (optional — can add later)</Text>
+                                <FormControl><FormLabel fontSize="sm">Stripe Public Key</FormLabel>
+                                    <Input value={newLaundry.stripePublicKey} onChange={(e) => setNewLaundry({ ...newLaundry, stripePublicKey: e.target.value })} placeholder="pk_..." />
+                                </FormControl>
+                                <FormControl><FormLabel fontSize="sm">Stripe Secret Key</FormLabel>
+                                    <Input type="password" value={newLaundry.stripePrivateKey} onChange={(e) => setNewLaundry({ ...newLaundry, stripePrivateKey: e.target.value })} placeholder="sk_..." />
+                                </FormControl>
+                            </VStack>
+                        )}
+                    </ModalBody>
+                    <ModalFooter>
+                        {!createResult && (
+                            <Button colorScheme="blue" onClick={handleCreate} isLoading={creating} isDisabled={!newLaundry.laundryName || !newLaundry.ownerFirstName}>
+                                Create Laundry
+                            </Button>
+                        )}
+                    </ModalFooter>
+                </ModalContent>
+            </Modal>
+        </Box>
+    );
+}

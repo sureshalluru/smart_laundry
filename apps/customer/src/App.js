@@ -16,6 +16,7 @@ import BookDemo from "./Components/Landing/BookDemo";
 import GetStarted from "./Components/Landing/GetStarted";
 import LandingPage from './Pages/LandingPage';
 import LaundryLandingWrapper from './Pages/LaundryLandingWrapper';
+import PlatformAdminPage from './Pages/PlatformAdminPage';
 import { Navigate } from 'react-router-dom';
 import theme from './theme';
 
@@ -30,6 +31,7 @@ function App() {
                         <Route path="/" element={<Navigate to="/1/site" replace />} />
 
                         <Route path="/invalid" element={<NoPage />} />
+                        <Route path="/platform-admin" element={<PlatformAdminPage />} />
 
                         <Route path="/:laundryId/*" element={
                             <LaundryProvider>

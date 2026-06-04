@@ -32,6 +32,7 @@ from app.routes import (
     payment_operations,
     customer_public,
     chat,
+    platform_admin,
 )
 
 app = FastAPI(
@@ -68,6 +69,7 @@ app.include_router(frequency.router, prefix="/api/frequency", tags=["Order Frequ
 app.include_router(driver.router, prefix="/api/driver", tags=["Driver"])
 app.include_router(customer_public.router, prefix="/api/customer", tags=["Customer Public"])
 app.include_router(chat.router, prefix="/api/chat", tags=["Chat"])
+app.include_router(platform_admin.router, prefix="/api/platform", tags=["Platform Admin"])
 
 
 @app.get("/health")
