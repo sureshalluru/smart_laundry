@@ -248,6 +248,56 @@ async def customer_place_order(
                 logger.warning(f"$1 hold error for order {order_id}: {hold_err}")
                 # Don't fail the order if hold fails — just log it
 
+        # Send order confirmation email via Brevo
+        try:
+            from app.services.notification_service import send_email, send_sms
+
+            with get_db() as conn_notif:
+                cur_notif = get_cursor(conn_notif)
+                cur_notif.execute("""
+                    SELECT first_name, email, phone_number, notif_email, notif_phone
+                    FROM shop.customers WHERE customer_id = %s
+                """, (customer_id,))
+                cust = cur_notif.fetchone()
+
+                cur_notif.execute("SELECT laundry_name FROM shop.laundry_shops WHERE laundry_id = %s", (laundry_id,))
+                shop = cur_notif.fetchone()
+
+            if cust and shop:
+                first_name = cust["first_name"] or "Customer"
+                laundry_name = shop["laundry_name"] or "Your Laundry"
+
+                # Build service summary
+                if pricing_type == "per_bag":
+                    service_summary = f"{laundry_bags} bag(s) × ${bag_price:.2f} = ${sub_total:.2f}"
+                else:
+                    service_lines = [f"{s.get('serviceName', 'Service')} ({s.get('weightOrCount', '')})" for s in services[:5]]
+                    service_summary = ", ".join(service_lines) if service_lines else "Per-pound services"
+
+                html_body = f"""
+                <h2>Order Confirmed! 🎉</h2>
+                <p>Hi {first_name},</p>
+                <p>Your laundry order has been placed successfully.</p>
+                <table style="border-collapse:collapse;width:100%;max-width:500px;">
+                    <tr><td style="padding:8px;font-weight:bold;">Order ID</td><td style="padding:8px;">{order_id}</td></tr>
+                    <tr><td style="padding:8px;font-weight:bold;">Services</td><td style="padding:8px;">{service_summary}</td></tr>
+                    <tr><td style="padding:8px;font-weight:bold;">Pickup</td><td style="padding:8px;">{pickup_date} ({pickup_time_interval})</td></tr>
+                    <tr><td style="padding:8px;font-weight:bold;">Dropoff</td><td style="padding:8px;">{dropoff_date} ({dropoff_time_interval})</td></tr>
+                    {f'<tr><td style="padding:8px;font-weight:bold;">Frequency</td><td style="padding:8px;">{frequency}</td></tr>' if frequency else ''}
+                </table>
+                <p>We'll pick up your laundry at the scheduled time. Thank you for choosing {laundry_name}!</p>
+                """
+
+                if cust.get("notif_email", True) and cust["email"]:
+                    send_email(cust["email"], f"Order Confirmed - {order_id}", html_body)
+
+                if cust.get("notif_phone", True) and cust["phone_number"]:
+                    sms_msg = f"Hi {first_name}! Order {order_id} confirmed. Pickup: {pickup_date} ({pickup_time_interval}). - {laundry_name}"
+                    send_sms(cust["phone_number"], sms_msg)
+
+        except Exception as notif_err:
+            logger.warning(f"Failed to send order confirmation for {order_id}: {notif_err}")
+
         return {"status": "success", "orderId": order_id}
 
     except Exception as e:
