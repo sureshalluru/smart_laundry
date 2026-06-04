@@ -28,6 +28,7 @@ import {Elements} from "@stripe/react-stripe-js";
 import {loadStripe} from "@stripe/stripe-js";
 import {LaundryContext} from "../Components/Contexts/LaundryContext";
 import PaymentMethods from "../Components/LaundryHome/PaymentMethods";
+import ChatWidget from "../Components/Chat/ChatWidget";
 const LaundryHomePage = ({laundryId, customerId, customerPaymentId: initialCustomerPaymentId = '', specialInstructions: initialSpecialInstructions=''}) => {
     const [isCollapsed, setIsCollapsed] = useState(false);
     const [customerPaymentId, setCustomerPaymentId] = useState(initialCustomerPaymentId); // State for Customer Payment Intent Id
@@ -263,6 +264,14 @@ const LaundryHomePage = ({laundryId, customerId, customerPaymentId: initialCusto
                 </Box>
 
             </Flex>
+
+            {/* Chat Widget */}
+            <ChatWidget
+                customerId={customerId}
+                laundryId={laundryId}
+                customerName={laundryData?.customerName || ''}
+                customerPhone={''}
+            />
         </Box>
     );
 };

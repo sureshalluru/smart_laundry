@@ -37,6 +37,7 @@ import {
     FaCogs,
     FaBox,
     FaSignOutAlt,
+    FaComments,
 } from 'react-icons/fa';
 import { Outlet, useNavigate, useParams } from 'react-router-dom';
 import { fetchLaundryInfo } from '../../Pages/LaundryInfoManagement';
@@ -549,6 +550,15 @@ const SidebarContent = ({
                 onClick={() => navigate(`/${laundryId}/admin/employee-reviews`)}
         >
             Employee Reviews
+        </Button>
+        <Button as="a" href={`/${laundryId}/admin/chat`}
+                leftIcon={<FaComments />}
+                variant="ghost"
+                colorScheme="blue"
+                justifyContent="flex-start"
+                onClick={() => navigate(`/${laundryId}/admin/chat`)}
+        >
+            Chat
         </Button>
         <Button
             leftIcon={<FaSignOutAlt />}

@@ -31,6 +31,7 @@ from app.routes import (
     driver,
     payment_operations,
     customer_public,
+    chat,
 )
 
 app = FastAPI(
@@ -66,6 +67,7 @@ app.include_router(uber.router, prefix="/api/uber", tags=["Uber Integration"])
 app.include_router(frequency.router, prefix="/api/frequency", tags=["Order Frequency"])
 app.include_router(driver.router, prefix="/api/driver", tags=["Driver"])
 app.include_router(customer_public.router, prefix="/api/customer", tags=["Customer Public"])
+app.include_router(chat.router, prefix="/api/chat", tags=["Chat"])
 
 
 @app.get("/health")
