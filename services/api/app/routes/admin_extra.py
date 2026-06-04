@@ -613,3 +613,166 @@ async def check_partial_phone(
             "phoneNumber": r["phone_number"],
         } for r in cur.fetchall()]
     return {"statusCode": 200, "body": {"suggestions": suggestions}}
+
+
+# ── Stripe Terminal Payment Endpoints ─────────────────────────────────────────
+
+@router.post("/terminal-payment")
+async def initiate_terminal_payment(
+    body: dict = Body({}),
+    current_user: dict = Depends(get_current_user),
+):
+    """Initiate a terminal payment — creates PaymentIntent and processes on reader."""
+    return await _initiate_terminal(body)
+
+
+@router.post("/terminal-direct-payment")
+async def initiate_terminal_direct_payment(
+    body: dict = Body({}),
+    current_user: dict = Depends(get_current_user),
+):
+    """Initiate a terminal payment (direct/immediate) — same flow."""
+    return await _initiate_terminal(body)
+
+
+@router.get("/terminal-payment-status")
+async def check_terminal_payment_status(
+    operation: str = Query("checkTerminalPaymentStatus"),
+    laundryId: str = Query(...),
+    terminalPaymentIntentId: str = Query(...),
+    lastRun: Optional[str] = Query("false"),
+    current_user: dict = Depends(get_current_user),
+):
+    """Poll terminal payment status."""
+    return await _check_terminal_status(laundryId, terminalPaymentIntentId, lastRun)
+
+
+@router.get("/terminal-direct-payment-status")
+async def check_terminal_direct_payment_status(
+    operation: str = Query("checkImmediateTerminalPaymentStatus"),
+    laundryId: str = Query(...),
+    terminalPaymentIntentId: str = Query(...),
+    lastRun: Optional[str] = Query("false"),
+    current_user: dict = Depends(get_current_user),
+):
+    """Poll terminal payment status (direct/immediate)."""
+    return await _check_terminal_status(laundryId, terminalPaymentIntentId, lastRun)
+
+
+async def _initiate_terminal(body: dict):
+    """Shared logic: create PaymentIntent and process on Stripe Terminal reader."""
+    import stripe
+    from app.services.payment_service import _init_stripe
+    from decimal import Decimal
+
+    amount = body.get("amount", 0)
+    laundry_id = body.get("laundryId")
+    existing_intent_id = body.get("terminalPaymentIntentId")
+
+    if not laundry_id or not amount:
+        return {"status": "error", "message": "Missing laundryId or amount"}
+
+    try:
+        terminal_id = _init_stripe(laundry_id)
+        if not terminal_id:
+            return {"status": "error", "message": "No terminal configured for this laundry"}
+
+        amount_cents = int(round(Decimal(str(amount)) * 100))
+
+        # If re-initiating with existing intent, cancel the old one first
+        if existing_intent_id:
+            try:
+                stripe.PaymentIntent.cancel(existing_intent_id)
+                logger.info(f"Cancelled existing terminal intent: {existing_intent_id}")
+            except Exception:
+                pass  # May already be cancelled
+
+        # Create PaymentIntent for terminal
+        payment_intent = stripe.PaymentIntent.create(
+            amount=amount_cents,
+            currency="usd",
+            payment_method_types=["card_present"],
+            capture_method="automatic",
+            description=f"Terminal payment - Laundry {laundry_id}",
+        )
+
+        # Process the payment intent on the terminal reader
+        reader = stripe.terminal.Reader.process_payment_intent(
+            terminal_id,
+            payment_intent=payment_intent.id,
+        )
+
+        logger.info(f"Terminal payment initiated: {payment_intent.id} on reader {terminal_id}")
+
+        return {
+            "status": "success",
+            "paymentIntentId": payment_intent.id,
+            "readerId": terminal_id,
+        }
+
+    except stripe.error.InvalidRequestError as e:
+        logger.error(f"Terminal initiation error: {e}")
+        return {"status": "error", "message": str(e), "reInitiate": True}
+    except Exception as e:
+        logger.exception("Terminal payment initiation failed")
+        return {"status": "error", "message": str(e)}
+
+
+async def _check_terminal_status(laundry_id: str, payment_intent_id: str, last_run: str):
+    """Shared logic: check if terminal payment succeeded."""
+    import stripe
+    from app.services.payment_service import _init_stripe
+
+    try:
+        _init_stripe(laundry_id)
+        intent = stripe.PaymentIntent.retrieve(payment_intent_id)
+        status = intent.get("status", "")
+
+        if status == "succeeded":
+            return {
+                "status": "success",
+                "paymentIntentId": payment_intent_id,
+                "payment_status": status,
+            }
+        elif status == "canceled" or status == "cancelled":
+            return {
+                "status": "cancelled",
+                "message": "Payment was cancelled",
+                "payment_status": status,
+                "reInitiate": True,
+            }
+        elif status == "requires_capture":
+            # Auto-capture
+            captured = stripe.PaymentIntent.capture(payment_intent_id)
+            if captured["status"] == "succeeded":
+                return {
+                    "status": "success",
+                    "paymentIntentId": payment_intent_id,
+                    "payment_status": "succeeded",
+                }
+            return {
+                "status": "pending",
+                "payment_status": captured["status"],
+            }
+        else:
+            # Still processing (requires_payment_method, requires_action, processing)
+            if str(last_run).lower() == "true":
+                # Final check — cancel if not done
+                try:
+                    stripe.PaymentIntent.cancel(payment_intent_id)
+                except Exception:
+                    pass
+                return {
+                    "status": "cancelled",
+                    "message": "Payment timed out",
+                    "payment_status": status,
+                    "reInitiate": True,
+                }
+            return {
+                "status": "pending",
+                "payment_status": status,
+            }
+
+    except Exception as e:
+        logger.exception("Terminal status check failed")
+        return {"status": "error", "message": str(e), "reInitiate": True}
