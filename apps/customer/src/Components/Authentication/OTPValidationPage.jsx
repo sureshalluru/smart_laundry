@@ -38,9 +38,8 @@ export default function OTPValidationPage({ phoneNumber, onOTPSubmit, isOTPLoadi
         }
     };
 
-    useEffect(() => {
-        if (!isOTPLoading) setOtp('');
-    }, [isOTPLoading]);
+    // Only clear OTP after a successful verification (parent navigates away)
+    // Don't clear on failure so user can retry
 
     return (
         <Box w="100%" maxW="400px" mx="auto" px={6} py={8}>
@@ -72,7 +71,6 @@ export default function OTPValidationPage({ phoneNumber, onOTPSubmit, isOTPLoadi
                         size="lg"
                         value={otp}
                         onChange={setOtp}
-                        onComplete={handleOTPSubmit}
                         type="number"
                         otp
                     >
