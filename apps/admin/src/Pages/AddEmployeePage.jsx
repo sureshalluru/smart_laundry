@@ -453,6 +453,7 @@ const AddEmployeePage = () => {
                 />
 
 
+                {emp.role !== "Admin" && (
                 <IconButton
                   aria-label="Delete Employee"
                   icon={<DeleteIcon />}
@@ -462,6 +463,7 @@ const AddEmployeePage = () => {
                     onDeleteModalOpen();
                   }}
                 />
+                )}
                 </HStack>
               </Td>
             </Tr>

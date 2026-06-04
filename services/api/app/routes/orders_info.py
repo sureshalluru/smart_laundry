@@ -211,6 +211,13 @@ async def get_laundry_products_info(
             products = [serialize_row(r) for r in cur.fetchall()]
             return {"statusCode": 200, "body": {"message": "Products fetched", "products": products}}
 
+        elif operation == 'viewPromotions':
+            cur.execute("""
+                SELECT * FROM shop.promotions WHERE laundry_id = %s ORDER BY created_at DESC
+            """, (laundryId,))
+            promos = [serialize_row(r) for r in cur.fetchall()]
+            return {"statusCode": 200, "body": {"message": "Promotions fetched", "promotions": promos}}
+
     return {"statusCode": 400, "body": {"message": "Unknown operation"}}
 
 

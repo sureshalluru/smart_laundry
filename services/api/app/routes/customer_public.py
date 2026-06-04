@@ -492,6 +492,38 @@ async def cancel_customer_order(
     return {"status": "success", "message": "Order canceled"}
 
 
+@router.get("/validate-promo-code")
+async def validate_promo_code(
+    operation: str = Query(...),
+    laundryId: str = Query(...),
+    promoCode: str = Query(...),
+):
+    """Validate a promo code for the customer."""
+    with get_db() as conn:
+        cur = get_cursor(conn)
+        cur.execute("""
+            SELECT promo_code, description, discount_type, discount_value,
+                   minimum_order_value, apply_on_whole_order, linked_frequency
+            FROM shop.promotions
+            WHERE laundry_id = %s AND promo_code = %s AND is_active = TRUE
+        """, (laundryId, promoCode))
+        promo = cur.fetchone()
+
+        if not promo:
+            return {"statusCode": 200, "body": {"isValid": False, "message": "Invalid or expired promo code"}}
+
+        return {"statusCode": 200, "body": {
+            "isValid": True,
+            "promoCode": promo["promo_code"],
+            "description": promo["description"],
+            "discountType": promo["discount_type"],
+            "discountValue": float(promo["discount_value"]) if promo["discount_value"] else 0,
+            "minimumOrderValue": float(promo["minimum_order_value"]) if promo["minimum_order_value"] else 0,
+            "appliedOn": "wholeOrder" if promo["apply_on_whole_order"] else "specificServices",
+            "linkedFrequency": promo["linked_frequency"],
+        }}
+
+
 @router.get("/get-customer-info")
 async def get_customer_info(
     operation: str = Query(...),

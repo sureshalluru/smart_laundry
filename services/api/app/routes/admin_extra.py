@@ -284,6 +284,59 @@ async def update_products_services(
 
             return {"statusCode": 200, "body": {"message": "Products updated successfully"}}
 
+        elif operation == "updatePromotions":
+            promos_to_add = body.get("promotionsToAdd", [])
+            promos_to_update = body.get("promotionsToUpdate", [])
+            promos_to_delete = body.get("promotionsToDelete", [])
+
+            for promo in promos_to_add:
+                cur.execute("""
+                    INSERT INTO shop.promotions (
+                        laundry_id, promo_code, description, discount_type, discount_value,
+                        minimum_order_value, apply_on_whole_order, is_active,
+                        linked_frequency, is_online_frequency_promo, created_at
+                    ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,NOW())
+                """, (
+                    laundryId,
+                    promo.get("promoCode", ""),
+                    promo.get("description", ""),
+                    promo.get("discountType", "percentage"),
+                    float(promo.get("discountValue", 0)),
+                    float(promo.get("minimumOrderValue", 0)),
+                    promo.get("appliedOn", "wholeOrder") == "wholeOrder",
+                    promo.get("isActive", True),
+                    promo.get("linkedFrequency"),
+                    promo.get("isOnlineFrequencyPromo", False),
+                ))
+
+            for promo in promos_to_update:
+                cur.execute("""
+                    UPDATE shop.promotions
+                    SET description = %s, discount_type = %s, discount_value = %s,
+                        minimum_order_value = %s, apply_on_whole_order = %s,
+                        is_active = %s, linked_frequency = %s, is_online_frequency_promo = %s,
+                        updated_at = NOW()
+                    WHERE laundry_id = %s AND promo_code = %s
+                """, (
+                    promo.get("description", ""),
+                    promo.get("discountType", "percentage"),
+                    float(promo.get("discountValue", 0)),
+                    float(promo.get("minimumOrderValue", 0)),
+                    promo.get("appliedOn", "wholeOrder") == "wholeOrder",
+                    promo.get("isActive", True),
+                    promo.get("linkedFrequency"),
+                    promo.get("isOnlineFrequencyPromo", False),
+                    laundryId,
+                    promo.get("promoCode", ""),
+                ))
+
+            for promo_code in promos_to_delete:
+                cur.execute("""
+                    DELETE FROM shop.promotions WHERE laundry_id = %s AND promo_code = %s
+                """, (laundryId, promo_code))
+
+            return {"statusCode": 200, "body": {"message": "Promotions updated successfully"}}
+
         elif operation == "modifyServiceableZipCodes":
             zip_codes_to_add = body.get("zipCodesToAdd", [])
             zip_codes_to_remove = body.get("zipCodesToRemove", [])
@@ -427,9 +480,9 @@ async def create_employee(
 
         try:
             cur.execute("""
-                INSERT INTO shop.employees (emp_id, laundry_id, first_name, last_name, email, role, passcode, is_active, created_at, updated_at)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, TRUE, NOW(), NOW())
-            """, (emp_id, laundry_id, first_name, last_name, email, role, passcode))
+                INSERT INTO shop.employees (emp_id, laundry_id, first_name, last_name, email, role, passcode, joining_date, is_active, created_at, updated_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, TRUE, NOW(), NOW())
+            """, (emp_id, laundry_id, first_name, last_name, email, role, passcode, joining_date or None))
         except Exception as e:
             return {"statusCode": 200, "body": {
                 "createdEmployees": [],
