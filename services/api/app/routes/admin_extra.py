@@ -117,10 +117,51 @@ async def cancel_order_admin(
 
 @router.get("/show-all-employees")
 async def show_all_employees(
+    operation: Optional[str] = Query(None),
     laundryId: str = Query(...),
+    empId: Optional[str] = Query(None),
     current_user: dict = Depends(get_current_user),
 ):
-    """List all employees for a laundry."""
+    """List all employees or send credentials to an employee."""
+
+    # Send credentials via email
+    if operation == "sendEmpCredentials" and empId:
+        with get_db() as conn:
+            cur = get_cursor(conn)
+            cur.execute("""
+                SELECT emp_id, first_name, last_name, email, passcode, role
+                FROM shop.employees WHERE emp_id = %s AND laundry_id = %s
+            """, (empId, laundryId))
+            emp = cur.fetchone()
+            if not emp:
+                return {"statusCode": 200, "body": {"message": "Employee not found"}}
+            if not emp["email"]:
+                return {"statusCode": 200, "body": {"message": "Employee has no email address"}}
+
+            cur.execute("SELECT laundry_name FROM shop.laundry_shops WHERE laundry_id = %s", (laundryId,))
+            shop = cur.fetchone()
+            laundry_name = shop["laundry_name"] if shop else "Smart Laundry"
+
+        # Send email with credentials
+        try:
+            from app.services.notification_service import send_email
+            html_body = f"""
+            <h2>Your Employee Credentials</h2>
+            <p>Hi {emp['first_name']},</p>
+            <p>Here are your login credentials for <strong>{laundry_name}</strong>:</p>
+            <table style="border-collapse:collapse;">
+                <tr><td style="padding:8px;font-weight:bold;">Employee ID:</td><td style="padding:8px;">{emp['emp_id']}</td></tr>
+                <tr><td style="padding:8px;font-weight:bold;">Passcode:</td><td style="padding:8px;">{emp['passcode']}</td></tr>
+                <tr><td style="padding:8px;font-weight:bold;">Role:</td><td style="padding:8px;">{emp['role']}</td></tr>
+            </table>
+            <p>Please keep these credentials secure and do not share them.</p>
+            """
+            send_email(emp["email"], f"Your Credentials - {laundry_name}", html_body)
+            return {"statusCode": 200, "body": {"message": f"Credentials sent to {emp['email']}"}}
+        except Exception as e:
+            return {"statusCode": 200, "body": {"message": f"Failed to send: {str(e)}"}}
+
+    # Default: list employees
     with get_db() as conn:
         cur = get_cursor(conn)
         cur.execute("""
@@ -332,42 +373,78 @@ async def send_notifications(
 
 @router.post("/create-employee")
 async def create_employee(
+    operation: Optional[str] = Query(None),
+    laundryId: Optional[str] = Query(None),
     body: dict = Body({}),
     current_user: dict = Depends(get_current_user),
 ):
-    """Create a new employee."""
+    """Create or delete an employee based on operation param."""
+    op = operation or "createEmployee"
+    laundry_id = laundryId or body.get("laundryId") or current_user.get("laundryId")
+
+    if not laundry_id:
+        return {"statusCode": 400, "body": {"message": "Missing laundryId"}}
+
+    # DELETE employee
+    if op == "deleteEmployee":
+        emp_id = body.get("empId")
+        if not emp_id:
+            return {"statusCode": 400, "body": {"message": "Missing empId"}}
+        with get_db() as conn:
+            cur = get_cursor(conn)
+            cur.execute("""
+                UPDATE shop.employees SET is_active = FALSE, updated_at = NOW()
+                WHERE emp_id = %s AND laundry_id = %s
+            """, (emp_id, laundry_id))
+        return {"statusCode": 200, "body": {"message": f"Employee {emp_id} deleted successfully"}}
+
+    # CREATE employee
     with get_db() as conn:
         cur = get_cursor(conn)
-        laundry_id = body.get("laundryId") or current_user.get("laundryId")
         first_name = body.get("firstName", "")
         last_name = body.get("lastName", "")
         email = body.get("email", "")
         phone = body.get("phone", "")
         role = body.get("role", "FrontDesk")
-
-        if not laundry_id:
-            return {"statusCode": 400, "body": {"message": "Missing laundryId"}}
+        joining_date = body.get("joiningDate")
+        address = body.get("address", {})
 
         # Get emp_prefix for this laundry
         cur.execute("SELECT emp_prefix FROM shop.laundry_shops WHERE laundry_id = %s", (laundry_id,))
         row = cur.fetchone()
         prefix = row["emp_prefix"] if row and row["emp_prefix"] else "EMP"
 
-        # Generate employee ID and passcode
+        # Generate unique employee ID and passcode
         import random
-        emp_num = random.randint(100, 999)
-        emp_id = f"{prefix}{emp_num}"
+        for _ in range(10):  # Try up to 10 times for unique ID
+            emp_num = random.randint(100, 999)
+            emp_id = f"{prefix}{emp_num}"
+            cur.execute("SELECT emp_id FROM shop.employees WHERE emp_id = %s", (emp_id,))
+            if not cur.fetchone():
+                break
+
         passcode = str(random.randint(1000, 9999))
 
-        cur.execute("""
-            INSERT INTO shop.employees (emp_id, laundry_id, first_name, last_name, email, phone, role, passcode, is_active, created_at, updated_at)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, TRUE, NOW(), NOW())
-        """, (emp_id, laundry_id, first_name, last_name, email, phone, role, passcode))
+        try:
+            cur.execute("""
+                INSERT INTO shop.employees (emp_id, laundry_id, first_name, last_name, email, role, passcode, is_active, created_at, updated_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, TRUE, NOW(), NOW())
+            """, (emp_id, laundry_id, first_name, last_name, email, role, passcode))
+        except Exception as e:
+            return {"statusCode": 200, "body": {
+                "createdEmployees": [],
+                "failedEmployees": [{"error": str(e), "data": {"email": email}}],
+            }}
 
     return {"statusCode": 200, "body": {
         "message": "Employee created successfully",
-        "employeeId": emp_id,
-        "passcode": passcode
+        "createdEmployees": [{
+            "empId": emp_id,
+            "passcode": passcode,
+            "email": email,
+            "role": role,
+        }],
+        "failedEmployees": [],
     }}
 
 
