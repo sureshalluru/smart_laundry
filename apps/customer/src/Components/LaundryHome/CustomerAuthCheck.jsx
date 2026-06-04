@@ -24,6 +24,25 @@ const CustomerAuthCheck = ({ children }) => {
                             setCustomerId(response.customerId);
                             setCustomerPaymentId(response.customerPaymentId || '');
                             setSpecialInstructions(response.specialInstructions || '');
+
+                            // Fetch and cache customer's saved address if not already in localStorage
+                            if (!localStorage.getItem('customerAddress') && response.customerId) {
+                                try {
+                                    const token = localStorage.getItem('idToken');
+                                    const infoRes = await fetch(
+                                        `${process.env.REACT_APP_AWS_API_URL}/api/customer/get-customer-info?operation=getCustomerInfo&customerId=${response.customerId}`,
+                                        { headers: { 'x-api-key': token } }
+                                    );
+                                    const infoData = await infoRes.json();
+                                    const parsed = typeof infoData.body === 'string' ? JSON.parse(infoData.body) : infoData.body;
+                                    const addresses = parsed?.data?.addresses || [];
+                                    if (addresses.length > 0) {
+                                        localStorage.setItem('customerAddress', addresses[0].address);
+                                    }
+                                } catch (addrErr) {
+                                    console.warn("Could not fetch customer address:", addrErr);
+                                }
+                            }
                         }
                     } else {
                         // Use customer ID from token
