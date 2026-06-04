@@ -79,7 +79,7 @@ async def validate_emp_credentials(
         "LaundryCare Specialist": ["validateEmployeeCredentials"],
         "Manager": ["validateEmployeeCredentials", "showAllEmployees", "createEmployee"],
         "Employee": ["validateEmployeeCredentials"],
-        "Admin": ["validateEmployeeCredentials"],
+        "Admin": ["validateEmployeeCredentials", "showAllEmployees", "createEmployee"],
         "Delivery Driver": ["validateEmployeeCredentials"],
         "DeliveryDriver": ["validateEmployeeCredentials"],
         "FrontDesk": ["validateEmployeeCredentials"],
@@ -100,7 +100,7 @@ async def validate_emp_credentials(
         cur.execute("""
             SELECT emp_id, role, passcode
             FROM shop.employees
-            WHERE emp_id = %s AND laundry_id = %s AND is_active = TRUE
+            WHERE UPPER(emp_id) = UPPER(%s) AND laundry_id = %s AND is_active = TRUE
         """, (emp_id, laundry_id))
         emp = cur.fetchone()
 
