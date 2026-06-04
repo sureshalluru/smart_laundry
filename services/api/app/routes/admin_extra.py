@@ -338,17 +338,20 @@ async def create_employee(
     """Create a new employee."""
     with get_db() as conn:
         cur = get_cursor(conn)
-        laundry_id = body.get("laundryId")
+        laundry_id = body.get("laundryId") or current_user.get("laundryId")
         first_name = body.get("firstName", "")
         last_name = body.get("lastName", "")
         email = body.get("email", "")
         phone = body.get("phone", "")
         role = body.get("role", "FrontDesk")
 
+        if not laundry_id:
+            return {"statusCode": 400, "body": {"message": "Missing laundryId"}}
+
         # Get emp_prefix for this laundry
         cur.execute("SELECT emp_prefix FROM shop.laundry_shops WHERE laundry_id = %s", (laundry_id,))
         row = cur.fetchone()
-        prefix = row["emp_prefix"] if row else "EMP"
+        prefix = row["emp_prefix"] if row and row["emp_prefix"] else "EMP"
 
         # Generate employee ID and passcode
         import random
