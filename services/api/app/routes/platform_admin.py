@@ -136,9 +136,10 @@ async def create_laundry(body: dict = Body(...), x_platform_key: str = Header(No
 
         # Create default serviceable zip codes (owner can update later)
         if zip_code:
+            import json as json_mod
             cur.execute("""
-                UPDATE shop.laundry_shops SET serviceable_zip_codes = %s WHERE laundry_id = %s
-            """, ([zip_code], next_id))
+                UPDATE shop.laundry_shops SET serviceable_zip_codes = %s::json WHERE laundry_id = %s
+            """, (json_mod.dumps([zip_code]), next_id))
 
     return {
         "status": "success",
