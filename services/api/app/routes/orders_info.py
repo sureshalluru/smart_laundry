@@ -104,7 +104,9 @@ async def validate_emp_credentials(
         """, (emp_id, laundry_id))
         emp = cur.fetchone()
 
-        logger.info("validate-emp-credentials: found=%s", emp is not None)
+        logger.info("validate-emp-credentials: emp_id=%s laundry_id=%s found=%s", emp_id, laundry_id, emp is not None)
+        if emp:
+            logger.info("validate-emp-credentials: db_passcode='%s' input_passcode='%s' match=%s", emp["passcode"], passcode, str(emp["passcode"]) == passcode)
 
         if not emp:
             return {"statusCode": 200, "body": {"isValidated": False, "empId": emp_id, "role": None, "error": "Invalid credentials"}}
