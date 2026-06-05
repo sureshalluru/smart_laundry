@@ -10,6 +10,7 @@ import {
     VStack,
     Collapse,
     useDisclosure,
+    Image,
 } from '@chakra-ui/react';
 import { FiMenu, FiX, FiMapPin } from 'react-icons/fi';
 
@@ -46,25 +47,34 @@ export default function SiteNavbar({ config }) {
                 justify="space-between"
             >
                 {/* Logo / Brand */}
-                <VStack spacing={0} align="flex-start">
-                    <Text fontSize={{ base: 'md', md: 'lg' }} fontWeight="800" color="blue.600">
-                        {laundryName}
-                    </Text>
-                    <HStack spacing={1}>
-                        <Icon as={FiMapPin} color="gray.400" boxSize={3} />
-                        <Text
-                            as="a"
-                            href="https://www.google.com/maps/dir/?api=1&destination=900+E+Palm+Valley+Blvd+Ste+1006+Round+Rock+TX+78664"
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            fontSize="xs"
-                            color="gray.400"
-                            _hover={{ color: 'blue.500' }}
-                        >
-                            900 E Palm Valley Blvd, Ste 1006, Round Rock, TX
+                <HStack spacing={3}>
+                    <Image
+                        src="/logo-roundrock.png"
+                        alt={laundryName}
+                        boxSize={{ base: '36px', md: '44px' }}
+                        objectFit="contain"
+                        borderRadius="md"
+                    />
+                    <VStack spacing={0} align="flex-start">
+                        <Text fontSize={{ base: 'sm', md: 'md' }} fontWeight="800" color="blue.600">
+                            {laundryName}
                         </Text>
-                    </HStack>
-                </VStack>
+                        <HStack spacing={1}>
+                            <Icon as={FiMapPin} color="gray.400" boxSize={3} />
+                            <Text
+                                as="a"
+                                href="https://www.google.com/maps/dir/?api=1&destination=900+E+Palm+Valley+Blvd+Ste+1006+Round+Rock+TX+78664"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                fontSize="xs"
+                                color="gray.400"
+                                _hover={{ color: 'blue.500' }}
+                            >
+                                900 E Palm Valley Blvd, Ste 1006, Round Rock, TX
+                            </Text>
+                        </HStack>
+                    </VStack>
+                </HStack>
 
                 {/* Desktop Nav */}
                 <HStack spacing={6} display={{ base: 'none', md: 'flex' }}>

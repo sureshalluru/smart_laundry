@@ -290,6 +290,12 @@ async def update_products_services(
             promos_to_delete = body.get("promotionsToDelete", [])
 
             for promo in promos_to_add:
+                promo_code = promo.get("promoCode", "")
+                # Skip empty or generate code if TEMP
+                if not promo_code or promo_code.startswith("TEMP-"):
+                    import random, string
+                    promo_code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=8))
+
                 cur.execute("""
                     INSERT INTO shop.promotions (
                         laundry_id, promo_code, promo_name, description, discount_type, discount_value,
@@ -298,7 +304,7 @@ async def update_products_services(
                     ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,NOW())
                 """, (
                     laundryId,
-                    promo.get("promoCode", ""),
+                    promo_code,
                     promo.get("promoName", ""),
                     promo.get("description", ""),
                     promo.get("discountType", "percentage"),
