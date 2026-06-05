@@ -122,6 +122,32 @@ async def customer_place_order(
             if grand_total == 0:
                 grand_total = round(total_cost + tip_amount, 2)
 
+        # Apply coupon discount if provided
+        if coupon and sub_total > 0:
+            try:
+                with get_db() as conn_promo:
+                    cur_promo = get_cursor(conn_promo)
+                    cur_promo.execute("""
+                        SELECT discount_type, discount_value, minimum_order_value
+                        FROM shop.promotions
+                        WHERE laundry_id = %s AND promo_code = %s AND is_active = TRUE
+                    """, (laundry_id, coupon))
+                    promo = cur_promo.fetchone()
+
+                if promo and sub_total >= float(promo["minimum_order_value"] or 0):
+                    discount_type = promo["discount_type"]
+                    discount_value = float(promo["discount_value"] or 0)
+
+                    if discount_type == "percentage":
+                        discounted_price = round(sub_total * (discount_value / 100), 2)
+                    else:  # fixed amount
+                        discounted_price = min(discount_value, sub_total)
+
+                    total_cost = round(sub_total - discounted_price, 2)
+                    grand_total = round(total_cost + tip_amount, 2)
+            except Exception as promo_err:
+                logger.warning(f"Promo application error: {promo_err}")
+
         order_id = f"OL-{uuid.uuid4().hex[:8].upper()}"
 
         with get_db() as conn:
