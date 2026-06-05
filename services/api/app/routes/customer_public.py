@@ -148,7 +148,7 @@ async def customer_place_order(
             except Exception as promo_err:
                 logger.warning(f"Promo application error: {promo_err}")
 
-        order_id = f"OL-{uuid.uuid4().hex[:8].upper()}"
+        order_id = f"O-{uuid.uuid4().hex[:8].upper()}"
 
         with get_db() as conn:
             cur = get_cursor(conn)

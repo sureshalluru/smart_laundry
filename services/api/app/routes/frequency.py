@@ -68,12 +68,14 @@ async def process_frequencies():
     Creates orders for subscriptions where future_pickup_date <= today.
     """
     today = datetime.now().strftime('%Y-%m-%d')
+    tomorrow = (datetime.now() + timedelta(days=1)).strftime('%Y-%m-%d')
     orders_created = 0
     errors = []
 
     try:
         with get_db() as conn:
             cur = get_cursor(conn)
+            # Find subscriptions where pickup is tomorrow (create order day before)
             cur.execute("""
                 SELECT lf.*, ca.address, ca.door_number, ca.address_instructions,
                        cpp.stripe_customer_id
@@ -83,7 +85,7 @@ async def process_frequencies():
                     ON cpp.customer_id = lf.customer_id AND cpp.laundry_id = lf.laundry_id
                 WHERE lf.is_active = TRUE
                   AND lf.future_pickup_date <= %s
-            """, (today,))
+            """, (tomorrow,))
             due_subscriptions = cur.fetchall()
 
         logger.info(f"Frequency processor: found {len(due_subscriptions)} due subscriptions")
@@ -110,7 +112,7 @@ async def process_frequencies():
                 next_future_pickup = (pickup_dt + timedelta(days=freq_days)).strftime('%Y-%m-%d')
 
                 # Generate order ID
-                order_id = f"OL-{uuid.uuid4().hex[:8].upper()}"
+                order_id = f"O-{uuid.uuid4().hex[:8].upper()}"
 
                 with get_db() as conn:
                     cur = get_cursor(conn)
