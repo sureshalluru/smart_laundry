@@ -8,6 +8,7 @@ const navLinks = [
     { label: 'Pricing', href: '#pricing' },
     { label: 'Location', href: '#location' },
     { label: 'About', href: '#about' },
+    { label: 'Admin', href: null, isAdmin: true },
 ];
 
 export default function SiteNavbar({ config }) {
@@ -37,7 +38,11 @@ export default function SiteNavbar({ config }) {
 
                 <HStack spacing={6} display={{ base: 'none', md: 'flex' }}>
                     {navLinks.map((link) => (
-                        <Box key={link.label} as="a" href={link.href} fontSize="sm" fontWeight="500" color="gray.600" _hover={{ color: `${themeColor}.500` }} transition="color 0.2s">
+                        <Box key={link.label} as="a"
+                            href={link.isAdmin ? `/${laundryId}/admin` : link.href}
+                            fontSize="sm" fontWeight="500"
+                            color={link.isAdmin ? 'gray.400' : 'gray.600'}
+                            _hover={{ color: `${themeColor}.500` }} transition="color 0.2s">
                             {link.label}
                         </Box>
                     ))}
@@ -53,7 +58,7 @@ export default function SiteNavbar({ config }) {
             <Collapse in={isOpen} animateOpacity>
                 <VStack display={{ base: 'flex', md: 'none' }} spacing={3} pb={4} px={4} align="stretch">
                     {navLinks.map((link) => (
-                        <Box key={link.label} as="a" href={link.href} py={2} fontSize="md" fontWeight="500" color="gray.700" _hover={{ color: `${themeColor}.500` }} onClick={onToggle}>
+                        <Box key={link.label} as="a" href={link.isAdmin ? `/${laundryId}/admin` : link.href} py={2} fontSize="md" fontWeight="500" color={link.isAdmin ? 'gray.400' : 'gray.700'} _hover={{ color: `${themeColor}.500` }} onClick={onToggle}>
                             {link.label}
                         </Box>
                     ))}
