@@ -75,12 +75,13 @@ def _check_laundry_id(cur, laundry_id):
     """Verify laundry exists — exact port from Lambda."""
     cur.execute("""
         SELECT laundry_name, stripe_public_key, stripe_terminal_id,
-               laundry_timezone, user_domain, bag_price
+               laundry_timezone, user_domain, bag_price, site_content
         FROM shop.laundry_shops WHERE laundry_id = %s
     """, (laundry_id,))
     row = cur.fetchone()
     if not row:
         return {"status": "success", "exists": False}
+    site_content = row.get("site_content") or {}
     return {
         "status": "success",
         "exists": True,
@@ -90,6 +91,7 @@ def _check_laundry_id(cur, laundry_id):
         "laundryUserDomain": row["user_domain"],
         "stripeTerminalExists": bool(row["stripe_terminal_id"]),
         "bagPrice": float(row["bag_price"]) if row.get("bag_price") else 30.00,
+        "themeColor": site_content.get("themeColor", "blue"),
     }
 
 
