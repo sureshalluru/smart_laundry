@@ -73,8 +73,12 @@ const Address = () => {
         setIsAddressSelected(false);
     };
 
+    const themeGradient = laundryData?.themeColor === 'green'
+        ? "linear-gradient(180deg, #F0FFF4 0%, #C6F6D5 100%)"
+        : "linear-gradient(180deg, #EBF8FF 0%, #BEE3F8 100%)";
+
     return (
-        <Box bg="linear-gradient(180deg, #EBF8FF 0%, #BEE3F8 100%)" minH="100vh" display="flex" flexDirection="column" alignItems="center" justifyContent="flex-start" px={[7, 9, 11]} py={[12, 16, 20]}>
+        <Box bg={themeGradient} minH="100vh" display="flex" flexDirection="column" alignItems="center" justifyContent="flex-start" px={[7, 9, 11]} py={[12, 16, 20]}>
             <Box w="full" maxW="600px">
                 <VStack spacing={[4, 6, 8]} align="center">
                     <Image src={AddressImage} alt="Laundry Service" objectFit="fit" boxSize={["200px", "400px"]} />

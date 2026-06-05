@@ -516,8 +516,15 @@ export default function LaundryPickupPage({laundryId,customerId,customerPaymentI
         }
     };
 
+    const themeGradient = laundryData?.themeColor === 'green'
+        ? "linear-gradient(180deg, #F0FFF4 0%, #F7FAFC 100%)"
+        : "linear-gradient(180deg, #EBF8FF 0%, #F7FAFC 100%)";
+    const themeHeroBg = laundryData?.themeColor === 'green'
+        ? "linear-gradient(135deg, #F0FFF4 0%, #C6F6D5 100%)"
+        : "linear-gradient(135deg, #EBF8FF 0%, #BEE3F8 100%)";
+
     return (
-        <Box padding={[2,4,6]} bg="linear-gradient(180deg, #EBF8FF 0%, #F7FAFC 100%)" minHeight="100vh">
+        <Box padding={[2,4,6]} bg={themeGradient} minHeight="100vh">
             <Stack spacing={[4,6,8]} maxWidth={["100%", "600px", "800px"]} margin="auto" px={[2, 4, 6]} py={[4, 6, 8]}>
                 {!isAddressValidated ? (
                     // Address Input Form
@@ -525,7 +532,7 @@ export default function LaundryPickupPage({laundryId,customerId,customerPaymentI
                             {/* Hero banner with illustration */}
                             <Box
                                 w="100%"
-                                bg="linear-gradient(135deg, #EBF8FF 0%, #BEE3F8 100%)"
+                                bg={themeHeroBg}
                                 borderRadius="2xl"
                                 pt={{ base: 6, md: 10 }}
                                 pb={{ base: 4, md: 6 }}

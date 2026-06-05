@@ -64,16 +64,22 @@ const LaundryHomePage = ({laundryId, customerId, customerPaymentId: initialCusto
     ];
 
 
+    const themeColor = laundryData?.themeColor || 'blue';
+    const sidebarBg = themeColor === 'green' ? 'green.700' : 'blue.700';
+    const sidebarHoverBg = themeColor === 'green' ? 'green.600' : 'blue.600';
+    const sidebarDarkBg = themeColor === 'green' ? 'green.800' : 'blue.800';
+    const pageBg = themeColor === 'green' ? '#F0FFF4' : '#EBF8FF';
+
     return (
-        <Box bg={laundryData?.themeColor === 'green' ? '#F0FFF4' : '#EBF8FF'} minHeight="100vh">
-            <Flex minHeight="100vh" flexDirection={{base: "column", md: "row"}} bg={laundryData?.themeColor === 'green' ? '#F0FFF4' : '#EBF8FF'}>
+        <Box bg={pageBg} minHeight="100vh">
+            <Flex minHeight="100vh" flexDirection={{base: "column", md: "row"}} bg={pageBg}>
                 {isSmallScreen ? (
                     // On small screens, just a minimal top bar with menu icon
                     <>
                         <Flex
                             as="header"
                             w="100%"
-                            bg="blue.700"
+                            bg={sidebarBg}
                             color="white"
                             p={[2,3]}
                             height={["50px", "60px"]}
@@ -107,7 +113,7 @@ const LaundryHomePage = ({laundryId, customerId, customerPaymentId: initialCusto
                         {/* Drawer for the menu items on small screens */}
                         <Drawer placement="left" onClose={onClose} isOpen={isOpen}>
                             <DrawerOverlay/>
-                            <DrawerContent bg="blue.700" color="white" maxW={["60%", "300px"]} >
+                            <DrawerContent bg={sidebarBg} color="white" maxW={["60%", "300px"]} >
                                 <DrawerCloseButton/>
                                 <DrawerHeader borderBottomWidth="1px">Menu</DrawerHeader>
                                 <DrawerBody>
@@ -153,7 +159,7 @@ const LaundryHomePage = ({laundryId, customerId, customerPaymentId: initialCusto
                     // On medium and larger screens, use the collapsible sidebar on the left
                     <Flex
                         w={isCollapsed ? "80px" : "250px"}
-                        bg="blue.700"
+                        bg={sidebarBg}
                         color="white"
                         direction="column"
                         p={4}
@@ -163,8 +169,8 @@ const LaundryHomePage = ({laundryId, customerId, customerPaymentId: initialCusto
                             icon={<FiMenu/>}
                             onClick={toggleSidebar}
                             mb={4}
-                            bg="blue.800"
-                            _hover={{bg: 'blue.600'}}
+                            bg={sidebarDarkBg}
+                            _hover={{bg: sidebarHoverBg}}
                         />
 
                         {/* Sidebar items */}
