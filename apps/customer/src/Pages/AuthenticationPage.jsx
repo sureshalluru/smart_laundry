@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useContext, useEffect, useState } from "react";
 import { Box, Flex, useToast } from "@chakra-ui/react";
 import LoginPage from "../Components/Authentication/LoginPage";
 import SignupPage from "../Components/Authentication/SignupPage";
@@ -12,9 +12,11 @@ import {
 } from "../Services/aws/UserAuthenticationApiGateway";
 import { useCustomerAuth } from "../Context/AuthContext";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { LaundryContext } from "../Components/Contexts/LaundryContext";
 
 export default function AuthenticationPage() {
     const { laundryId } = useParams();
+    const { laundryData } = useContext(LaundryContext);
     const [currentPage, setCurrentPage] = useState("login");
     const [phoneNumber, setPhoneNumber] = useState("");
     const toast = useToast();
@@ -109,10 +111,14 @@ export default function AuthenticationPage() {
         if (currentPage === "otpValidation") setOtpTimer(180);
     }, [currentPage]);
 
+    const loginBg = laundryData?.themeColor === 'green'
+        ? "linear-gradient(180deg, #F0FFF4 0%, #C6F6D5 50%, #9AE6B4 100%)"
+        : "linear-gradient(180deg, #EBF8FF 0%, #BEE3F8 50%, #90CDF4 100%)";
+
     return (
         <Flex
             minH="100vh"
-            bg="linear-gradient(180deg, #EBF8FF 0%, #BEE3F8 50%, #90CDF4 100%)"
+            bg={loginBg}
             align="center"
             justify="center"
             p={4}
