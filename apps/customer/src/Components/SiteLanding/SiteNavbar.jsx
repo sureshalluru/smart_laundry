@@ -1,17 +1,5 @@
 import React from 'react';
-import {
-    Box,
-    Flex,
-    HStack,
-    Button,
-    Text,
-    Icon,
-    IconButton,
-    VStack,
-    Collapse,
-    useDisclosure,
-    Image,
-} from '@chakra-ui/react';
+import { Box, Flex, HStack, Button, Text, Icon, IconButton, VStack, Collapse, useDisclosure, Image } from '@chakra-ui/react';
 import { FiMenu, FiX, FiMapPin } from 'react-icons/fi';
 
 const navLinks = [
@@ -24,132 +12,52 @@ const navLinks = [
 
 export default function SiteNavbar({ config }) {
     const { isOpen, onToggle } = useDisclosure();
+    const sc = config?.siteContent || {};
     const laundryId = config?.laundryId || '1';
-    const laundryName = config?.laundryName || 'Eco Spin Round Rock Laundry';
+    const laundryName = config?.laundryName || 'Laundry';
+    const themeColor = sc.themeColor || 'blue';
 
     return (
-        <Box
-            as="nav"
-            position="sticky"
-            top="0"
-            zIndex="1000"
-            bg="white"
-            borderBottom="1px solid"
-            borderColor="gray.100"
-            boxShadow="sm"
-        >
-            <Flex
-                maxW="1200px"
-                mx="auto"
-                px={{ base: 4, md: 8 }}
-                py={3}
-                align="center"
-                justify="space-between"
-            >
-                {/* Logo / Brand */}
+        <Box as="nav" position="sticky" top="0" zIndex="1000" bg="white" borderBottom="1px solid" borderColor="gray.100" boxShadow="sm">
+            <Flex maxW="1200px" mx="auto" px={{ base: 4, md: 8 }} py={3} align="center" justify="space-between">
                 <HStack spacing={3}>
-                    <Image
-                        src="/logo-roundrock.png"
-                        alt={laundryName}
-                        boxSize={{ base: '36px', md: '44px' }}
-                        objectFit="contain"
-                        borderRadius="md"
-                    />
                     <VStack spacing={0} align="flex-start">
-                        <Text fontSize={{ base: 'sm', md: 'md' }} fontWeight="800" color="blue.600">
+                        <Text fontSize={{ base: 'sm', md: 'md' }} fontWeight="800" color={`${themeColor}.600`}>
                             {laundryName}
                         </Text>
                         <HStack spacing={1}>
                             <Icon as={FiMapPin} color="gray.400" boxSize={3} />
-                            <Text
-                                as="a"
-                                href="https://www.google.com/maps/dir/?api=1&destination=900+E+Palm+Valley+Blvd+Ste+1006+Round+Rock+TX+78664"
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                fontSize="xs"
-                                color="gray.400"
-                                _hover={{ color: 'blue.500' }}
-                            >
-                                900 E Palm Valley Blvd, Ste 1006, Round Rock, TX
+                            <Text as="a" href={`https://www.google.com/maps/dir/?api=1&destination=${sc.mapsQuery || ''}`}
+                                target="_blank" rel="noopener noreferrer" fontSize="xs" color="gray.400" _hover={{ color: `${themeColor}.500` }}>
+                                {sc.address}, {sc.city}, {sc.state}
                             </Text>
                         </HStack>
                     </VStack>
                 </HStack>
 
-                {/* Desktop Nav */}
                 <HStack spacing={6} display={{ base: 'none', md: 'flex' }}>
                     {navLinks.map((link) => (
-                        <Box
-                            key={link.label}
-                            as="a"
-                            href={link.href}
-                            fontSize="sm"
-                            fontWeight="500"
-                            color="gray.600"
-                            _hover={{ color: 'blue.500' }}
-                            transition="color 0.2s"
-                        >
+                        <Box key={link.label} as="a" href={link.href} fontSize="sm" fontWeight="500" color="gray.600" _hover={{ color: `${themeColor}.500` }} transition="color 0.2s">
                             {link.label}
                         </Box>
                     ))}
                 </HStack>
 
-                {/* CTA */}
-                <Button
-                    as="a"
-                    href={`/${laundryId}/login`}
-                    size="sm"
-                    colorScheme="blue"
-                    borderRadius="full"
-                    px={5}
-                    display={{ base: 'none', md: 'inline-flex' }}
-                >
+                <Button as="a" href={`/${laundryId}/login`} size="sm" colorScheme={themeColor} borderRadius="full" px={5} display={{ base: 'none', md: 'inline-flex' }}>
                     Schedule Pickup
                 </Button>
 
-                {/* Mobile Menu Toggle */}
-                <IconButton
-                    display={{ base: 'flex', md: 'none' }}
-                    icon={isOpen ? <FiX /> : <FiMenu />}
-                    onClick={onToggle}
-                    variant="ghost"
-                    aria-label="Menu"
-                    size="sm"
-                />
+                <IconButton display={{ base: 'flex', md: 'none' }} icon={isOpen ? <FiX /> : <FiMenu />} onClick={onToggle} variant="ghost" aria-label="Menu" size="sm" />
             </Flex>
 
-            {/* Mobile Menu */}
             <Collapse in={isOpen} animateOpacity>
-                <VStack
-                    display={{ base: 'flex', md: 'none' }}
-                    spacing={3}
-                    pb={4}
-                    px={4}
-                    align="stretch"
-                >
+                <VStack display={{ base: 'flex', md: 'none' }} spacing={3} pb={4} px={4} align="stretch">
                     {navLinks.map((link) => (
-                        <Box
-                            key={link.label}
-                            as="a"
-                            href={link.href}
-                            py={2}
-                            fontSize="md"
-                            fontWeight="500"
-                            color="gray.700"
-                            _hover={{ color: 'blue.500' }}
-                            onClick={onToggle}
-                        >
+                        <Box key={link.label} as="a" href={link.href} py={2} fontSize="md" fontWeight="500" color="gray.700" _hover={{ color: `${themeColor}.500` }} onClick={onToggle}>
                             {link.label}
                         </Box>
                     ))}
-                    <Button
-                        as="a"
-                        href={`/${laundryId}/login`}
-                        colorScheme="blue"
-                        borderRadius="full"
-                        size="md"
-                        onClick={onToggle}
-                    >
+                    <Button as="a" href={`/${laundryId}/login`} colorScheme={themeColor} borderRadius="full" size="md" onClick={onToggle}>
                         Schedule Pickup
                     </Button>
                 </VStack>

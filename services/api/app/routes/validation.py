@@ -98,7 +98,7 @@ def _get_laundry_info(cur, laundry_id, is_customer=None):
     cur.execute("""
         SELECT laundry_name, laundry_timezone, stripe_public_key, stripe_terminal_id,
                delivery_time_interval, user_domain,
-               street, city, state, zip_code, country, serviceable_zip_codes, bag_price
+               street, city, state, zip_code, country, serviceable_zip_codes, bag_price, site_content
         FROM shop.laundry_shops WHERE laundry_id = %s
     """, (laundry_id,))
     shop = cur.fetchone()
@@ -177,6 +177,7 @@ def _get_laundry_info(cur, laundry_id, is_customer=None):
         "uberEnv": uber_row["env"] if uber_row else "",
         "uberCredentialsExist": bool(uber_row),
         "bagPrice": float(shop["bag_price"]) if shop.get("bag_price") else 30.00,
+        "siteContent": shop.get("site_content") or {},
     }
 
 

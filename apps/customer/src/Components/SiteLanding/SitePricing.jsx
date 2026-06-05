@@ -55,6 +55,8 @@ const plans = [
 export default function SitePricing({ config }) {
     const bagPrice = config?.bagPrice || 30;
     const laundryId = config?.laundryId || '1';
+    const sc = config?.siteContent || {};
+    const themeColor = sc.themeColor || 'blue';
     return (
         <Box id="pricing" py={{ base: 16, md: 20 }} bg="white">
             <Container maxW="1200px">
@@ -62,7 +64,7 @@ export default function SitePricing({ config }) {
                     <Text
                         fontSize="sm"
                         fontWeight="600"
-                        color="blue.500"
+                        color={`${themeColor}.500`}
                         textTransform="uppercase"
                         letterSpacing="wide"
                     >
@@ -190,8 +192,7 @@ export default function SitePricing({ config }) {
                         Prefer to do it yourself?
                     </Text>
                     <Text fontSize="sm" color="gray.500">
-                        Our 24/7 self-service laundromat has 120 lb commercial washers and dryers.
-                        25% discount on weekdays between 8:30 AM – 4:30 PM.
+                        {sc.selfServiceNote || 'Visit our self-service laundromat with modern washers and dryers.'}
                     </Text>
                 </Box>
             </Container>

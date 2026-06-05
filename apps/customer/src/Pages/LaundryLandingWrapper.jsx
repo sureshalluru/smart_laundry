@@ -40,8 +40,7 @@ export default function LaundryLandingWrapper() {
                         services: infoRes.data.laundryServices || [],
                         deliveryTimeSlots: infoRes.data.deliveryTimeSlots || [],
                         bagPrice: infoRes.data.bagPrice || 30,
-                        // Additional fields can be added to the API and consumed here
-                        // phone, email, hours, amenities, description, etc.
+                        siteContent: infoRes.data.siteContent || {},
                     });
                 } else {
                     navigate('/invalid');
