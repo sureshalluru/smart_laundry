@@ -104,6 +104,7 @@ const OrdersInfo = ({orderOperation, validateEmpCredentials, stripePublicKey, st
     const [empId, setEmpId] = useState('');
     const [passcode, setPasscode] = useState('');
     const [statusFilter, setStatusFilter] = useState('');
+    const [paymentFilter, setPaymentFilter] = useState('');
     const [orderStatusMap, setOrderStatusMap] = useState({});
     const [servicesToAddMap, setServicesToAddMap] = useState({});
     const [servicesToRemoveMap, setServicesToRemoveMap] = useState({});
@@ -324,10 +325,11 @@ const getInstantPickupWindow = (laundryTimeZone) => {
             // Normalize strings for case-insensitive comparison
             const normalizeString = (str) => str?.toLowerCase() || '';
 
-            // Check if search term matches Order ID or Customer Phone
+            // Check if search term matches Order ID, Customer Phone, or Customer Name
             const matchesSearchTerm = searchTerm
                 ? normalizeString(order.orderId).includes(normalizeString(searchTerm)) || // Match Order ID
-                normalizeString(order.customerPhone).includes(normalizeString(searchTerm)) // Match Customer Phone
+                normalizeString(order.customerPhone).includes(normalizeString(searchTerm)) || // Match Customer Phone
+                normalizeString(order.customerName).includes(normalizeString(searchTerm)) // Match Customer Name
                 : true;
 
             // Match active orders with status filter
@@ -387,8 +389,12 @@ const getInstantPickupWindow = (laundryTimeZone) => {
                 (orderTab === 'online' && order.orderId.startsWith('O-')) ||
                 (orderTab === 'commercial' && order.orderId.startsWith('CL-'));
 
+            const matchesPaymentFilter = paymentFilter
+                ? normalizeString(order.paymentStatus) === normalizeString(paymentFilter)
+                : true;
 
-            return matchesSearchTerm && matchesOrderStatus && matchesTimeFilter && matchesReasonFilter && matchesTab;
+
+            return matchesSearchTerm && matchesOrderStatus && matchesTimeFilter && matchesReasonFilter && matchesTab && matchesPaymentFilter;
         });
 
         let filteredList = filtered;
@@ -494,7 +500,7 @@ const getInstantPickupWindow = (laundryTimeZone) => {
 
         setFilteredOrders(filteredList);
 
-    }, [searchTerm, statusFilter, orders, orderOperation, orderTab, sortOrder]);
+    }, [searchTerm, statusFilter, paymentFilter, orders, orderOperation, orderTab, sortOrder]);
 
 
     useEffect(() => {
@@ -3772,12 +3778,24 @@ const handleAssignLaundryDriver = async (customAddress) => {
             {/* Search and Filter Controls */}
             <Flex justifyContent="space-between" mb={6} flexWrap="wrap" gap={4}>
                 <Input
-                    placeholder="Search by Order ID or Customer Phone Number"
+                    placeholder="Search by Order ID, Phone, or Name"
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                     maxWidth="400px"
                     bg="#ccf0ed"
                 />
+
+                {/* Payment Status Filter */}
+                <Menu>
+                    <MenuButton as={Button} colorScheme={paymentFilter ? "orange" : "gray"} size="sm" width="160px">
+                        {paymentFilter || "Payment Status"}
+                    </MenuButton>
+                    <MenuList>
+                        <MenuItem onClick={() => setPaymentFilter("Unpaid")}>Unpaid</MenuItem>
+                        <MenuItem onClick={() => setPaymentFilter("Paid")}>Paid</MenuItem>
+                        <MenuItem onClick={() => setPaymentFilter("")}>Clear Filter</MenuItem>
+                    </MenuList>
+                </Menu>
 
                 {/* Filter Dropdown */}
                 {orderOperation === "active" ? (

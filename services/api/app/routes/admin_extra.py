@@ -292,13 +292,14 @@ async def update_products_services(
             for promo in promos_to_add:
                 cur.execute("""
                     INSERT INTO shop.promotions (
-                        laundry_id, promo_code, description, discount_type, discount_value,
+                        laundry_id, promo_code, promo_name, description, discount_type, discount_value,
                         minimum_order_value, apply_on_whole_order, is_active,
-                        linked_frequency, is_online_frequency_promo, created_at
-                    ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,NOW())
+                        linked_frequency, is_online_frequency_promo, start_date, end_date, created_at
+                    ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,NOW())
                 """, (
                     laundryId,
                     promo.get("promoCode", ""),
+                    promo.get("promoName", ""),
                     promo.get("description", ""),
                     promo.get("discountType", "percentage"),
                     float(promo.get("discountValue", 0)),
@@ -307,6 +308,8 @@ async def update_products_services(
                     promo.get("isActive", True),
                     promo.get("linkedFrequency"),
                     promo.get("isOnlineFrequencyPromo", False),
+                    promo.get("startDate") or None,
+                    promo.get("endDate") or None,
                 ))
 
             for promo in promos_to_update:

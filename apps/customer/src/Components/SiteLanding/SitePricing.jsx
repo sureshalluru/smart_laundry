@@ -160,6 +160,9 @@ export default function SitePricing({ config }) {
                                 </List>
 
                                 <Button
+                                    as="a"
+                                    href={`/${laundryId}/login`}
+                                    onClick={() => localStorage.setItem('selectedPricingType', plan.title === 'Per Bag' ? 'per_bag' : 'per_pound')}
                                     colorScheme={plan.popular ? 'blue' : 'gray'}
                                     variant={plan.popular ? 'solid' : 'outline'}
                                     size="lg"

@@ -215,7 +215,23 @@ async def get_laundry_products_info(
             cur.execute("""
                 SELECT * FROM shop.promotions WHERE laundry_id = %s ORDER BY created_at DESC
             """, (laundryId,))
-            promos = [serialize_row(r) for r in cur.fetchall()]
+            # Frontend expects: { promotions: { "CODE1": {...}, "CODE2": {...} } }
+            promos = {}
+            for r in cur.fetchall():
+                code = r["promo_code"]
+                promos[code] = {
+                    "promoName": r["promo_name"] or "",
+                    "description": r["description"] or "",
+                    "discountType": r["discount_type"] or "percentage",
+                    "discountValue": float(r["discount_value"]) if r["discount_value"] else 0,
+                    "minimumOrderValue": float(r["minimum_order_value"]) if r["minimum_order_value"] else 0,
+                    "appliedOn": "wholeOrder" if r["apply_on_whole_order"] else "specificServices",
+                    "isActive": r["is_active"],
+                    "linkedFrequency": r["linked_frequency"],
+                    "isOnlineFrequencyPromo": r["is_online_frequency_promo"],
+                    "startDate": str(r["start_date"]) if r["start_date"] else "",
+                    "endDate": str(r["end_date"]) if r["end_date"] else "",
+                }
             return {"statusCode": 200, "body": {"message": "Promotions fetched", "promotions": promos}}
 
     return {"statusCode": 400, "body": {"message": "Unknown operation"}}

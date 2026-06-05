@@ -32,7 +32,14 @@ import {LaundryContext} from "../Components/Contexts/LaundryContext";
 
 export default function LaundryPickupPage({laundryId,customerId,customerPaymentId,setCustomerPaymentId, laundryTimeZone, setLaundryTimeZone, specialInstructions, setSpecialInstructions}) {
     // Pricing type: "per_bag" or "per_pound"
-    const [pricingType, setPricingType] = useState(null); // null = not yet chosen
+    const [pricingType, setPricingType] = useState(() => {
+        const saved = localStorage.getItem('selectedPricingType');
+        if (saved) {
+            localStorage.removeItem('selectedPricingType'); // Use once then clear
+            return saved;
+        }
+        return null;
+    });
     const [bagPrice, setBagPrice] = useState(30.00);
 
     // Steps depend on pricing type
@@ -54,7 +61,7 @@ export default function LaundryPickupPage({laundryId,customerId,customerPaymentI
     };
     const steps = getSteps();
     const { laundryData } = useContext(LaundryContext);
-    const {activeStep, setActiveStep} = useSteps({index: 0});
+    const {activeStep, setActiveStep} = useSteps({index: pricingType ? 1 : 0});
     const [isPlaceOrderEnabled, setIsPlaceOrderEnabled] = useState(false);
     const [isServiceStepValid, setIsServiceStepValid] = useState(false);
     const [isPaymentStepValid,setIsPaymentStepValid] = useState(false);
