@@ -197,7 +197,7 @@ async def customer_place_order(
                 # Deactivate any existing frequency for this customer+laundry+address
                 cur.execute("""
                     UPDATE orders.laundry_frequency
-                    SET is_active = FALSE, updated_at = NOW()
+                    SET is_active = FALSE
                     WHERE customer_id = %s AND laundry_id = %s AND address_id = %s AND is_active = TRUE
                 """, (customer_id, laundry_id, address_id))
 
@@ -208,13 +208,13 @@ async def customer_place_order(
                         frequency_created_date, frequency_start_date,
                         pickup_date, pickup_time_interval,
                         dropoff_time_interval, future_pickup_date,
-                        is_active, created_at, updated_at
+                        is_active
                     ) VALUES (
                         %s, %s, %s, %s,
                         NOW(), %s,
                         %s, %s,
                         %s, %s,
-                        TRUE, NOW(), NOW()
+                        TRUE
                     )
                 """, (
                     customer_id, laundry_id, address_id, frequency,

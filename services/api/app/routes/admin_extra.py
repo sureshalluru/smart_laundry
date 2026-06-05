@@ -287,7 +287,7 @@ async def update_products_services(
         elif operation == "updatePromotions":
             promos_to_add = body.get("promotionsToAdd", [])
             promos_to_update = body.get("promotionsToUpdate", [])
-            promos_to_delete = body.get("promotionsToDelete", [])
+            promos_to_delete = body.get("promotionsToDelete", []) or body.get("promotionsToRemove", [])
 
             for promo in promos_to_add:
                 promo_code = promo.get("promoCode", "")
