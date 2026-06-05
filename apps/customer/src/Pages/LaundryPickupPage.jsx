@@ -645,6 +645,7 @@ export default function LaundryPickupPage({laundryId,customerId,customerPaymentI
                             {activeStep === 1 && pricingType === 'per_bag' && (
                                 <BagOrderPage
                                     bagPrice={bagPrice}
+                                    setBagPrice={setBagPrice}
                                     laundryBags={laundryBags}
                                     setLaundryBags={setLaundryBags}
                                     pickupDate={pickupDate}

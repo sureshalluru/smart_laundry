@@ -27,6 +27,7 @@ import { addDays } from 'date-fns';
  */
 export default function BagOrderPage({
     bagPrice,
+    setBagPrice,
     laundryBags,
     setLaundryBags,
     pickupDate,
@@ -52,8 +53,15 @@ export default function BagOrderPage({
 }) {
     const [availablePickupSlots, setAvailablePickupSlots] = useState([]);
     const [availableDropoffSlots, setAvailableDropoffSlots] = useState([]);
+    const [bagSize, setBagSize] = useState('regular'); // 'regular' (13-gal $30) or 'large' ($45)
 
-    const totalCost = (laundryBags * bagPrice).toFixed(2);
+    const pricePerBag = bagSize === 'large' ? 45 : bagPrice;
+    const totalCost = (laundryBags * pricePerBag).toFixed(2);
+
+    // Update parent's bagPrice when size changes
+    useEffect(() => {
+        if (setBagPrice) setBagPrice(pricePerBag);
+    }, [bagSize, pricePerBag, setBagPrice]);
 
     // Utility: get date in laundry timezone
     const getDateInTimeZone = useCallback((date, timeZone) => {
@@ -165,10 +173,10 @@ export default function BagOrderPage({
                             </Box>
                             <VStack align="flex-start" spacing={0}>
                                 <Heading size="sm" color="gray.800">
-                                    Number of Bags
+                                    Bag Size & Count
                                 </Heading>
                                 <Text fontSize="sm" color="gray.500">
-                                    ${bagPrice.toFixed(0)} per bag
+                                    Select bag size and quantity
                                 </Text>
                             </VStack>
                         </HStack>
@@ -176,6 +184,42 @@ export default function BagOrderPage({
                             ${totalCost}
                         </Badge>
                     </Flex>
+
+                    {/* Bag size selector */}
+                    <HStack spacing={3}>
+                        <Box
+                            as="button"
+                            flex="1"
+                            p={3}
+                            borderRadius="xl"
+                            border="2px solid"
+                            borderColor={bagSize === 'regular' ? 'blue.400' : 'gray.200'}
+                            bg={bagSize === 'regular' ? 'blue.50' : 'white'}
+                            textAlign="center"
+                            onClick={() => setBagSize('regular')}
+                            transition="all 0.2s"
+                        >
+                            <Text fontWeight="700" fontSize="sm" color="gray.800">13-Gallon Bag</Text>
+                            <Text fontSize="lg" fontWeight="800" color="blue.600">${bagPrice.toFixed(0)}</Text>
+                            <Text fontSize="xs" color="gray.500">Standard trash bag size</Text>
+                        </Box>
+                        <Box
+                            as="button"
+                            flex="1"
+                            p={3}
+                            borderRadius="xl"
+                            border="2px solid"
+                            borderColor={bagSize === 'large' ? 'blue.400' : 'gray.200'}
+                            bg={bagSize === 'large' ? 'blue.50' : 'white'}
+                            textAlign="center"
+                            onClick={() => setBagSize('large')}
+                            transition="all 0.2s"
+                        >
+                            <Text fontWeight="700" fontSize="sm" color="gray.800">Larger Bag</Text>
+                            <Text fontSize="lg" fontWeight="800" color="blue.600">$45</Text>
+                            <Text fontSize="xs" color="gray.500">Bigger than 13-gallon</Text>
+                        </Box>
+                    </HStack>
 
                     {/* Bag counter */}
                     <Flex

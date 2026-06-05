@@ -24,8 +24,8 @@ export default function PricingChoice({ pricingType, setPricingType, bagPrice, o
         {
             id: 'per_bag',
             title: 'Per Bag',
-            subtitle: `$${(bagPrice || 30).toFixed(0)} / bag`,
-            description: 'Simple flat rate per bag. We wash, dry, and fold everything inside.',
+            subtitle: `$${(bagPrice || 30).toFixed(0)} / bag (13-gal)`,
+            description: 'Simple flat rate per bag. 13-gallon trash bag $30, larger bags $45.',
             icon: FaShoppingBag,
             color: 'blue.500',
             badgeText: 'Popular',
