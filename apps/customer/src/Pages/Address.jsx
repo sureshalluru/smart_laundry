@@ -16,7 +16,7 @@ import {
 } from '@chakra-ui/react';
 import { StandaloneSearchBox } from '@react-google-maps/api';
 import axios from "axios";
-import AddressImage from "../images/address.png";
+import LaundryPickupImage from "../images/laundry-pickup.svg";
 
 const Address = () => {
     const { laundryData } = useContext(LaundryContext);
@@ -88,7 +88,7 @@ const Address = () => {
         <Box bg={themeGradient} minH="100vh" display="flex" flexDirection="column" alignItems="center" justifyContent="flex-start" px={[7, 9, 11]} py={[12, 16, 20]}>
             <Box w="full" maxW="600px">
                 <VStack spacing={[4, 6, 8]} align="center">
-                    <Image src={AddressImage} alt="Laundry Service" objectFit="fit" boxSize={["200px", "400px"]} />
+                    <Image src={LaundryPickupImage} alt="Free Pickup & Delivery" objectFit="contain" w={{ base: '240px', md: '320px' }} h={{ base: '160px', md: '200px' }} />
                     <Heading size={['md', 'lg']} color="blue.600" textAlign="center">
                         Welcome to {laundryData?.laundryName}
                     </Heading>
