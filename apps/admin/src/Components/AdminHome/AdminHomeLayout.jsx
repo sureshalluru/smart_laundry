@@ -560,6 +560,15 @@ const SidebarContent = ({
         >
             Chat
         </Button>
+        <Button as="a" href={`/${laundryId}/admin/zip-interest`}
+                leftIcon={<FaClipboardList />}
+                variant="ghost"
+                colorScheme="teal"
+                justifyContent="flex-start"
+                onClick={() => navigate(`/${laundryId}/admin/zip-interest`)}
+        >
+            Zip Demand
+        </Button>
         <Button
             leftIcon={<FaSignOutAlt />}
             variant="ghost"

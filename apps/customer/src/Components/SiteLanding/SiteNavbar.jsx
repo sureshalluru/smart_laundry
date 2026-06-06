@@ -48,7 +48,7 @@ export default function SiteNavbar({ config }) {
                     ))}
                 </HStack>
 
-                <Button as="a" href={`/${laundryId}/login`} size="sm" colorScheme={themeColor} borderRadius="full" px={5} display={{ base: 'none', md: 'inline-flex' }}>
+                <Button as="a" href={`/${laundryId}`} size="sm" colorScheme={themeColor} borderRadius="full" px={5} display={{ base: 'none', md: 'inline-flex' }}>
                     Schedule Pickup
                 </Button>
 
@@ -62,7 +62,7 @@ export default function SiteNavbar({ config }) {
                             {link.label}
                         </Box>
                     ))}
-                    <Button as="a" href={`/${laundryId}/login`} colorScheme={themeColor} borderRadius="full" size="md" onClick={onToggle}>
+                    <Button as="a" href={`/${laundryId}`} colorScheme={themeColor} borderRadius="full" size="md" onClick={onToggle}>
                         Schedule Pickup
                     </Button>
                 </VStack>

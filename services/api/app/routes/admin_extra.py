@@ -918,3 +918,36 @@ async def _check_terminal_status(laundry_id: str, payment_intent_id: str, last_r
     except Exception as e:
         logger.exception("Terminal status check failed")
         return {"status": "error", "message": str(e), "reInitiate": True}
+
+
+# ── Zip Code Interest / Demand ────────────────────────────────────────────────
+
+@router.get("/zip-interest")
+async def get_zip_interest(
+    laundryId: str = Query(...),
+    current_user: dict = Depends(get_current_user),
+):
+    """Get zip code interest/demand data for unserved areas."""
+    with get_db() as conn:
+        cur = get_cursor(conn)
+        cur.execute("""
+            SELECT zip_code, COUNT(*) as request_count,
+                   array_agg(DISTINCT email) FILTER (WHERE email != '') as emails,
+                   array_agg(DISTINCT phone) FILTER (WHERE phone != '') as phones,
+                   MIN(created_at) as first_request,
+                   MAX(created_at) as latest_request
+            FROM shop.zip_code_interest
+            WHERE laundry_id = %s
+            GROUP BY zip_code
+            ORDER BY request_count DESC
+        """, (laundryId,))
+        data = [{
+            "zipCode": r["zip_code"],
+            "requestCount": r["request_count"],
+            "emails": r["emails"] or [],
+            "phones": r["phones"] or [],
+            "firstRequest": str(r["first_request"]),
+            "latestRequest": str(r["latest_request"]),
+        } for r in cur.fetchall()]
+
+    return {"statusCode": 200, "body": {"status": "success", "data": data}}

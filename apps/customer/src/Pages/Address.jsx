@@ -11,6 +11,8 @@ import {
     useToast,
     Box,
     Heading,
+    Text,
+    HStack,
 } from '@chakra-ui/react';
 import { StandaloneSearchBox } from '@react-google-maps/api';
 import axios from "axios";
@@ -25,6 +27,10 @@ const Address = () => {
     const searchBoxRef = useRef(null);
     const toast = useToast();
     const [validatingAddress, setValidatingAddress] = useState(false);
+    const [showNotifyForm, setShowNotifyForm] = useState(false);
+    const [notifyEmail, setNotifyEmail] = useState('');
+    const [notifyPhone, setNotifyPhone] = useState('');
+    const [notifySubmitting, setNotifySubmitting] = useState(false);
 
     const handleSubmit = async (e) => {
         e.preventDefault();
@@ -48,7 +54,8 @@ const Address = () => {
                     localStorage.setItem('customerAddress', address);
                     navigate(`/${laundryId}/login`);
                 } else {
-                    toast({ title: "Not Serviceable", description: 'This location is not serviceable.', status: "warning", duration: 3000, isClosable: true });
+                    setShowNotifyForm(true);
+                    toast({ title: "Not Serviceable", description: 'This area is not yet serviced. Leave your info to be notified when we expand!', status: "info", duration: 5000, isClosable: true });
                 }
             } else {
                 toast({ title: "Error", description: `Error: ${data.message}`, status: "error", duration: 3000, isClosable: true });
@@ -114,6 +121,59 @@ const Address = () => {
                     <Button type="submit" colorScheme="blue" size="md" alignSelf="center" isLoading={validatingAddress} loadingText="Validating Address" boxShadow="md" w={["full","auto"]}>
                         Continue
                     </Button>
+
+                    {/* Notify Me Form — shows when address is not serviceable */}
+                    {showNotifyForm && (
+                        <Box bg="white" borderRadius="xl" p={5} boxShadow="md" w="full" mt={4}>
+                            <VStack spacing={3} align="stretch">
+                                <Text fontWeight="600" color="gray.700" fontSize="sm">
+                                    We don't serve this area yet, but we're expanding!
+                                </Text>
+                                <Text fontSize="xs" color="gray.500">
+                                    Leave your email or phone and we'll notify you when we're available in your area.
+                                </Text>
+                                <Input
+                                    placeholder="Email address"
+                                    value={notifyEmail}
+                                    onChange={(e) => setNotifyEmail(e.target.value)}
+                                    size="sm"
+                                    type="email"
+                                />
+                                <Input
+                                    placeholder="Phone number (optional)"
+                                    value={notifyPhone}
+                                    onChange={(e) => setNotifyPhone(e.target.value)}
+                                    size="sm"
+                                />
+                                <Button
+                                    size="sm"
+                                    colorScheme="green"
+                                    isLoading={notifySubmitting}
+                                    onClick={async () => {
+                                        if (!notifyEmail && !notifyPhone) {
+                                            toast({ title: "Please provide email or phone", status: "warning", duration: 3000 });
+                                            return;
+                                        }
+                                        setNotifySubmitting(true);
+                                        try {
+                                            await axios.post(`${process.env.REACT_APP_AWS_API_URL}/api/laundry/zip-interest`, {
+                                                laundryId, address, email: notifyEmail, phone: notifyPhone,
+                                                zipCode: address.match(/\d{5}/)?.[0] || '',
+                                            });
+                                            toast({ title: "Got it!", description: "We'll reach out when we expand to your area.", status: "success", duration: 5000 });
+                                            setShowNotifyForm(false);
+                                        } catch (err) {
+                                            toast({ title: "Error", description: "Please try again.", status: "error", duration: 3000 });
+                                        } finally {
+                                            setNotifySubmitting(false);
+                                        }
+                                    }}
+                                >
+                                    Notify Me
+                                </Button>
+                            </VStack>
+                        </Box>
+                    )}
                 </VStack>
             </Box>
         </Box>

@@ -2,7 +2,7 @@
 Validation routes — ported directly from ValidationService Lambda.
 Handles: laundry validation, address check, phone lookup, referrals.
 """
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Body
 from typing import Optional
 from app.database import get_db, get_cursor
 from app.auth import get_current_user
@@ -284,6 +284,28 @@ async def validate_address_public(
     with get_db() as conn:
         cur = get_cursor(conn)
         return _validate_address(cur, laundryId, address)
+
+
+@router.post("/zip-interest")
+async def register_zip_interest(body: dict = Body(...)):
+    """Record interest in an unserved zip code area."""
+    laundry_id = body.get("laundryId")
+    zip_code = body.get("zipCode", "")
+    address = body.get("address", "")
+    email = body.get("email", "")
+    phone = body.get("phone", "")
+
+    if not laundry_id or (not email and not phone):
+        return {"status": "error", "message": "Please provide email or phone"}
+
+    with get_db() as conn:
+        cur = get_cursor(conn)
+        cur.execute("""
+            INSERT INTO shop.zip_code_interest (laundry_id, zip_code, address, email, phone)
+            VALUES (%s, %s, %s, %s, %s)
+        """, (laundry_id, zip_code, address, email, phone))
+
+    return {"status": "success", "message": "We'll notify you when we expand to your area!"}
 
 
 @router.get("/validate-laundry")

@@ -40,7 +40,7 @@ export default function SiteHero({ config }) {
                     </Text>
 
                     <HStack spacing={4} pt={2} flexWrap="wrap" justify="center">
-                        <Button as="a" href={`/${laundryId}/login`} size="lg" colorScheme={sc.themeColor || 'blue'} borderRadius="full" px={8} boxShadow="lg" _hover={{ transform: 'translateY(-2px)', boxShadow: 'xl' }}>
+                        <Button as="a" href={`/${laundryId}`} size="lg" colorScheme={sc.themeColor || 'blue'} borderRadius="full" px={8} boxShadow="lg" _hover={{ transform: 'translateY(-2px)', boxShadow: 'xl' }}>
                             Schedule Free Pickup
                         </Button>
                         <Button as="a" href="#location" size="lg" variant="outline" borderColor="gray.400" color="gray.700" borderRadius="full" px={8} _hover={{ bg: 'white', borderColor: `${sc.themeColor || 'blue'}.400` }}>
