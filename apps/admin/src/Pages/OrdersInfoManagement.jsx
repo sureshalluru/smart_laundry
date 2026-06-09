@@ -2068,6 +2068,52 @@ const { open: openCancelUber, ModalUI: CancelUberModal } = useCancelUberHandoff(
                                         )}
                                     </Box>
 
+                                    {/* Scale Photo Upload */}
+                                    {isEditMode && canEditServices && (
+                                        <Box mb={4} p={3} bg="gray.50" borderRadius="md">
+                                            <HStack spacing={3} align="center">
+                                                <Text fontSize={fontSize} fontWeight="600">Scale Photo:</Text>
+                                                <Button
+                                                    size="xs"
+                                                    colorScheme="teal"
+                                                    onClick={() => document.getElementById('scalePhotoInput').click()}
+                                                >
+                                                    📷 Upload Scale Photo
+                                                </Button>
+                                                <input
+                                                    id="scalePhotoInput"
+                                                    type="file"
+                                                    accept="image/*"
+                                                    capture="environment"
+                                                    style={{ display: 'none' }}
+                                                    onChange={async (e) => {
+                                                        const file = e.target.files[0];
+                                                        if (!file) return;
+                                                        try {
+                                                            const reader = new FileReader();
+                                                            reader.onloadend = async () => {
+                                                                const base64 = reader.result;
+                                                                await axios.post(
+                                                                    `${process.env.REACT_APP_AWS_API_URL}/api/driver/upload-image`,
+                                                                    { imageBase64: base64 },
+                                                                    { params: { operation: 'uploadImage', laundryId, orderId: selectedOrderDetails.orderId }, headers: { Authorization: `Bearer ${authToken}` } }
+                                                                );
+                                                                toast({ title: 'Scale photo uploaded', status: 'success', duration: 3000 });
+                                                            };
+                                                            reader.readAsDataURL(file);
+                                                        } catch (err) {
+                                                            toast({ title: 'Upload failed', status: 'error', duration: 3000 });
+                                                        }
+                                                        e.target.value = '';
+                                                    }}
+                                                />
+                                                {selectedOrderDetails.imageUrl && (
+                                                    <Text fontSize="xs" color="green.500">✓ Photo on file</Text>
+                                                )}
+                                            </HStack>
+                                        </Box>
+                                    )}
+
                                     {/* Products */}
                                     {(selectedOrderDetails.products?.length > 0 || isEditMode) && (
                                         <Box mb={4}>

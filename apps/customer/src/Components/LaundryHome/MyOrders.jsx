@@ -1249,6 +1249,21 @@ const MyOrders = ({ customerId, laundryId, laundryTimeZone }) => {
                                         </Text>
                                     )}
                                 </Box>
+
+                                {/* Laundry Photos (pickup/scale) */}
+                                {orderDetails.imageUrl && (
+                                    <Box mt={4} p={3} bg="white" borderRadius="md" boxShadow="sm">
+                                        <Text fontWeight="600" fontSize="sm" mb={2}>📷 Laundry Photos</Text>
+                                        <Image
+                                            src={orderDetails.imageUrl}
+                                            alt="Laundry photo"
+                                            maxH="200px"
+                                            borderRadius="md"
+                                            objectFit="cover"
+                                        />
+                                    </Box>
+                                )}
+
                                 {orderDetails.orderStatus === 'OrderSubmitted' && displayCancelOrder(orderDetails, laundryTimeZone) && (
                                     <Button
                                         colorScheme="red"
