@@ -46,7 +46,7 @@ async def get_order_audit_history(
                 "oldValue": r["old_value"],
                 "newValue": r["new_value"],
                 "changeSummary": r["change_summary"],
-                "changedAt": str(r["changed_at"]),
+                "changedAt": r["changed_at"].isoformat() if r["changed_at"] else None,
             } for r in rows]
         }}
 

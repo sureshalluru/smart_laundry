@@ -185,19 +185,27 @@ def _get_laundry_info(cur, laundry_id, is_customer=None):
 
 def _validate_address(cur, laundry_id, address):
     """Check if address zip code is serviceable."""
+    import re
     if not address:
         return {"status": "error", "message": "Missing address"}
-    parts = address.split(",")
-    zip_code = parts[-2].split()[-1].strip() if len(parts) >= 2 else ""
-    country = parts[-1].strip() if len(parts) >= 1 else ""
 
-    cur.execute("SELECT serviceable_zip_codes, country FROM shop.laundry_shops WHERE laundry_id = %s", (laundry_id,))
+    # Extract zip code using regex (5-digit US zip)
+    zip_match = re.search(r'\b(\d{5})\b', address)
+    zip_code = zip_match.group(1) if zip_match else ""
+
+    if not zip_code:
+        return {"status": "error", "message": "Could not determine zip code from address"}
+
+    cur.execute("SELECT serviceable_zip_codes FROM shop.laundry_shops WHERE laundry_id = %s", (laundry_id,))
     row = cur.fetchone()
     if not row:
         return {"status": "error", "message": "Laundry not found"}
 
     serviceable = row["serviceable_zip_codes"] or []
-    if zip_code in serviceable and country == (row["country"] or ""):
+    if isinstance(serviceable, dict):
+        serviceable = list(serviceable.keys())
+
+    if zip_code in serviceable:
         return {"status": "success", "serviceable": True}
     return {"status": "success", "serviceable": False}
 
