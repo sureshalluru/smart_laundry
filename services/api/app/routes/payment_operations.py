@@ -76,7 +76,7 @@ async def instore_payment(
             # Process payment updates (new payments to add)
             for p in payment_updates:
                 amt = float(p.get("amount", 0))
-                method = p.get("paymentMethod", "Cash")
+                method = p.get("paymentMethod") or "Cash"
                 intent_id = p.get("paymentIntentId")
                 if amt > 0:
                     # For card payments where frontend sent a PaymentMethod ID (pm_*),
