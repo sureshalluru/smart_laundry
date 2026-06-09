@@ -21,6 +21,8 @@ import {
   ModalFooter,
   ModalCloseButton,
   useDisclosure,
+  NumberInput,
+  NumberInputField,
 } from '@chakra-ui/react';
 import { PhoneIcon, ExternalLinkIcon } from '@chakra-ui/icons';
 import { format, addDays, subDays } from 'date-fns';
@@ -480,6 +482,44 @@ const DriverHome = ({ laundryId }) => {
                         {photoUploaded[order.orderId] ? 'Retake' : 'Upload'}
                       </Button>
                     </HStack>
+
+                    {/* Bag count input for pickup */}
+                    {['ordersubmitted', 'readyforintake'].includes(order.orderStatus?.toLowerCase()) && (
+                      <HStack mt={2} spacing={2} align="center">
+                        <Text fontSize="xs" fontWeight="600" color="gray.600">Bags:</Text>
+                        <NumberInput
+                          size="xs"
+                          maxW="70px"
+                          min={1}
+                          max={50}
+                          defaultValue={order.laundryBags || 1}
+                          onChange={(val) => {
+                            order._bagCount = parseInt(val) || 1;
+                          }}
+                        >
+                          <NumberInputField />
+                        </NumberInput>
+                        <Button
+                          size="xs"
+                          colorScheme="green"
+                          onClick={async () => {
+                            const bags = order._bagCount || order.laundryBags || 1;
+                            try {
+                              await axios.put(
+                                `${process.env.REACT_APP_AWS_API_URL}/api/admin/update-order`,
+                                { laundryBags: bags },
+                                { params: { operation: 'updateOrder', orderId: order.orderId, laundryId, empId: '' }, headers: { Authorization: `Bearer ${authToken}` } }
+                              );
+                              toast({ title: `Bags updated to ${bags}`, status: 'success', duration: 2000 });
+                            } catch (err) {
+                              toast({ title: 'Error updating bags', status: 'error', duration: 3000 });
+                            }
+                          }}
+                        >
+                          Save
+                        </Button>
+                      </HStack>
+                    )}
                   </Flex>
 
                   {/* Details */}

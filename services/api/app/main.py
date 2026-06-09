@@ -148,8 +148,8 @@ async def serve_customer(request: Request, full_path: str):
     if file_path.is_file():
         return FileResponse(file_path)
 
-    # Route decision: paths with /admin go to admin app, everything else to customer
-    if "/admin" in f"/{full_path}" or full_path.startswith("admin"):
+    # Route decision: paths with /admin or /driver go to admin app, everything else to customer
+    if "/admin" in f"/{full_path}" or "/driver" in f"/{full_path}" or full_path.startswith("admin"):
         index = ADMIN_BUILD / "index.html"
         if index.exists():
             return FileResponse(index)
