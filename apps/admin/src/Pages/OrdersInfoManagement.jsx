@@ -1217,7 +1217,9 @@ const { open: openCancelUber, ModalUI: CancelUberModal } = useCancelUberHandoff(
         const payments = Array.isArray(selectedOrderDetails?.finalPaymentIntentId)
             ? selectedOrderDetails.finalPaymentIntentId
             : [];
-        const totalPaymentsReceived = payments.reduce((acc, p) => acc + roundToTwo(parseFloat(p.amount || 0)), 0);
+        const totalPaymentsReceived = payments
+            .filter(p => p.paymentMethod !== 'hold')
+            .reduce((acc, p) => acc + roundToTwo(parseFloat(p.amount || 0)), 0);
         const totalCost = roundToTwo(selectedOrderDetails?.totalCost || 0);
         const tipCost = roundToTwo(selectedOrderDetails?.tip.tipAmount || 0);
         const combinedCost = roundToTwo(totalCost + tipCost); // TODO: replace with grandTotal
