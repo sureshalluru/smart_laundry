@@ -1,4 +1,4 @@
-import React, { useState, useRef, useContext } from 'react';
+import React, { useState, useRef, useContext, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { LaundryContext } from '../Components/Contexts/LaundryContext';
 import {
@@ -21,9 +21,28 @@ import LaundryPickupImage from "../images/laundry-pickup.svg";
 const Address = () => {
     const { laundryData } = useContext(LaundryContext);
     const { laundryId } = useParams();
+    const navigate = useNavigate();
+
+    // If user already has a valid session (token + address), skip to order flow
+    useEffect(() => {
+        const token = localStorage.getItem('idToken');
+        const savedAddress = localStorage.getItem('customerAddress');
+        if (token && savedAddress) {
+            try {
+                // Check if token is not expired
+                const payload = JSON.parse(atob(token.split('.')[1]));
+                if (payload.exp * 1000 > Date.now()) {
+                    navigate(`/${laundryId}/user/schedule-order`, { replace: true });
+                    return;
+                }
+            } catch (e) {
+                // Invalid token, continue to address page
+            }
+        }
+    }, [laundryId, navigate]);
+
     const [address, setAddress] = useState('');
     const [isAddressSelected, setIsAddressSelected] = useState(false);
-    const navigate = useNavigate();
     const searchBoxRef = useRef(null);
     const toast = useToast();
     const [validatingAddress, setValidatingAddress] = useState(false);

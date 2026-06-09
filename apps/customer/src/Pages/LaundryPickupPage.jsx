@@ -99,7 +99,7 @@ export default function LaundryPickupPage({laundryId,customerId,customerPaymentI
     const [address, setAddress] = useState(localStorage.getItem('customerAddress') || ''); // Store the user address
     const [addressInstructions,setAddressInstructions] = useState(''); // Store the address instructions
     const [doorNumber, setDoorNumber] = useState('');// Store the Address Door Number
-    const [isAddressValidated, setIsAddressValidated] = useState(false); // Always show address screen so user can change it
+    const [isAddressValidated, setIsAddressValidated] = useState(!!localStorage.getItem('customerAddress')); // Skip address if returning user
 
     // For Google Maps API
     const searchBoxRef = useRef(null);
@@ -625,6 +625,18 @@ export default function LaundryPickupPage({laundryId,customerId,customerPaymentI
                 ) : (
                     // Existing Stepper Steps Code
                     <>
+                        {/* Show current address with change option */}
+                        {address && (
+                            <Flex justify="space-between" align="center" bg="white" borderRadius="lg" px={4} py={2} mb={3} border="1px solid" borderColor="gray.100">
+                                <Box>
+                                    <Box fontSize="xs" color="gray.500">Pickup Address</Box>
+                                    <Box fontSize="sm" fontWeight="500" color="gray.700" noOfLines={1}>{address}</Box>
+                                </Box>
+                                <Button size="xs" variant="ghost" colorScheme="blue" onClick={() => { setIsAddressValidated(false); localStorage.removeItem('customerAddress'); }}>
+                                    Change
+                                </Button>
+                            </Flex>
+                        )}
                         <Stepper index={activeStep} size="md" gap="0" colorScheme="blue">
                             {steps.map((step, index) => (
                                 <Step key={index}>

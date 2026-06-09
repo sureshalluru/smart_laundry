@@ -78,9 +78,28 @@ async def driver_orders(
 
 @router.post("/upload-image")
 async def upload_image(
+    operation: Optional[str] = Query(None),
+    laundryId: Optional[str] = Query(None),
+    orderId: Optional[str] = Query(None),
     body: dict = Body({}),
     current_user: dict = Depends(get_current_user),
 ):
-    """Upload delivery/pickup image."""
-    # TODO: Implement S3 upload
-    return {"statusCode": 200, "body": {"message": "Image upload not yet implemented"}}
+    """Upload delivery/pickup/scale image — stores as base64 in DB."""
+    image_base64 = body.get("imageBase64", "")
+    order_id = orderId or body.get("orderId")
+    
+    if not order_id or not image_base64:
+        return {"statusCode": 400, "body": {"message": "Missing orderId or image data"}}
+
+    # Limit image size (keep under 500KB to avoid DB bloat)
+    if len(image_base64) > 700000:
+        return {"statusCode": 400, "body": {"message": "Image too large. Please use a smaller photo."}}
+
+    with get_db() as conn:
+        cur = get_cursor(conn)
+        cur.execute("""
+            UPDATE orders.orders SET image_url = %s, updated_at = NOW()
+            WHERE order_id = %s
+        """, (image_base64, order_id))
+
+    return {"statusCode": 200, "body": {"message": "Image uploaded successfully", "imageUrl": image_base64[:50] + "..."}}
