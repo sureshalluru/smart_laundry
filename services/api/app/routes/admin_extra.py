@@ -39,13 +39,14 @@ async def get_order_audit_history(
             "orderId": orderId,
             "history": [{
                 "historyId": str(r["history_id"]),
-                "employeeId": r["emp_id"],
-                "employeeName": r["emp_name"] or "System",
+                "timestamp": r["changed_at"].isoformat() if r["changed_at"] else None,
+                "empId": r["emp_id"],
+                "Employee Name": r["emp_name"] or "System",
                 "action": r["action"],
                 "fieldChanged": r["field_changed"],
                 "oldValue": r["old_value"],
                 "newValue": r["new_value"],
-                "changeSummary": r["change_summary"],
+                "modifications": [r["change_summary"]] if r["change_summary"] else [],
                 "changedAt": r["changed_at"].isoformat() if r["changed_at"] else None,
             } for r in rows]
         }}
