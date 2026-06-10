@@ -122,7 +122,7 @@ const OrderActionsDrawer = ({ isOpen, onClose, order, handleOrderHistory, handle
                                 />
                             </Tooltip>
 
-                            {order.orderId.startsWith("IS-") && order.orderStatus === "ProcessingCompleted" && <NotificationButton order={order} />}
+                            {order.orderId.startsWith("IS-") && <NotificationButton order={order} />}
 
                         </VStack>
                     )}

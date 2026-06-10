@@ -55,8 +55,7 @@ export const NotificationButton = ({ order }) => {
     
         getLaundryInfo();
     }, [laundryId]);
-    const baseUrl = "https://main.d2th8pw9g4ufxz.amplifyapp.com";
-    // const orderDetailsUrl = `${userDomain}/myorders/?order_id=${order?.orderId}&is_open=true`;
+    const baseUrl = window.location.origin;
     const orderDetailsUrl = `${baseUrl}/${laundryId}/user/my-orders/?order_id=${order?.orderId}&is_open=true`;
 
     useEffect(() => {
