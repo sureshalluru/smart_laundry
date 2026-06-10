@@ -560,6 +560,25 @@ async def update_order_endpoint(
             sub_total = round(svc_total + prod_total, 2)
             total_cost = sub_total  # Before discount
 
+            # Apply discount if coupon exists
+            discounted_price = float(current_order.get("discounted_price") or 0)
+            coupon_code = coupon if coupon is not None else current_order.get("coupon")
+            if coupon_code and discounted_price == 0:
+                # Recalculate discount from promo
+                cur.execute("""
+                    SELECT discount_type, discount_value, minimum_order_value
+                    FROM shop.promotions WHERE laundry_id = %s AND promo_code = %s AND is_active = TRUE
+                """, (laundryId, coupon_code))
+                promo = cur.fetchone()
+                if promo and sub_total >= float(promo["minimum_order_value"] or 0):
+                    if promo["discount_type"] == "percentage":
+                        discounted_price = round(sub_total * (float(promo["discount_value"] or 0) / 100), 2)
+                    else:
+                        discounted_price = min(float(promo["discount_value"] or 0), sub_total)
+
+            if discounted_price > 0:
+                total_cost = round(sub_total - discounted_price, 2)
+
             # Tip recalculation
             tip_type = current_order["tip_type"] or "noTip"
             tip_amount = float(current_order["tip_amount"] or 0)
@@ -579,6 +598,7 @@ async def update_order_endpoint(
                 "total_cost": total_cost,
                 "sub_total": sub_total,
                 "grand_total": grand_total,
+                "discounted_price": discounted_price,
                 "laundry_bags": laundry_bags,
                 "last_updated_by": empId,
                 "updated_at": datetime.now(),

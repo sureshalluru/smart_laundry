@@ -20,6 +20,16 @@ import PlatformAdminPage from './Pages/PlatformAdminPage';
 import { Navigate } from 'react-router-dom';
 import theme from './theme';
 
+// Domain-to-laundry mapping for multi-tenant root redirect
+function DomainRedirect() {
+    const host = window.location.hostname.toLowerCase();
+    let laundryId = '1'; // default
+    if (host.includes('spinandshine')) laundryId = '2';
+    else if (host.includes('roundrock')) laundryId = '1';
+    // Add more domains here as you onboard laundries
+    return <Navigate to={`/${laundryId}/site`} replace />;
+}
+
 function App() {
     return (
         <ChakraProvider theme={theme}>
@@ -27,8 +37,8 @@ function App() {
             <CustomerAuthProvider>
                 <BrowserRouter>
                     <Routes>
-                        {/* Public site landing page — default laundry (for roundrocklaundry.com) */}
-                        <Route path="/" element={<Navigate to="/1/site" replace />} />
+                        {/* Public site landing page — domain-aware redirect */}
+                        <Route path="/" element={<DomainRedirect />} />
 
                         <Route path="/invalid" element={<NoPage />} />
                         <Route path="/platform-admin" element={<PlatformAdminPage />} />
