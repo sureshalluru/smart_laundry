@@ -603,6 +603,66 @@ async def update_order_endpoint(
             values = list(update_fields.values()) + [orderId]
             cur.execute(f"UPDATE orders.orders SET {set_clause} WHERE order_id = %s", values)
 
+            # Auto-notify customer when status changes to ProcessingCompleted
+            if order_status == "ProcessingCompleted":
+                try:
+                    from app.services.notification_service import send_email, send_sms
+                    customer_id_for_notif = current_order["customer_id"]
+                    cur.execute("""
+                        SELECT first_name, email, phone_number, notif_email, notif_phone
+                        FROM shop.customers WHERE customer_id = %s
+                    """, (customer_id_for_notif,))
+                    cust = cur.fetchone()
+                    cur.execute("SELECT laundry_name FROM shop.laundry_shops WHERE laundry_id = %s", (laundryId,))
+                    shop = cur.fetchone()
+
+                    if cust and shop:
+                        laundry_name = shop["laundry_name"]
+                        first_name = cust["first_name"] or "Customer"
+                        is_paid = current_order["payment_status"] == "Paid" or (order_status == "ProcessingCompleted" and current_order["order_type"] == "Online")
+
+                        # Payment link (only if unpaid)
+                        payment_link = ""
+                        # Get user domain for this laundry
+                        cur.execute("SELECT user_domain FROM shop.laundry_shops WHERE laundry_id = %s", (laundryId,))
+                        domain_row = cur.fetchone()
+                        base_url = domain_row["user_domain"] if domain_row and domain_row["user_domain"] else "https://www.roundrocklaundry.com"
+                        if not is_paid:
+                            payment_link = f"\n\nPay Now: {base_url}/{laundryId}/user/my-orders/?order_id={orderId}&is_open=true"
+
+                        # Email
+                        if cust.get("notif_email", True) and cust["email"]:
+                            payment_html = ""
+                            if not is_paid:
+                                pay_url = f"{base_url}/{laundryId}/user/my-orders/?order_id={orderId}&is_open=true"
+                                payment_html = f'<p><a href="{pay_url}" style="background:#4299E1;color:white;padding:10px 20px;text-decoration:none;border-radius:8px;font-weight:bold;">Pay Now — ${grand_total:.2f}</a></p>'
+
+                            html_body = f"""
+                            <h2>Your laundry is ready! 🎉</h2>
+                            <p>Hi {first_name},</p>
+                            <p>Great news! Your laundry order <strong>{orderId}</strong> has been processed and is ready.</p>
+                            <table style="border-collapse:collapse;width:100%;max-width:400px;">
+                                <tr><td style="padding:8px;font-weight:bold;">Order</td><td>{orderId}</td></tr>
+                                <tr><td style="padding:8px;font-weight:bold;">Total</td><td>${grand_total:.2f}</td></tr>
+                                <tr><td style="padding:8px;font-weight:bold;">Status</td><td>{'Paid ✓' if is_paid else 'Payment Pending'}</td></tr>
+                            </table>
+                            {payment_html}
+                            <p>Thank you for choosing {laundry_name}!</p>
+                            """
+                            send_email(cust["email"], f"Your Laundry is Ready - {orderId}", html_body)
+
+                        # SMS
+                        if cust.get("notif_phone", True) and cust["phone_number"]:
+                            sms = f"Hi {first_name}! Your laundry order {orderId} is ready. Total: ${grand_total:.2f}."
+                            if not is_paid:
+                                sms += f" Pay here: {base_url}/{laundryId}/user/my-orders/?order_id={orderId}&is_open=true"
+                            sms += f" - {laundry_name}"
+                            send_sms(cust["phone_number"], sms)
+
+                        logger.info(f"Auto-notification sent for {orderId} (ProcessingCompleted, paid={is_paid})")
+                except Exception as notif_err:
+                    logger.warning(f"Auto-notification error for {orderId}: {notif_err}")
+
             # Fetch updated order to return (will be re-fetched after capture if needed)
             result = get_single_order(cur, laundryId, orderId)
 

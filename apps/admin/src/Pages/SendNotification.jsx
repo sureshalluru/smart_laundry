@@ -48,7 +48,7 @@ export const NotificationButton = ({ order }) => {
                 setLaundryEmail(laundryData.email || "");
                 setLaundryPhone(laundryData.phone || "");
                 setAdminDomain(laundryData.domain?.adminDomain || "");
-                setUserDomain(laundryData.domain?.userDomain || "https://main.d2th8pw9g4ufxz.amplifyapp.com");
+                setUserDomain(laundryData.domain?.userDomain || window.location.origin);
                 console.log("user domain:", laundryData.domain?.userDomain); // Log once
             }
         };
@@ -119,35 +119,33 @@ export const NotificationButton = ({ order }) => {
             " Thank you, " + laundryName + 
             " Team. Contact: " + laundryPhone;
             
-            emailMessage = `<!DOCTYPE html>\\n\
-                <html>\\n\
-                <head>\\n\
-                    <style>\\n\
-                        body { font-family: Arial, sans-serif; line-height: 1.6; text-align: center; color: #333; font-size: 17px;}\\n\
-                        .container { padding: 20px; text-align: center; background-color: #f9f9f9; font-size: 17px;}\\n\
-                        .button { background-color: #28a745; color: white !important; padding: 10px 20px; text-decoration: none; font-size: 20px;}\\n\
-                        .left-align { text-align: left; margin-left: 20px; }\\n\
-                        .footer { margin-top: 20px; font-size: 14px; text-align: center; color: #777; }\\n\
-                    </style>\\n\
-                </head>\\n\
-                <body>\\n\
-                    <div class='container'>\\n\
-                        <p class='left-align'>Dear <strong>${order.customerName}</strong>,</p>\\n\
-                        <p class='left-align'>This is a friendly reminder regarding the outstanding payment for your laundry order <strong>${order.orderId}</strong>. Please complete the payment at your earliest convenience to facilitate a smooth transaction.</p>\\n\
-                        <a href='${shortUrl}' class='button'>Pay Now</a>\\n\
-                    </div>\\n\
-                    <div class='footer'>\\n\
-                        <p>Thank you,</p>\\n\
-                        <p><strong>${laundryName} Team</strong></p>\\n\
-                        <p><strong>${laundryPhone}</strong></p>\\n\
-                        <p><strong>${laundryEmail}</strong></p>\\n\
-                        <p><strong>${userDomain}</strong></p>\\n\
-                    </div>\\n\
-                </body>\\n\
-                </html>`;
+            emailMessage = `<!DOCTYPE html>
+<html>
+<head>
+<style>
+body { font-family: Arial, sans-serif; line-height: 1.6; text-align: center; color: #333; font-size: 17px; }
+.container { padding: 20px; text-align: center; background-color: #f9f9f9; font-size: 17px; }
+.button { background-color: #28a745; color: white !important; padding: 12px 24px; text-decoration: none; font-size: 18px; border-radius: 8px; display: inline-block; margin: 15px 0; }
+.left-align { text-align: left; margin-left: 20px; }
+.footer { margin-top: 20px; font-size: 14px; text-align: center; color: #777; }
+</style>
+</head>
+<body>
+<div class='container'>
+<p class='left-align'>Dear <strong>${order.customerName}</strong>,</p>
+<p class='left-align'>This is a friendly reminder regarding the outstanding payment for your laundry order <strong>${order.orderId}</strong>. Please complete the payment at your earliest convenience.</p>
+<a href='${shortUrl}' class='button'>Pay Now</a>
+</div>
+<div class='footer'>
+<p>Thank you,</p>
+<p><strong>${laundryName} Team</strong></p>
+<p>${laundryPhone}</p>
+</div>
+</body>
+</html>`;
         
         
-            subject = `Payment Reminder for Order Id ${order.orderId} at ${laundryName}`;
+            subject = `Payment Reminder for Order ${order.orderId} at ${laundryName}`;
             description = `Payment reminder sent to ${customerEmail}`;
             
             } else if (type === "pickup") {
@@ -166,38 +164,34 @@ export const NotificationButton = ({ order }) => {
             ", your laundry order " + order.orderId + 
             " is ready for pickup at " + laundryName + 
             ". Please visit us at your convenience to collect your order." + 
-
             " View Order: " + shortUrl + 
-
             " Thank you, " + laundryName + 
             " Team. Contact: " + laundryPhone;
-            emailMessage = `<!DOCTYPE html>\\n\
-            <html>\\n\
-            <head>\\n\
-            <style>\\n\
-                body { font-family: Arial, sans-serif; line-height: 1.6; text-align: center; color: #333; font-size: 17px; }\\n\
-                .container { padding: 20px; text-align: center; background-color: #f9f9f9; font-size: 17px; }\\n\
-                .left-align { text-align: left; margin-left: 20px; }\\n\
-                .button { background-color:rgb(49, 26, 179); color: white !important; padding: 10px 20px; text-decoration: none; font-size: 20px; }\\n\
-                .footer { margin-top: 20px; font-size: 14px; text-align: center; color: #777; font-size: 17px; }\\n\
-            </style>\\n\
-        </head>\\n\
-        <body>\\n\
-            <div class='container'>\\n\
-                <p class='left-align'>Dear <strong>${order.customerName}</strong>,</p>\\n\
-                <p>This is a friendly reminder that your laundry order <strong>${order.orderId}</strong> is ready for pickup at <strong>${laundryName}</strong>.</p>\\n\
-                <a href='${shortUrl}' class='button'>View Order Details</a>\\n\
-                <p>Please visit our store at your convenience to collect your order.</p>\\n\
-            </div>\\n\
-            <div class='footer'>\\n\
-                <p>Thank you,</p>\\n\
-                <p><strong>${laundryName} Team</strong></p>\\n\
-                <p><strong>${laundryPhone}</strong></p>\\n\
-                <p><strong>${laundryEmail}</strong></p>\\n\
-                <p><strong>${userDomain}</strong></p>\\n\
-            </div>\\n\
-        </body>\\n\
-            </html>`;
+            emailMessage = `<!DOCTYPE html>
+<html>
+<head>
+<style>
+body { font-family: Arial, sans-serif; line-height: 1.6; text-align: center; color: #333; font-size: 17px; }
+.container { padding: 20px; text-align: center; background-color: #f9f9f9; font-size: 17px; }
+.left-align { text-align: left; margin-left: 20px; }
+.button { background-color: #4299E1; color: white !important; padding: 12px 24px; text-decoration: none; font-size: 18px; border-radius: 8px; display: inline-block; margin: 15px 0; }
+.footer { margin-top: 20px; font-size: 14px; text-align: center; color: #777; }
+</style>
+</head>
+<body>
+<div class='container'>
+<p class='left-align'>Dear <strong>${order.customerName}</strong>,</p>
+<p>Your laundry order <strong>${order.orderId}</strong> is ready for pickup at <strong>${laundryName}</strong>.</p>
+<a href='${shortUrl}' class='button'>View Order Details</a>
+<p>Please visit our store at your convenience to collect your order.</p>
+</div>
+<div class='footer'>
+<p>Thank you,</p>
+<p><strong>${laundryName} Team</strong></p>
+<p>${laundryPhone}</p>
+</div>
+</body>
+</html>`;
             subject = `Pickup Reminder for Order ${order.orderId} at ${laundryName}`;
             description = `Pickup reminder sent to ${customerEmail}`;
         }
