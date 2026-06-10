@@ -663,6 +663,70 @@ async def update_order_endpoint(
                 except Exception as notif_err:
                     logger.warning(f"Auto-notification error for {orderId}: {notif_err}")
 
+            # Auto-notify for review when order is picked up / delivered
+            if order_status in ("OrderPickedUp", "Delivered"):
+                try:
+                    from app.services.notification_service import send_email, send_sms
+                    customer_id_for_review = current_order["customer_id"]
+                    cur.execute("""
+                        SELECT first_name, email, phone_number, notif_email, notif_phone
+                        FROM shop.customers WHERE customer_id = %s
+                    """, (customer_id_for_review,))
+                    cust = cur.fetchone()
+                    cur.execute("SELECT laundry_name, user_domain FROM shop.laundry_shops WHERE laundry_id = %s", (laundryId,))
+                    shop = cur.fetchone()
+
+                    # Get who processed the laundry (employee who set status to ProcessingCompleted)
+                    processed_by = ""
+                    processor_name = ""
+                    cur.execute("""
+                        SELECT emp_id, emp_name FROM orders.order_history
+                        WHERE order_id = %s AND new_value = 'ProcessingCompleted'
+                        ORDER BY changed_at DESC LIMIT 1
+                    """, (orderId,))
+                    hist_row = cur.fetchone()
+                    if hist_row:
+                        processor_name = hist_row["emp_name"] or ""
+                        processed_by = hist_row["emp_id"] or ""
+                    
+                    # Fallback: if no history, use last_updated_by
+                    if not processor_name and (current_order.get("last_updated_by") or empId):
+                        fallback_id = current_order.get("last_updated_by") or empId
+                        cur.execute("SELECT first_name, last_name FROM shop.employees WHERE emp_id = %s", (fallback_id,))
+                        emp_row = cur.fetchone()
+                        if emp_row:
+                            processor_name = f"{emp_row['first_name']} {emp_row['last_name'] or ''}".strip()
+
+                    if cust and shop:
+                        laundry_name = shop["laundry_name"]
+                        base_url = shop["user_domain"] or "https://www.roundrocklaundry.com"
+                        first_name = cust["first_name"] or "Customer"
+                        review_url = f"{base_url}/{laundryId}/user/my-orders/?order_id={orderId}&is_open=true"
+
+                        processed_msg = f" Your laundry was handled by <strong>{processor_name}</strong>." if processor_name else ""
+
+                        if cust.get("notif_email", True) and cust["email"]:
+                            html_body = f"""
+                            <h2>Thank you for choosing {laundry_name}! 🙏</h2>
+                            <p>Hi {first_name},</p>
+                            <p>Your laundry order <strong>{orderId}</strong> is complete.{processed_msg}</p>
+                            <p>We'd love to hear how we did! Your feedback helps us improve.</p>
+                            <p><a href="{review_url}" style="background:#4299E1;color:white;padding:12px 24px;text-decoration:none;border-radius:8px;font-weight:bold;display:inline-block;">Leave a Review</a></p>
+                            <p style="color:#777;font-size:13px;">Thank you for your business! — {laundry_name} Team</p>
+                            """
+                            send_email(cust["email"], f"How was your experience? - {laundry_name}", html_body)
+
+                        if cust.get("notif_phone", True) and cust["phone_number"]:
+                            sms = f"Hi {first_name}! Your order {orderId} is complete."
+                            if processor_name:
+                                sms += f" Handled by {processor_name}."
+                            sms += f" We'd love a review: {review_url} - {laundry_name}"
+                            send_sms(cust["phone_number"], sms)
+
+                        logger.info(f"Review notification sent for {orderId} (processed by: {processor_name})")
+                except Exception as review_err:
+                    logger.warning(f"Review notification error for {orderId}: {review_err}")
+
             # Fetch updated order to return (will be re-fetched after capture if needed)
             result = get_single_order(cur, laundryId, orderId)
 
