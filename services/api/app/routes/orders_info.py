@@ -854,11 +854,11 @@ def get_orders_by_status(cur, laundry_id, operation, page=1, limit=30, order_typ
         """
         where_params = [laundry_id, ninety_days_ago]
     elif operation == 'completed':
-        where = "o.laundry_id = %s AND o.status_category IN ('Completed','Cancelled')"
-        where_params = [laundry_id]
+        where = "o.laundry_id = %s AND o.status_category IN ('Completed','Cancelled') AND o.created_at >= %s"
+        where_params = [laundry_id, ninety_days_ago]
     elif operation == 'canceled':
-        where = "o.laundry_id = %s AND o.status_category = 'Cancelled'"
-        where_params = [laundry_id]
+        where = "o.laundry_id = %s AND o.status_category = 'Cancelled' AND o.created_at >= %s"
+        where_params = [laundry_id, ninety_days_ago]
     else:
         return {"body": {"orders": [], "pageInfo": {"page": page, "limit": limit, "totalRecords": 0, "totalPages": 0}}}
 
