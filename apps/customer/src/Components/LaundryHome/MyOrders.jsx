@@ -1251,16 +1251,23 @@ const MyOrders = ({ customerId, laundryId, laundryTimeZone }) => {
                                 </Box>
 
                                 {/* Laundry Photos (pickup/scale) */}
-                                {orderDetails.imageUrl && (
+                                {(orderDetails.imageUrl || orderDetails.weightImageUrl) && (
                                     <Box mt={4} p={3} bg="white" borderRadius="md" boxShadow="sm">
                                         <Text fontWeight="600" fontSize="sm" mb={2}>📷 Laundry Photos</Text>
-                                        <Image
-                                            src={orderDetails.imageUrl}
-                                            alt="Laundry photo"
-                                            maxH="200px"
-                                            borderRadius="md"
-                                            objectFit="cover"
-                                        />
+                                        <HStack spacing={3} flexWrap="wrap">
+                                            {orderDetails.imageUrl && (
+                                                <Box>
+                                                    <Text fontSize="xs" color="gray.500" mb={1}>Pickup</Text>
+                                                    <Image src={orderDetails.imageUrl} alt="Pickup photo" maxH="150px" borderRadius="md" objectFit="cover" />
+                                                </Box>
+                                            )}
+                                            {orderDetails.weightImageUrl && (
+                                                <Box>
+                                                    <Text fontSize="xs" color="gray.500" mb={1}>Weight</Text>
+                                                    <Image src={orderDetails.weightImageUrl} alt="Weight photo" maxH="150px" borderRadius="md" objectFit="cover" />
+                                                </Box>
+                                            )}
+                                        </HStack>
                                     </Box>
                                 )}
 

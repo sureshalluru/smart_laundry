@@ -2098,7 +2098,7 @@ const { open: openCancelUber, ModalUI: CancelUberModal } = useCancelUberHandoff(
                                                                 await axios.post(
                                                                     `${process.env.REACT_APP_AWS_API_URL}/api/driver/upload-image`,
                                                                     { imageBase64: base64 },
-                                                                    { params: { operation: 'uploadImage', laundryId, orderId: selectedOrderDetails.orderId }, headers: { Authorization: `Bearer ${authToken}` } }
+                                                                    { params: { operation: 'uploadImage', laundryId, orderId: selectedOrderDetails.orderId, imageType: 'weight' }, headers: { Authorization: `Bearer ${authToken}` } }
                                                                 );
                                                                 toast({ title: 'Scale photo uploaded', status: 'success', duration: 3000 });
                                                             };

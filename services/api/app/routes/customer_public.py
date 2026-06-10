@@ -434,6 +434,7 @@ async def get_customer_order_detail(
                     "laundryBags": order["laundry_bags"],
                     "coupon": order["coupon"],
                     "imageUrl": order["image_url"],
+                    "weightImageUrl": order.get("weight_image_url"),
                     "tip": {
                         "tipAmount": float(order["tip_amount"] or 0),
                         "tipPercentage": float(order["tip_percentage"] or 0) if order["tip_percentage"] else None,
@@ -617,3 +618,27 @@ async def get_customer_info(
         }
         # Return body as JSON string (frontend does JSON.parse on it)
         return {"statusCode": 200, "body": json_mod.dumps(data)}
+
+
+@router.put("/update-customer-notifications")
+async def update_customer_notifications(body: dict = Body({})):
+    """Update customer notification preferences."""
+    params = body.get("queryStringParameters", body)
+    customer_id = params.get("customerId")
+    prefs_str = params.get("notificationPreferences", "{}")
+    
+    import json as json_mod
+    prefs = json_mod.loads(prefs_str) if isinstance(prefs_str, str) else prefs_str
+
+    if not customer_id:
+        return {"statusCode": 400, "body": {"message": "Missing customerId"}}
+
+    with get_db() as conn:
+        cur = get_cursor(conn)
+        cur.execute("""
+            UPDATE shop.customers
+            SET notif_email = %s, notif_sms = %s, notif_phone = %s
+            WHERE customer_id = %s
+        """, (prefs.get("email", True), prefs.get("sms", True), prefs.get("phone", True), customer_id))
+
+    return {"statusCode": 200, "body": {"status": "success", "message": "Notification preferences updated"}}

@@ -87,20 +87,9 @@ export const NotificationButton = ({ order }) => {
         }
 
         const { customerEmail, customerPhone, orderStatus, orderType, paymentStatus, laundryName } = order;
-        const customerNotification = order["customer Notification"];
+        const customerNotification = order["customer Notification"] || order["customerNotification"] || { email: true, sms: true, phone: true };
         console.log("order status:",orderStatus);
         console.log("order:", order);
-
-        if (!customerNotification) {
-            toast({
-                title: "No Notification Preference",
-                description: "Customer has not set a preference for notifications.",
-                status: "info",
-                duration: 3000,
-                isClosable: true,
-            });
-            return;
-        }
 
         setLoading(true);
 
