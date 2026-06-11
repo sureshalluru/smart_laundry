@@ -140,10 +140,29 @@ export default function AdminCreateOrder() {
         }
         setIsRegistrationLoading(true);
         try {
+            const modifiedPhone = `+1${phoneNumber.replace(/\D/g, '')}`;
+
+            // First check if customer already exists
+            const checkResponse = await handlePhoneNumberCheck(modifiedPhone, laundryId);
+            if (checkResponse.exists) {
+                setCustomerId(checkResponse.customerId);
+                setActiveStep(1);
+                toast({
+                    title: "Customer Found",
+                    description: `Existing customer: ${checkResponse.customerFirstName || firstName}`,
+                    status: "success",
+                    duration: 3000,
+                    isClosable: true,
+                });
+                setIsRegistrationLoading(false);
+                return;
+            }
+
+            // Register new customer
             const {isSignUpComplete, userId, nextStep} = await initiateSignUp(
                 laundryId,
                 email,
-                `+1${phoneNumber}`, // TODO: Change this logic,
+                modifiedPhone,
                 firstName,
                 lastName,
                 true,
@@ -152,7 +171,7 @@ export default function AdminCreateOrder() {
 
             if (isSignUpComplete && nextStep === "DONE") {
                 setCustomerId(userId);
-                setActiveStep(1); // Proceed to the next step
+                setActiveStep(1);
                 toast({
                     title: "Registration Successful",
                     description: "Customer has been registered successfully.",
