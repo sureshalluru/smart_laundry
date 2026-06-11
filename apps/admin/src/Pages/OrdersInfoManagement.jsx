@@ -1188,8 +1188,7 @@ const { open: openCancelUber, ModalUI: CancelUberModal } = useCancelUberHandoff(
                 (
                     status === "ordercanceled" ||
                     status === "delivered" ||
-                    status === "orderpickedup" ||
-                    (status === "enroutetodelivery" && orderType === "online")
+                    status === "orderpickedup"
                 )
             );
 
@@ -1811,14 +1810,18 @@ const { open: openCancelUber, ModalUI: CancelUberModal } = useCancelUberHandoff(
                                                         const baseStatus = initialStatus || selectedOrderDetails.orderStatus;
                                                         const currentIndex = adjustedStatusOptions.indexOf(baseStatus);
                                                         const isEnabled = index === currentIndex || index === currentIndex + 1;
+                                                        // Don't allow admin to set Delivered or OrderPickedUp — that's for driver
+                                                        const isTerminalStatus = status === "Delivered" || status === "OrderPickedUp";
+                                                        // Block EnRouteToDelivery if payment is not cleared
+                                                        const isBlockedByPayment = status === "EnRouteToDelivery" && selectedOrderDetails?.paymentStatus !== "Paid";
 
                                                         return (
                                                             <MenuItem
                                                                 key={status}
-                                                                onClick={() => isEnabled && handleStatusChange(status)}
-                                                                isDisabled={!isEnabled}
+                                                                onClick={() => (isEnabled && !isTerminalStatus && !isBlockedByPayment) && handleStatusChange(status)}
+                                                                isDisabled={!isEnabled || isTerminalStatus || isBlockedByPayment}
                                                             >
-                                                                {status}
+                                                                {status}{isBlockedByPayment ? ' (Payment Required)' : ''}
                                                             </MenuItem>
                                                         );
                                                     })}
