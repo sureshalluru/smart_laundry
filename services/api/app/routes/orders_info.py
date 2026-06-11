@@ -852,7 +852,12 @@ async def update_order_endpoint(
             except Exception as capture_err:
                 logger.warning(f"Payment auto-capture error for {orderId}: {capture_err}")
 
-        return {"statusCode": 200, "body": result.get("body", {})}
+        response_body = result.get("body", {})
+        if should_auto_capture and capture_grand_total > 0:
+            # Check if payment actually went through
+            if not response_body.get("paymentStatus") == "Paid":
+                response_body["paymentWarning"] = "Payment capture failed. Card may have been declined. Please collect payment manually."
+        return {"statusCode": 200, "body": response_body}
 
     except Exception as e:
         logger.exception("update_order error")

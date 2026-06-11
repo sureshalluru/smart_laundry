@@ -3150,6 +3150,19 @@ const handleAssignLaundryDriver = async (customAddress) => {
                     isClosable: true,
                     position: "top",
                 });
+
+                // Show payment warning if auto-capture failed
+                if (serverUpdatedOrder?.paymentWarning) {
+                    toast({
+                        title: "⚠️ Payment Failed",
+                        description: serverUpdatedOrder.paymentWarning,
+                        status: "warning",
+                        duration: 10000,
+                        isClosable: true,
+                        position: "top",
+                    });
+                }
+
                 setShouldRefetchOrdersAfterClose(true);
 
                 const newOrderDetails = await fetchSingleOrder(laundryId, orderId);
