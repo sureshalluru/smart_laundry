@@ -42,6 +42,8 @@ export default function LaundryLandingWrapper() {
                         bagPrice: infoRes.data.bagPrice || 30,
                         siteContent: infoRes.data.siteContent || {},
                     });
+                    // Set browser title dynamically
+                    document.title = `${infoRes.data.laundryName} - Free Pickup and Delivery`;
                 } else {
                     navigate('/invalid');
                 }

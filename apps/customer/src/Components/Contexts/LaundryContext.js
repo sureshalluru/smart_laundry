@@ -23,8 +23,8 @@ export const LaundryProvider = ({ children }) => {
                 );
 
                 if (response.data.status === 'success' && response.data.exists) {
-                    // Save any data you need (e.g., laundryName, stripe keys)
                     setLaundryData(response.data);
+                    document.title = `${response.data.laundryName} - Free Pickup and Delivery`;
                 } else {
                     navigate('/invalid');
                 }
