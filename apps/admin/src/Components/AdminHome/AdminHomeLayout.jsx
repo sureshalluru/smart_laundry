@@ -337,12 +337,12 @@ const SidebarContent = ({
     return (
     
     <VStack spacing={4} align="stretch" mt={["0px", "0px", "40px", "50px"]} >
-        <Button as="a" href={`/${laundryId}/admin/home`}
+        <Button as="a" href={`/${laundryId}/admin/active-orders`}
             leftIcon={<FaHome />}
             variant="ghost"
             colorScheme="blue"
             justifyContent="flex-start"
-            onClick={() => navigate(`/${laundryId}/admin/home`)}
+            onClick={() => navigate(`/${laundryId}/admin/active-orders`)}
         >
             Home
         </Button>
@@ -568,6 +568,15 @@ const SidebarContent = ({
                 onClick={() => navigate(`/${laundryId}/admin/zip-interest`)}
         >
             Zip Demand
+        </Button>
+        <Button as="a" href={`/${laundryId}/admin/dashboard`}
+                leftIcon={<FaHome />}
+                variant="ghost"
+                colorScheme="green"
+                justifyContent="flex-start"
+                onClick={() => navigate(`/${laundryId}/admin/dashboard`)}
+        >
+            Dashboard
         </Button>
         <Button
             leftIcon={<FaSignOutAlt />}
