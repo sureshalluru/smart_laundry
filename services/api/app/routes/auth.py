@@ -35,28 +35,38 @@ async def register(body: dict = Body(...)):
     email = body.get("email")
     first_name = body.get("firstName")
     last_name = body.get("lastName")
-    password = body.get("password")
+    laundry_id = body.get("laundryId")
 
-    if not phone or not password:
-        raise HTTPException(status_code=400, detail="Phone number and password required")
+    if not phone:
+        raise HTTPException(status_code=400, detail="Phone number required")
 
     with get_db() as conn:
         cur = get_cursor(conn)
 
         # Check if customer already exists
-        cur.execute("SELECT customer_id FROM shop.customers WHERE phone_number = %s", (phone,))
-        if cur.fetchone():
+        normalized = phone.replace("+1", "").strip()
+        cur.execute("SELECT customer_id FROM shop.customers WHERE phone_number LIKE %s", (f"%{normalized}%",))
+        existing = cur.fetchone()
+        if existing:
             raise HTTPException(status_code=409, detail="Phone number already registered")
 
-        # Create customer
-        hashed = hash_password(password)
+        # Create customer (no password — uses OTP auth)
+        import uuid
+        customer_id = str(uuid.uuid4())
         cur.execute("""
-            INSERT INTO shop.customers (phone_number, email, first_name, last_name, password_hash)
-            VALUES (%s, %s, %s, %s, %s)
+            INSERT INTO shop.customers (customer_id, phone_number, email, first_name, last_name, notif_email, notif_sms, notif_phone)
+            VALUES (%s, %s, %s, %s, %s, TRUE, TRUE, TRUE)
             RETURNING customer_id
-        """, (phone, email, first_name, last_name, hashed))
+        """, (customer_id, phone, email, first_name, last_name))
         row = cur.fetchone()
         customer_id = row["customer_id"]
+
+        # Create laundry stats record if laundryId provided
+        if laundry_id:
+            cur.execute("""
+                INSERT INTO shop.customer_laundry_stats (customer_id, laundry_id)
+                VALUES (%s, %s) ON CONFLICT DO NOTHING
+            """, (customer_id, laundry_id))
 
     # Issue tokens
     token_data = {
