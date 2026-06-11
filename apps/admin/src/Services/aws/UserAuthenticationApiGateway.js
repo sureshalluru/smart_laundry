@@ -44,8 +44,8 @@ export const initiateSignUp = async (laundryId, email, phoneNumber, firstName, l
         });
         return {
             isSignUpComplete: true,
-            userId: response.data.user?.sub,
-            nextStep: null,
+            userId: response.data.user?.sub || response.data.userId,
+            nextStep: "DONE",
             error: null
         };
     } catch (error) {

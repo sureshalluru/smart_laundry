@@ -128,7 +128,7 @@ export default function AdminCreateOrder() {
 
     // Function to register the customer
     const registerCustomer = async () => {
-        if (!firstName || !lastName || !email || !phoneNumber) {
+        if (!firstName || !lastName || !phoneNumber) {
             toast({
                 title: 'Error',
                 description: 'All fields are required. Please fill in all the details.',
@@ -336,8 +336,8 @@ export default function AdminCreateOrder() {
                     onChange={(e) => setLastName(e.target.value)}
                   />
                 </FormControl>
-                <FormControl id="email" isRequired>
-                  <FormLabel>Email Address</FormLabel>
+                <FormControl id="email">
+                  <FormLabel>Email Address (optional)</FormLabel>
                   <Input
                     type="email"
                     placeholder="Enter email address"
