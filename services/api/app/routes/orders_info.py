@@ -600,9 +600,10 @@ async def update_order_endpoint(
                 "grand_total": grand_total,
                 "discounted_price": discounted_price,
                 "laundry_bags": laundry_bags,
-                "last_updated_by": empId,
                 "updated_at": datetime.now(),
             }
+            if empId:
+                update_fields["last_updated_by"] = empId
             if order_status:
                 update_fields["order_status"] = order_status
                 # Update status category
