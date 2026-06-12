@@ -364,7 +364,7 @@ const DriverHome = ({ laundryId }) => {
   /* ───────────── Render ───────────── */
   return (
     <SidebarLayout laundryId={laundryId}>
-      <Box p={[3, 4]} bg="#AADDD9" minH="100vh">
+      <Box p={[3, 4]} bg="white" minH="100vh">
         <Flex justify="space-between" wrap="wrap" mb={4} gap={3}>
           <DateFilter
             selectedDates={selectedDates}
@@ -405,7 +405,7 @@ const DriverHome = ({ laundryId }) => {
                   p={3}
                   borderWidth="1px"
                   borderRadius="lg"
-                  bg="#ccf0ed"
+                  bg="#F7FAFC"
                   boxShadow="base"
                 >
                   {/* Header row */}

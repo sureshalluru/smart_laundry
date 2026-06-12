@@ -417,7 +417,7 @@ const AddEmployeePage = () => {
       </VStack>
       )  : (
       <Table variant="simple" mb={6}>
-        <Thead bg="#3ef6e7">
+        <Thead bg="#EBF8FF">
           <Tr>
             <Th>Employee ID</Th>
             <Th>Name</Th>
@@ -428,7 +428,7 @@ const AddEmployeePage = () => {
             <Th>Action</Th>
           </Tr>
         </Thead>
-        <Tbody bg="#ccf0ed">
+        <Tbody bg="#F7FAFC">
           {employees.map((emp) => (
             <Tr key={emp.employeeId}>
               <Td>{emp.employeeId}</Td>

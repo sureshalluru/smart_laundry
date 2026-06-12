@@ -220,7 +220,7 @@ const AdminHomePage = () => {
       <Text fontSize="md" mb={4}>
         Welcome to the Admin Home Page. Use the navigation to manage orders.
       </Text>
-      <Box bg="#ccf0ed" p={4} mb={6} borderRadius="md" boxShadow="sm">
+      <Box bg="#F7FAFC" p={4} mb={6} borderRadius="md" boxShadow="sm">
         <Heading as="h2" size="md" mb={2}>
           Laundry Shop Details
         </Heading>
@@ -230,7 +230,7 @@ const AdminHomePage = () => {
         <Text><strong>Email:</strong> {shopInfo.email}</Text>
       </Box>
       <Grid templateColumns={{ base: '1fr', md: 'repeat(3, 1fr)' }} gap={6}>
-        <GridItem bg="#ccf0ed" p={4} borderRadius="md" boxShadow="sm">
+        <GridItem bg="#F7FAFC" p={4} borderRadius="md" boxShadow="sm">
           <Text fontSize="lg" fontWeight="bold" mb={2}>
             Total Orders (This Month)
           </Text>
@@ -238,7 +238,7 @@ const AdminHomePage = () => {
             {summary.totalOrders}
           </Text>
         </GridItem>
-        <GridItem bg="#ccf0ed" p={4} borderRadius="md" boxShadow="sm">
+        <GridItem bg="#F7FAFC" p={4} borderRadius="md" boxShadow="sm">
           <Text fontSize="lg" fontWeight="bold" mb={2}>
             Total Sales (This Month)
           </Text>
@@ -246,7 +246,7 @@ const AdminHomePage = () => {
             ${summary.monthlySales.toFixed(2)}
           </Text>
         </GridItem>
-        <GridItem bg="#ccf0ed" p={4} borderRadius="md" boxShadow="sm">
+        <GridItem bg="#F7FAFC" p={4} borderRadius="md" boxShadow="sm">
           <Text fontSize="lg" fontWeight="bold" mb={2}>
             Average Order Cost
           </Text>
@@ -254,7 +254,7 @@ const AdminHomePage = () => {
             ${summary.averageCost.toFixed(2)}
           </Text>
         </GridItem>
-        <GridItem bg="#ccf0ed" p={4} borderRadius="md" boxShadow="sm">
+        <GridItem bg="#F7FAFC" p={4} borderRadius="md" boxShadow="sm">
           <Text fontSize="lg" fontWeight="bold" mb={2}>
             Generate Reports
           </Text>

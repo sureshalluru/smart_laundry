@@ -1076,7 +1076,7 @@ const LaundryInfoManagement = ({ validateEmpCredentials, type, empPrefix }) => {
         <Box 
             overflowX="auto" 
             mt={4} 
-            bg = "#AADDD9"
+            bg = "white"
         >
         
         <Flex justify="space-between" alignItems="center" mb={4}>
@@ -1292,7 +1292,7 @@ const LaundryInfoManagement = ({ validateEmpCredentials, type, empPrefix }) => {
             {type === "services" && (              
                 <>
                     <Table variant="simple" size="sm" colorScheme="blue" border="1px solid" borderColor="gray.200">
-                        <Thead bg="#3ef6e7">
+                        <Thead bg="#EBF8FF">
                             <Tr>
                                 <Th fontWeight="bold" fontSize="md">Service Name</Th>
                                 <Th fontWeight="bold" fontSize="md" isNumeric>Price</Th>
@@ -1302,7 +1302,7 @@ const LaundryInfoManagement = ({ validateEmpCredentials, type, empPrefix }) => {
                                 {isServiceEditMode && <Th fontWeight="bold" fontSize="md">Actions</Th>}
                             </Tr>
                         </Thead>
-                        <Tbody bg="#ccf0ed">
+                        <Tbody bg="#F7FAFC">
   {/* Newly added services first */}
   {isServiceEditMode &&
     (newServices || []).map((service, index) => (
@@ -1459,7 +1459,7 @@ const LaundryInfoManagement = ({ validateEmpCredentials, type, empPrefix }) => {
                     {/* Table for Products */}
 
                     <Table variant="simple" size="sm" colorScheme="blue" border="1px solid" borderColor="gray.200">
-                    <Thead bg="#3ef6e7">
+                    <Thead bg="#EBF8FF">
                         <Tr>
                         <Th fontWeight="bold" fontSize="md">Product Name</Th>
                         <Th fontWeight="bold" fontSize="md" isNumeric>Price</Th>
@@ -1468,7 +1468,7 @@ const LaundryInfoManagement = ({ validateEmpCredentials, type, empPrefix }) => {
                         {isProductEditMode && <Th fontWeight="bold" fontSize="md">Actions</Th>}
                         </Tr>
                     </Thead>
-                    <Tbody bg="#ccf0ed">
+                    <Tbody bg="#F7FAFC">
                     {isProductEditMode && newProducts.map((product, index) => (
                         <Tr key={`new-${index}`} _hover={{ bg: "green.50" }}>
                             <Td>
@@ -1607,13 +1607,13 @@ const LaundryInfoManagement = ({ validateEmpCredentials, type, empPrefix }) => {
             {type === "zipCodes" && (
                 <>
                     <Table variant="simple" size="sm" colorScheme="blue">
-                        <Thead bg="#3ef6e7">
+                        <Thead bg="#EBF8FF">
                             <Tr>
                                 <Th>Serviceable Zip Codes</Th>
                                 {isLocationEditMode && <Th>Actions</Th>}
                             </Tr>
                         </Thead>
-                        <Tbody bg="#ccf0ed">
+                        <Tbody bg="#F7FAFC">
                             {/* Existing locations */}
                             {locationsData.map((location, index) => (
                                 <Tr key={index}>

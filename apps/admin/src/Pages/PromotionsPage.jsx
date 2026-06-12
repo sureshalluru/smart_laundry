@@ -428,7 +428,7 @@ const PromotionsPage = ({ validateEmpCredentials, fetchLaundryServices, empPrefi
       ) : (
         <Box overflowX="auto" maxW="100%">
           <Table variant="simple" size="sm" colorScheme="blue" border="1px solid" borderColor="gray.200">
-                              <Thead bg="#3ef6e7">
+                              <Thead bg="#EBF8FF">
           
               <Tr>
                 <Th fontSize="sm">Promo Code</Th>
@@ -439,7 +439,7 @@ const PromotionsPage = ({ validateEmpCredentials, fetchLaundryServices, empPrefi
                 {editMode && <Th fontSize="sm">Actions</Th>}
               </Tr>
             </Thead>
-            <Tbody bg="#ccf0ed">
+            <Tbody bg="#F7FAFC">
               {promotions.map((promo) => (
                 <Tr key={promo.promoCode}>
                   <Td>

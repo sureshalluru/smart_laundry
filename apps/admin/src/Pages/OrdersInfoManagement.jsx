@@ -3840,7 +3840,7 @@ const handleAssignLaundryDriver = async (customAddress) => {
     return (
         <Box
             padding={padding}
-            bg="#AADDD9">
+            bg="white">
             {/* Search and Filter Controls */}
             <Flex justifyContent="space-between" mb={6} flexWrap="wrap" gap={4}>
                 <Input
@@ -3848,7 +3848,7 @@ const handleAssignLaundryDriver = async (customAddress) => {
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                     maxWidth="400px"
-                    bg="#ccf0ed"
+                    bg="#F7FAFC"
                 />
 
                 {/* Payment Status Filter */}
@@ -3984,7 +3984,7 @@ const handleAssignLaundryDriver = async (customAddress) => {
                                 borderWidth="1px"
                                 borderRadius="md"
                                 boxShadow="sm"
-                                bg="#ccf0ed"
+                                bg="#F7FAFC"
                                 position="relative"
                             >
                                 {/* Action Button - Fixed in top-right corner */}
@@ -4231,10 +4231,10 @@ const handleAssignLaundryDriver = async (customAddress) => {
                     w={useBreakpointValue({base: "90%", sm: "60%", md: "500px", lg: "600px"})}
                     maxH="75vh"
                     overflow="hidden"
-                    bg="#AADDD9"
+                    bg="white"
                     borderRadius="md"
                 >
-                    <ModalHeader bg="#AADDD9" fontWeight="bold" fontSize={{base: "lg", md: "xl"}} position="sticky">
+                    <ModalHeader bg="white" fontWeight="bold" fontSize={{base: "lg", md: "xl"}} position="sticky">
                         <Text fontWeight="bold" mb={4} fontSize={{base: "md", md: "lg"}}>
                             <Text as="span" color="blue.600">
                                 {orderHistory?.orderId ?? "Order"} History
@@ -4260,7 +4260,7 @@ const handleAssignLaundryDriver = async (customAddress) => {
                                         borderRadius="md"
                                         boxShadow="sm"
                                         p={4}
-                                        bg="#ccf0ed"
+                                        bg="#F7FAFC"
                                     >
                                         <Flex
                                             justifyContent="space-between"

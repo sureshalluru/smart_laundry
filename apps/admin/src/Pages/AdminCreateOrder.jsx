@@ -263,7 +263,7 @@ export default function AdminCreateOrder() {
                 top="100%"
                 left={0}
                 right={0}
-                bg="#ccf0ed"
+                bg="#F7FAFC"
                 boxShadow="lg"
                 border="1px solid"
                 borderColor="gray.300"

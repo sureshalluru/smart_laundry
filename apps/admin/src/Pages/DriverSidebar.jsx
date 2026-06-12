@@ -90,7 +90,7 @@ import {
       }, [laundryId]);
   
     return (
-      <Box minHeight="100vh" bg="#AADDD9" m="0" p="0">
+      <Box minHeight="100vh" bg="white" m="0" p="0">
         {/* Header with Hamburger */}
         <Flex
         as="header"
@@ -167,7 +167,7 @@ import {
             top="70px"
             left="0"
             bottom="0"
-            bg="#ccf0ed"
+            bg="#F7FAFC"
             color="white"
           >
             <SidebarContent
@@ -186,7 +186,7 @@ import {
         {isMobile && (
           <Drawer isOpen={isOpen} placement="left" onClose={onClose}>
             <DrawerOverlay />
-            <DrawerContent bg="#ccf0ed" color="black">
+            <DrawerContent bg="#F7FAFC" color="black">
             <Box position="absolute" top="2" right="2">
       <IconButton
         icon={<Text fontSize="lg" fontWeight="bold">×</Text>}

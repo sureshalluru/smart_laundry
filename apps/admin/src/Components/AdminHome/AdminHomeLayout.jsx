@@ -213,7 +213,7 @@ const handleModalClose = () => {
                 <Box
                     as="aside"
                     w={{ base: "0", md: "250px" }}
-                    bg="#ccf0ed"
+                    bg="#F7FAFC"
                     display={{ base: "none", md: "flex" }}
                     flexDirection="column"
                     borderRight="1px solid"
@@ -236,7 +236,7 @@ const handleModalClose = () => {
                 </Box>
 
                 {/* Main Content */}
-                <Box flex="1" bg="#AADDD9" p={6} pt={{ base: "70px", md: "70px", lg: "70px" }}>
+                <Box flex="1" bg="white" p={6} pt={{ base: "70px", md: "70px", lg: "70px" }}>
                     <Outlet />
                 </Box>
 
@@ -245,7 +245,7 @@ const handleModalClose = () => {
             {/* Drawer for Mobile */}
             <Drawer isOpen={isDrawerOpen} placement="left" onClose={onDrawerClose} >
                 <DrawerOverlay />
-                <DrawerContent bg="#ccf0ed" sx={{
+                <DrawerContent bg="#F7FAFC" sx={{
                     width: ['70%', '300px'], 
                     maxWidth: ['70%', '300px'],
                     overflowY: 'auto',

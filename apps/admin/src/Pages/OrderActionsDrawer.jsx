@@ -42,7 +42,7 @@ const OrderActionsDrawer = ({ isOpen, onClose, order, handleOrderHistory, handle
                 borderRightRadius="25px"
                 display="flex"
                 flexDirection="column"
-                bg="#ccf0ed"
+                bg="#F7FAFC"
                 mt={{ base: "30px", md: "50px", lg: "70px" }}
                 mr={{ base: "10px", md: "20px", lg: "30px"}}
                 pb="15px"
@@ -52,7 +52,7 @@ const OrderActionsDrawer = ({ isOpen, onClose, order, handleOrderHistory, handle
 
                 {/* Drawer Header - Order ID & Actions */}
                 <DrawerHeader
-                    bg="#AADDD9"
+                    bg="white"
                     width="100%"
                     height="fit-content"
                     textAlign="center"
