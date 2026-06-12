@@ -187,17 +187,7 @@ def _employee_login(body: dict):
         if fails and fails["fail_count"] >= 5:
             raise HTTPException(status_code=429, detail="Too many failed attempts. Please try again in 15 minutes.")
 
-        # Check if device is registered for this laundry
-        if laundry_id:
-            cur.execute("""
-                SELECT device_id FROM shop.registered_devices
-                WHERE laundry_id = %s AND device_fingerprint = %s AND is_active = TRUE
-            """, (laundry_id, device_fingerprint))
-            device = cur.fetchone()
-            if not device:
-                raise HTTPException(status_code=403, detail="DEVICE_NOT_REGISTERED")
-
-        # Validate employee credentials
+        # Validate employee credentials first (to get their laundry_id)
         cur.execute("""
             SELECT emp_id, first_name, last_name, role, passcode, laundry_id, is_active
             FROM shop.employees WHERE UPPER(emp_id) = UPPER(%s)
@@ -211,6 +201,23 @@ def _employee_login(body: dict):
                 VALUES (%s, %s, %s, FALSE)
             """, (laundry_id or '', device_fingerprint, emp_id))
             raise HTTPException(status_code=401, detail="Invalid credentials")
+
+        # Check if device is registered for the employee's laundry
+        # Only enforce if at least one device is registered (skip for fresh laundries)
+        cur.execute("""
+            SELECT COUNT(*) as cnt FROM shop.registered_devices
+            WHERE laundry_id = %s AND is_active = TRUE
+        """, (emp["laundry_id"],))
+        has_devices = cur.fetchone()["cnt"] > 0
+
+        if has_devices:
+            cur.execute("""
+                SELECT device_id FROM shop.registered_devices
+                WHERE laundry_id = %s AND device_fingerprint = %s AND is_active = TRUE
+            """, (emp["laundry_id"], device_fingerprint))
+            device = cur.fetchone()
+            if not device:
+                raise HTTPException(status_code=403, detail="DEVICE_NOT_REGISTERED")
 
         # Log successful attempt and update device last_login
         cur.execute("""
@@ -263,15 +270,26 @@ async def check_device(body: dict = Body(...)):
 async def register_device(body: dict = Body(...)):
     """Register a new device using the laundry's registration code."""
     laundry_id = body.get("laundryId")
+    employee_id = body.get("employeeId")
     device_fingerprint = body.get("deviceFingerprint")
     device_name = body.get("deviceName", "Unknown Device")
     registration_code = body.get("registrationCode")
 
-    if not laundry_id or not device_fingerprint or not registration_code:
+    if not device_fingerprint or not registration_code:
         raise HTTPException(status_code=400, detail="Missing required fields")
 
     with get_db() as conn:
         cur = get_cursor(conn)
+
+        # If no laundryId provided, look it up from employeeId
+        if not laundry_id and employee_id:
+            cur.execute("SELECT laundry_id FROM shop.employees WHERE UPPER(emp_id) = UPPER(%s)", (employee_id,))
+            emp_row = cur.fetchone()
+            if emp_row:
+                laundry_id = emp_row["laundry_id"]
+
+        if not laundry_id:
+            raise HTTPException(status_code=400, detail="Cannot determine laundry. Please contact admin.")
 
         # Verify registration code
         cur.execute("""

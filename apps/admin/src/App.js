@@ -153,7 +153,8 @@ function App() {
     const auth = useAuth();
 
     if (auth.isLoading) return <LoadingSpinner/>;
-    if (auth.error) return <ErrorDisplay error={auth.error}/>;
+    // Don't show global error for login failures — let login page handle them
+    // if (auth.error) return <ErrorDisplay error={auth.error}/>;
 
     if (!auth.isAuthenticated) {
         return (

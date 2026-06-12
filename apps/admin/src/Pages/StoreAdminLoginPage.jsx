@@ -80,7 +80,7 @@ export default function StoreAdminLoginPage() {
             }
         } catch (err) {
             const detail = err.response?.data?.detail || err.message || 'Login failed';
-            if (detail === 'DEVICE_NOT_REGISTERED') {
+            if (detail.includes('DEVICE_NOT_REGISTERED') || detail.includes('device_not_registered')) {
                 setShowDeviceRegistration(true);
                 setError(null);
             } else {
@@ -103,7 +103,7 @@ export default function StoreAdminLoginPage() {
             const response = await axios.post(
                 `${process.env.REACT_APP_AWS_API_URL}/api/auth/register-device`,
                 {
-                    laundryId: '1', // TODO: make dynamic for multi-tenant
+                    employeeId: employeeId,
                     deviceFingerprint,
                     deviceName: navigator.userAgent.substr(0, 100),
                     registrationCode,
