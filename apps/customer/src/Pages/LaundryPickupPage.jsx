@@ -83,6 +83,7 @@ export default function LaundryPickupPage({laundryId,customerId,customerPaymentI
     const [promoDescriptionMessage, setPromoDescriptionMessage] = useState(''); // set the promo notifications text
     // State management for the payment page
     const [existingPaymentMethods, setExistingPaymentMethods] = useState([]); // Store the payment methods of a customer
+    const [payByInvoice, setPayByInvoice] = useState(false); // Commercial customers can pay by invoice
     // State management for the review order page
     const [orderProcessing, setOrderProcessing] = useState(false);
     const [tip, setTip] = useState({
@@ -259,7 +260,7 @@ export default function LaundryPickupPage({laundryId,customerId,customerPaymentI
                 setOrderProcessing(false);
                 return false;
             }
-            if (!customerPaymentId) {
+            if (!customerPaymentId && !payByInvoice) {
                 toast({
                     title: "Payment Information Missing",
                     description: "Please add payment information before placing the order.",
@@ -305,6 +306,7 @@ export default function LaundryPickupPage({laundryId,customerId,customerPaymentI
                 pickupService: pickupService || 'LaundryDriver',
                 dropoffService: dropoffService || 'LaundryDriver',
                 customerPaymentId: customerPaymentId,
+                payByInvoice: payByInvoice,
             };
         } else {
             // Per-pound order payload (existing logic)
@@ -323,7 +325,7 @@ export default function LaundryPickupPage({laundryId,customerId,customerPaymentI
             }
             const pickupDateUTC = formatISO(parseISO(pickupDate), { representation: 'date' });
             const dropoffDateUTC = formatISO(parseISO(dropoffDate), { representation: 'date' });
-            if (!customerPaymentId) {
+            if (!customerPaymentId && !payByInvoice) {
                 toast({
                     title: "Payment Information Missing",
                     description: "Please add payment information before placing the order.",
@@ -374,6 +376,7 @@ export default function LaundryPickupPage({laundryId,customerId,customerPaymentI
                 uberPickupFrequency: uberPickupFrequency,
                 uberDropoffFrequency: uberDropoffFrequency,
                 customerPaymentId: customerPaymentId,
+                payByInvoice: payByInvoice,
             };
         }
 
@@ -752,6 +755,8 @@ export default function LaundryPickupPage({laundryId,customerId,customerPaymentI
                                         existingPaymentMethods={existingPaymentMethods}
                                         setExistingPaymentMethods={setExistingPaymentMethods}
                                         handleNextStep={handleNextStep}
+                                        payByInvoice={payByInvoice}
+                                        setPayByInvoice={setPayByInvoice}
                                     />
                                 </Elements>
                             )}

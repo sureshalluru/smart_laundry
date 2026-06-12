@@ -14,6 +14,7 @@ import {
 } from "@chakra-ui/react";
 import { FaHistory, FaTicketAlt, FaReceipt, FaFileInvoice  } from "react-icons/fa";
 import {NotificationButton} from "./SendNotification";
+import axios from "axios";
 
 const OrderActionsDrawer = ({ isOpen, onClose, order, handleOrderHistory, handlePrintTicket, handlePrintReceipt, setSelectedOrder, setInvoiceModalOpen, setPaymentInstructions, setSendEmail }) => {
     const drawerSize = useBreakpointValue({ base: "xs", sm: "xs", md: "sm", lg: "xs", xl: "xs" });
@@ -123,6 +124,35 @@ const OrderActionsDrawer = ({ isOpen, onClose, order, handleOrderHistory, handle
                             </Tooltip>
 
                             {order.orderId.startsWith("IS-") && <NotificationButton order={order} />}
+
+                            {/* Send Invoice button for unpaid orders */}
+                            {order.paymentStatus !== "Paid" && (
+                                <Tooltip label="Send Invoice (Net 30)" placement="top">
+                                    <IconButton
+                                        icon={<FaFileInvoice />}
+                                        colorScheme="purple"
+                                        size="lg"
+                                        isRound
+                                        onClick={async () => {
+                                            try {
+                                                const res = await axios.post(
+                                                    `${process.env.REACT_APP_AWS_API_URL}/api/payment/create-invoice`,
+                                                    { orderId: order.orderId, laundryId: order.laundryId, customerEmail: order.customerEmail, customerName: order.customerName },
+                                                    { headers: { Authorization: `Bearer ${localStorage.getItem('idToken')}` } }
+                                                );
+                                                if (res.data.status === 'success') {
+                                                    alert(`✅ Invoice sent to ${order.customerEmail}\nAmount: $${res.data.amountDue}\nPayment link: ${res.data.invoiceUrl}`);
+                                                } else {
+                                                    alert(`❌ ${res.data.message}`);
+                                                }
+                                            } catch (err) {
+                                                alert(`Error: ${err.response?.data?.message || err.message}`);
+                                            }
+                                        }}
+                                        aria-label="Send Invoice"
+                                    />
+                                </Tooltip>
+                            )}
 
                         </VStack>
                     )}

@@ -82,7 +82,9 @@ const PaymentPage = ({
                          isPaymentStepValid,
                          existingPaymentMethods,
                          setExistingPaymentMethods,
-                         handleNextStep
+                         handleNextStep,
+                         payByInvoice,
+                         setPayByInvoice
                      }) => {
     const stripe = useStripe();
     const elements = useElements();
@@ -691,11 +693,32 @@ const PaymentPage = ({
             <Button
                 colorScheme="blue"
                 onClick={handleNextStep}
-                isDisabled={disableNextButton}
+                isDisabled={disableNextButton && !payByInvoice}
                 width="100%"
             >
                 Next: Review Order
             </Button>
+
+            {/* Pay by Invoice option for commercial customers */}
+            <Box mt={4} p={4} bg="gray.50" borderRadius="md" border="1px solid" borderColor="gray.200">
+                <Flex align="center" justify="space-between">
+                    <Box>
+                        <Text fontSize="sm" fontWeight="600">Commercial Customer?</Text>
+                        <Text fontSize="xs" color="gray.500">Pay by invoice (Net 30 days). No card required.</Text>
+                    </Box>
+                    <Button
+                        size="sm"
+                        colorScheme={payByInvoice ? "green" : "gray"}
+                        variant={payByInvoice ? "solid" : "outline"}
+                        onClick={() => {
+                            setPayByInvoice(!payByInvoice);
+                            if (!payByInvoice) setIsPaymentStepValid(true);
+                        }}
+                    >
+                        {payByInvoice ? "✓ Invoice Selected" : "Pay by Invoice"}
+                    </Button>
+                </Flex>
+            </Box>
 
             {/* AlertDialog for Delete Confirmation */}
             <AlertDialog

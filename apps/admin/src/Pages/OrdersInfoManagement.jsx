@@ -1812,8 +1812,10 @@ const { open: openCancelUber, ModalUI: CancelUberModal } = useCancelUberHandoff(
                                                         const isEnabled = index === currentIndex || index === currentIndex + 1;
                                                         // Don't allow admin to set Delivered or OrderPickedUp — that's for driver
                                                         const isTerminalStatus = status === "Delivered" || status === "OrderPickedUp";
-                                                        // Block EnRouteToDelivery if payment is not cleared
-                                                        const isBlockedByPayment = status === "EnRouteToDelivery" && selectedOrderDetails?.paymentStatus !== "Paid";
+                                        // Block EnRouteToDelivery if payment is not cleared (except invoice orders)
+                                                        const isBlockedByPayment = status === "EnRouteToDelivery" 
+                                                            && selectedOrderDetails?.paymentStatus !== "Paid"
+                                                            && selectedOrderDetails?.paymentStatus !== "Invoice Sent";
 
                                                         return (
                                                             <MenuItem

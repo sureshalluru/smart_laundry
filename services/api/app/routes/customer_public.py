@@ -87,6 +87,7 @@ async def customer_place_order(
         tip_data = body.get("tip", {}) or {}
         frequency = body.get("frequency")
         customer_payment_id = body.get("customerPaymentId")
+        pay_by_invoice = body.get("payByInvoice", False)
 
         # Per-bag pricing fields
         pricing_type = body.get("pricingType", "per_pound")  # "per_bag" or "per_pound"
@@ -179,19 +180,19 @@ async def customer_place_order(
                     pickup_date, pickup_time_interval, dropoff_date, dropoff_time_interval,
                     laundry_bags, special_instructions, coupon, frequency,
                     sub_total, discounted_price, total_cost, grand_total,
-                    pricing_type, auto_generated, is_reviewed, cancel_reason,
+                    pricing_type, pay_by_invoice, auto_generated, is_reviewed, cancel_reason,
                     created_at, updated_at
                 ) VALUES (
                     %s,%s,%s,%s,'Online','OrderSubmitted','Active','Unpaid',
                     %s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,
-                    %s,FALSE,FALSE,'',NOW(),NOW()
+                    %s,%s,FALSE,FALSE,'',NOW(),NOW()
                 )
             """, (
                 order_id, laundry_id, customer_id, address_id,
                 pickup_date, pickup_time_interval, dropoff_date, dropoff_time_interval,
                 laundry_bags, special_instructions, coupon, frequency,
                 sub_total, discounted_price, total_cost, grand_total,
-                pricing_type,
+                pricing_type, pay_by_invoice,
             ))
 
             for svc in services:
@@ -251,8 +252,8 @@ async def customer_place_order(
                     dropoff_time_interval, future_pickup,
                 ))
 
-        # Create $1 hold on customer's card to verify payment method
-        if customer_payment_id:
+        # Create $1 hold on customer's card to verify payment method (skip for invoice orders)
+        if customer_payment_id and not pay_by_invoice:
             try:
                 from app.services.payment_service import create_hold
                 hold_result = create_hold(

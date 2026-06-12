@@ -683,6 +683,65 @@ async def update_order_endpoint(
                 except Exception as notif_err:
                     logger.warning(f"Auto-notification error for {orderId}: {notif_err}")
 
+            # Auto-send Stripe Invoice for pay-by-invoice orders at ProcessingCompleted
+            if order_status == "ProcessingCompleted" and current_order.get("pay_by_invoice"):
+                try:
+                    import stripe
+                    from app.services.payment_service import _init_stripe
+                    _init_stripe(laundryId)
+
+                    # Get customer email
+                    cur.execute("SELECT email, first_name, last_name, phone_number FROM shop.customers WHERE customer_id = %s", (current_order["customer_id"],))
+                    inv_cust = cur.fetchone()
+                    cur.execute("SELECT laundry_name FROM shop.laundry_shops WHERE laundry_id = %s", (laundryId,))
+                    inv_shop = cur.fetchone()
+
+                    if inv_cust and inv_cust["email"]:
+                        # Find or create Stripe customer
+                        existing = stripe.Customer.list(email=inv_cust["email"], limit=1)
+                        stripe_cust = existing.data[0] if existing.data else stripe.Customer.create(
+                            email=inv_cust["email"],
+                            name=f"{inv_cust['first_name'] or ''} {inv_cust['last_name'] or ''}".strip(),
+                            phone=inv_cust["phone_number"] or "",
+                        )
+
+                        # Create invoice
+                        invoice = stripe.Invoice.create(
+                            customer=stripe_cust.id,
+                            collection_method="send_invoice",
+                            days_until_due=30,
+                            description=f"Invoice for order {orderId} - {inv_shop['laundry_name'] if inv_shop else 'Laundry'}",
+                            metadata={"order_id": orderId, "laundry_id": laundryId},
+                        )
+
+                        # Add line items
+                        cur.execute("SELECT * FROM orders.order_services WHERE order_id = %s", (orderId,))
+                        for svc in cur.fetchall():
+                            amt = int(round(float(svc["service_price"] or 0) * float(svc["weight_or_count"] or 0) * 100))
+                            if amt > 0:
+                                stripe.InvoiceItem.create(customer=stripe_cust.id, invoice=invoice.id, amount=amt, currency="usd",
+                                    description=f"{svc['service_name']} ({svc['weight_or_count']} lbs)")
+
+                        if not grand_total or grand_total == 0:
+                            pass  # No items to invoice
+                        elif not cur.rowcount:
+                            stripe.InvoiceItem.create(customer=stripe_cust.id, invoice=invoice.id,
+                                amount=int(round(grand_total * 100)), currency="usd",
+                                description=f"Laundry service - Order {orderId}")
+
+                        # Finalize and send
+                        stripe.Invoice.finalize_invoice(invoice.id)
+                        stripe.Invoice.send_invoice(invoice.id)
+
+                        # Update order
+                        cur.execute("UPDATE orders.orders SET payment_status = 'Invoice Sent', stripe_invoice_id = %s WHERE order_id = %s",
+                                    (invoice.id, orderId))
+                        logger.info(f"Auto-invoice sent for order {orderId} to {inv_cust['email']}")
+                    else:
+                        logger.warning(f"Cannot auto-invoice {orderId}: no customer email")
+                except Exception as inv_err:
+                    logger.warning(f"Auto-invoice error for {orderId}: {inv_err}")
+
             # Auto-notify for review when order is picked up / delivered
             if order_status in ("OrderPickedUp", "Delivered"):
                 try:
@@ -751,10 +810,12 @@ async def update_order_endpoint(
             result = get_single_order(cur, laundryId, orderId)
 
             # Check if we need to auto-capture (collect vars before leaving DB block)
+            # Skip auto-capture for pay-by-invoice orders (they get invoiced instead)
             should_auto_capture = (
                 order_status in ("ProcessingCompleted", "EnRouteToDelivery")
                 and current_order["order_type"] == "Online"
                 and current_order["payment_status"] != "Paid"
+                and not current_order.get("pay_by_invoice")
             )
             capture_customer_id = current_order["customer_id"] if should_auto_capture else None
             capture_grand_total = grand_total if should_auto_capture else 0
