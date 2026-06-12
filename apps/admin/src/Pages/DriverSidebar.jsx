@@ -47,12 +47,12 @@ import {
         </Button>
 
       {/* ✅ Admin Home Button */}
-    <Button as="a" href={`/${laundryId}/admin/home`}
+    <Button as="a" href={`/${laundryId}/admin/active-orders`}
       leftIcon={<FiHome />}
       variant="ghost"
       colorScheme="blue"
       justifyContent="flex-start"
-      onClick={() => navigate(`/${laundryId}/admin/home`)}
+      onClick={() => navigate(`/${laundryId}/admin/active-orders`)}
     >
       Admin Home
     </Button>

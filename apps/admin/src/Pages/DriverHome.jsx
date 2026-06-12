@@ -520,9 +520,36 @@ const DriverHome = ({ laundryId }) => {
                         </Button>
                       </HStack>
                     )}
-                  </Flex>
 
-                  {/* Details */}
+                    {/* Confirm Delivery button for dropoff orders */}
+                    {order.orderStatus?.toLowerCase() === 'enroutetodelivery' && (
+                      <Button
+                        size="sm"
+                        colorScheme="green"
+                        mt={2}
+                        width="100%"
+                        isLoading={loadingOrderIds[`deliver_${order.orderId}`]}
+                        onClick={async () => {
+                          setLoadingOrderIds(p => ({ ...p, [`deliver_${order.orderId}`]: true }));
+                          try {
+                            await axios.put(
+                              `${process.env.REACT_APP_AWS_API_URL}/api/admin/update-order`,
+                              { orderStatus: 'Delivered' },
+                              { params: { operation: 'updateOrder', orderId: order.orderId, laundryId, empId: '' }, headers: { Authorization: `Bearer ${authToken}` } }
+                            );
+                            toast({ title: '✅ Marked as Delivered!', status: 'success', duration: 3000 });
+                            navigate(0); // Refresh
+                          } catch (err) {
+                            toast({ title: 'Error marking delivered', status: 'error', duration: 3000 });
+                          } finally {
+                            setLoadingOrderIds(p => ({ ...p, [`deliver_${order.orderId}`]: false }));
+                          }
+                        }}
+                      >
+                        ✓ Confirm Delivery
+                      </Button>
+                    )}
+                  </Flex>
                   <SimpleGrid columns={{ base: 1, sm: 2 }} spacing={2} mt={2} fontSize="sm">
                     <Box>
                       <Text>
