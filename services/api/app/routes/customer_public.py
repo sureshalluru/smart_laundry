@@ -643,3 +643,50 @@ async def update_customer_notifications(body: dict = Body({})):
         """, (prefs.get("email", True), prefs.get("sms", True), prefs.get("phone", True), customer_id))
 
     return {"statusCode": 200, "body": {"status": "success", "message": "Notification preferences updated"}}
+
+
+@router.post("/create-review")
+async def create_customer_review(body: dict = Body(...)):
+    """Create an order review from the customer."""
+    order_id = body.get("orderId")
+    customer_id = body.get("customerId")
+    laundry_id = body.get("laundryId")
+    rating = int(body.get("rating", 0))
+    comments = body.get("comments", "")
+    image_base64 = body.get("imageBase64")
+
+    if not order_id or not customer_id or not rating:
+        return {"statusCode": 400, "body": {"status": "error", "message": "Missing required fields"}}
+
+    with get_db() as conn:
+        cur = get_cursor(conn)
+
+        # Insert review
+        import uuid
+        review_id = str(uuid.uuid4())
+        cur.execute("""
+            INSERT INTO orders.order_reviews (review_id, order_id, customer_id, laundry_id, employee_rating, review_comment, photo_url, review_date)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, NOW())
+            ON CONFLICT (order_id) DO UPDATE SET employee_rating = EXCLUDED.employee_rating, review_comment = EXCLUDED.review_comment, photo_url = EXCLUDED.photo_url
+        """, (review_id, order_id, customer_id, laundry_id, rating, comments, image_base64))
+
+        # Mark order as reviewed
+        cur.execute("UPDATE orders.orders SET is_reviewed = TRUE WHERE order_id = %s", (order_id,))
+
+        # Update employee average rating if applicable
+        cur.execute("SELECT last_updated_by FROM orders.orders WHERE order_id = %s", (order_id,))
+        order_row = cur.fetchone()
+        if order_row and order_row["last_updated_by"]:
+            emp_id = order_row["last_updated_by"]
+            cur.execute("""
+                UPDATE shop.employees SET
+                    avg_rating = (SELECT AVG(r.employee_rating) FROM orders.order_reviews r
+                                  JOIN orders.orders o ON o.order_id = r.order_id
+                                  WHERE o.last_updated_by = %s),
+                    total_reviews = (SELECT COUNT(*) FROM orders.order_reviews r
+                                    JOIN orders.orders o ON o.order_id = r.order_id
+                                    WHERE o.last_updated_by = %s)
+                WHERE emp_id = %s
+            """, (emp_id, emp_id, emp_id))
+
+    return {"statusCode": 200, "body": {"status": "success", "message": "Review submitted successfully"}}
