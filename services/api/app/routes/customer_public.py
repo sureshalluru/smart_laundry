@@ -665,11 +665,18 @@ async def create_customer_review(body: dict = Body(...)):
         # Insert review
         import uuid
         review_id = str(uuid.uuid4())
+
+        # Get employee who processed the order if not provided
+        if not employee_id:
+            cur.execute("SELECT last_updated_by FROM orders.orders WHERE order_id = %s", (order_id,))
+            ord_row = cur.fetchone()
+            employee_id = ord_row["last_updated_by"] if ord_row and ord_row["last_updated_by"] else "SYSTEM"
+
         cur.execute("""
             INSERT INTO orders.order_reviews (review_id, order_id, customer_id, laundry_id, emp_id, employee_rating, review_comment, photo_url, review_date)
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, NOW())
             ON CONFLICT (order_id) DO UPDATE SET employee_rating = EXCLUDED.employee_rating, review_comment = EXCLUDED.review_comment, photo_url = EXCLUDED.photo_url
-        """, (review_id, order_id, customer_id, laundry_id, employee_id or None, rating, comments, image_base64))
+        """, (review_id, order_id, customer_id, laundry_id, employee_id, rating, comments, image_base64))
 
         # Mark order as reviewed
         cur.execute("UPDATE orders.orders SET is_reviewed = TRUE WHERE order_id = %s", (order_id,))
