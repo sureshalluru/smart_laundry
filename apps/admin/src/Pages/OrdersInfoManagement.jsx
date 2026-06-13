@@ -1364,7 +1364,7 @@ const { open: openCancelUber, ModalUI: CancelUberModal } = useCancelUberHandoff(
 
                 setServicesToRemoveMap((prevMap) => ({
                     ...prevMap,
-                    [prev.orderId]: [...(prevMap[prev.orderId] || []), removedService.service]
+                    [prev.orderId]: [...(prevMap[prev.orderId] || []), removedService.id || removedService.service]
                 }));
 
                 const newTotalCost = updateOrderTotals(updatedServices, prev.products || []);

@@ -497,11 +497,15 @@ async def update_order_endpoint(
             """, (laundryId,))
             service_catalog = {r["service_name"].strip().lower(): r for r in cur.fetchall()}
 
-            # Process service removals (by id)
+            # Process service removals (by id or service name)
             remove_ids = [r for r in services_to_remove if isinstance(r, int)]
+            remove_names = [r for r in services_to_remove if isinstance(r, str)]
             if remove_ids:
                 for rid in remove_ids:
                     cur.execute("DELETE FROM orders.order_services WHERE id = %s AND order_id = %s", (rid, orderId))
+            if remove_names:
+                for rname in remove_names:
+                    cur.execute("DELETE FROM orders.order_services WHERE service_name = %s AND order_id = %s", (rname, orderId))
 
             # Process service updates (by id)
             for svc in services_to_update:
