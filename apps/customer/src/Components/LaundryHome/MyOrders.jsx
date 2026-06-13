@@ -1283,11 +1283,8 @@ const MyOrders = ({ customerId, laundryId, laundryTimeZone }) => {
                                         Cancel Order
                                     </Button>
                                 )}
-                                {/* Review Button */}
-                                {(
-                                    (orderDetails.orderType === 'Online' && orderDetails.orderStatus === 'Delivered') ||
-                                    (orderDetails.orderType === 'InStore' && orderDetails.orderStatus === 'OrderPickedUp')
-                                ) && !orderDetails.isReviewed && (
+                                {/* Review Button - show for any non-canceled order that hasn't been reviewed */}
+                                {!orderDetails.isReviewed && orderDetails.orderStatus !== 'OrderCanceled' && orderDetails.orderStatus !== 'OrderSubmitted' && (
                                     <Button
                                         colorScheme="blue"
                                         size="lg"
@@ -1297,7 +1294,6 @@ const MyOrders = ({ customerId, laundryId, laundryTimeZone }) => {
                                     >
                                         Review Order
                                     </Button>
-
                                 )}
                             </VStack>
                         ) : (

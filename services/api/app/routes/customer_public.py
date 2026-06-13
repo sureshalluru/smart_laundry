@@ -411,6 +411,25 @@ async def get_customer_order_detail(
         cur.execute("SELECT * FROM orders.order_payments WHERE order_id = %s", (orderId,))
         payments = [{"paymentIntentId": r["payment_intent_id"], "amount": float(r["amount"] or 0), "paymentMethod": r["payment_method"]} for r in cur.fetchall()]
 
+        # Get address info
+        address_data = {}
+        if order.get("address_id"):
+            cur.execute("""
+                SELECT address, address_instructions, door_number
+                FROM shop.customer_addresses WHERE address_id = %s
+            """, (order["address_id"],))
+            addr = cur.fetchone()
+            if addr:
+                address_data = dict(addr)
+
+        # Get employee info (last_updated_by)
+        employee_info = None
+        if order.get("last_updated_by"):
+            cur.execute("SELECT emp_id, first_name, last_name FROM shop.employees WHERE emp_id = %s", (order["last_updated_by"],))
+            emp = cur.fetchone()
+            if emp:
+                employee_info = {"empId": emp["emp_id"], "firstName": emp["first_name"], "lastName": emp["last_name"]}
+
         return {
             "statusCode": 200,
             "body": {
@@ -430,17 +449,31 @@ async def get_customer_order_detail(
                     "discountedPrice": float(order["discounted_price"] or 0),
                     "createdAt": str(order["created_at"]),
                     "services": services,
-                    "payments": payments,
+                    "finalPaymentIntentId": payments,
                     "specialInstructions": order["special_instructions"],
                     "laundryBags": order["laundry_bags"],
                     "coupon": order["coupon"],
                     "imageUrl": order["image_url"],
                     "weightImageUrl": order.get("weight_image_url"),
+                    "isReviewed": order.get("is_reviewed", False),
+                    "address": address_data.get("address", ""),
+                    "addressInstructions": address_data.get("address_instructions", ""),
+                    "doorNumber": address_data.get("door_number", ""),
+                    "employee": employee_info,
+                    "pickupService": order.get("pickup_service"),
+                    "dropoffService": order.get("dropoff_service"),
+                    "pickupTrackingUrl": order.get("pickup_tracking_url"),
+                    "dropoffTrackingUrl": order.get("dropoff_tracking_url"),
+                    "pickupStatus": order.get("pickup_status"),
+                    "dropoffStatus": order.get("dropoff_status"),
+                    "uberPickupFee": float(order["uber_pickup_fee"]) if order.get("uber_pickup_fee") else None,
+                    "uberDropoffFee": float(order["uber_dropoff_fee"]) if order.get("uber_dropoff_fee") else None,
                     "tip": {
                         "tipAmount": float(order["tip_amount"] or 0),
                         "tipPercentage": float(order["tip_percentage"] or 0) if order["tip_percentage"] else None,
                         "tipType": order["tip_type"],
                         "tipMethod": order["tip_method"],
+                        "tipReceiverId": order.get("tip_receiver_id"),
                     },
                 }
             }
@@ -670,7 +703,13 @@ async def create_customer_review(body: dict = Body(...)):
         if not employee_id:
             cur.execute("SELECT last_updated_by FROM orders.orders WHERE order_id = %s", (order_id,))
             ord_row = cur.fetchone()
-            employee_id = ord_row["last_updated_by"] if ord_row and ord_row["last_updated_by"] else "SYSTEM"
+            employee_id = ord_row["last_updated_by"] if ord_row and ord_row["last_updated_by"] else None
+
+        # Validate employee_id exists in employees table; if not, set to None
+        if employee_id:
+            cur.execute("SELECT emp_id FROM shop.employees WHERE emp_id = %s", (employee_id,))
+            if not cur.fetchone():
+                employee_id = None
 
         cur.execute("""
             INSERT INTO orders.order_reviews (review_id, order_id, customer_id, laundry_id, emp_id, employee_rating, review_comment, photo_url, review_date)
