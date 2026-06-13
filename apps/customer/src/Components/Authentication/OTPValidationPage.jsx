@@ -1,6 +1,6 @@
 import React, { useContext, useEffect, useState, useRef } from "react";
 import {
-    Box, VStack, Button, useToast, HStack, Text, Icon, Flex, PinInput, PinInputField
+    Box, VStack, Button, useToast, HStack, Text, Icon, Flex, Input
 } from "@chakra-ui/react";
 import { LaundryContext } from "../Contexts/LaundryContext";
 import { FiShield } from "react-icons/fi";
@@ -65,23 +65,29 @@ export default function OTPValidationPage({ phoneNumber, onOTPSubmit, isOTPLoadi
                     </Text>
                 </VStack>
 
-                {/* OTP Input - Pin Style */}
-                <HStack justify="center" spacing={2}>
-                    <PinInput
-                        size="lg"
+                {/* OTP Input - Simple single input */}
+                <Box textAlign="center">
+                    <Input
+                        type="tel"
+                        maxLength={6}
                         value={otp}
-                        onChange={setOtp}
-                        type="number"
-                        otp
-                    >
-                        <PinInputField bg="white" border="2px solid" borderColor="gray.200" _focus={{ borderColor: "blue.400" }} />
-                        <PinInputField bg="white" border="2px solid" borderColor="gray.200" _focus={{ borderColor: "blue.400" }} />
-                        <PinInputField bg="white" border="2px solid" borderColor="gray.200" _focus={{ borderColor: "blue.400" }} />
-                        <PinInputField bg="white" border="2px solid" borderColor="gray.200" _focus={{ borderColor: "blue.400" }} />
-                        <PinInputField bg="white" border="2px solid" borderColor="gray.200" _focus={{ borderColor: "blue.400" }} />
-                        <PinInputField bg="white" border="2px solid" borderColor="gray.200" _focus={{ borderColor: "blue.400" }} />
-                    </PinInput>
-                </HStack>
+                        onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                        placeholder="000000"
+                        size="lg"
+                        textAlign="center"
+                        fontSize="2xl"
+                        fontWeight="bold"
+                        letterSpacing="0.5em"
+                        maxW="220px"
+                        mx="auto"
+                        autoComplete="one-time-code"
+                        inputMode="numeric"
+                        bg="white"
+                        border="2px solid"
+                        borderColor="gray.200"
+                        _focus={{ borderColor: "blue.400" }}
+                    />
+                </Box>
 
                 {/* Timer */}
                 <Flex justify="center">
