@@ -651,11 +651,12 @@ async def create_customer_review(body: dict = Body(...)):
     order_id = body.get("orderId")
     customer_id = body.get("customerId")
     laundry_id = body.get("laundryId")
-    rating = int(body.get("rating", 0))
-    comments = body.get("comments", "")
+    rating = int(body.get("employeeRating") or body.get("rating") or 0)
+    comments = body.get("reviewComment") or body.get("comments", "")
     image_base64 = body.get("imageBase64")
+    employee_id = body.get("employeeId", "")
 
-    if not order_id or not customer_id or not rating:
+    if not order_id or not customer_id or rating == 0:
         return {"statusCode": 400, "body": {"status": "error", "message": "Missing required fields"}}
 
     with get_db() as conn:
@@ -665,10 +666,10 @@ async def create_customer_review(body: dict = Body(...)):
         import uuid
         review_id = str(uuid.uuid4())
         cur.execute("""
-            INSERT INTO orders.order_reviews (review_id, order_id, customer_id, laundry_id, employee_rating, review_comment, photo_url, review_date)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, NOW())
+            INSERT INTO orders.order_reviews (review_id, order_id, customer_id, laundry_id, emp_id, employee_rating, review_comment, photo_url, review_date)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, NOW())
             ON CONFLICT (order_id) DO UPDATE SET employee_rating = EXCLUDED.employee_rating, review_comment = EXCLUDED.review_comment, photo_url = EXCLUDED.photo_url
-        """, (review_id, order_id, customer_id, laundry_id, rating, comments, image_base64))
+        """, (review_id, order_id, customer_id, laundry_id, employee_id or None, rating, comments, image_base64))
 
         # Mark order as reviewed
         cur.execute("UPDATE orders.orders SET is_reviewed = TRUE WHERE order_id = %s", (order_id,))
