@@ -111,6 +111,12 @@ async def process_frequencies():
                 freq_days = 7 if frequency.lower() == 'weekly' else 14
                 next_future_pickup = (pickup_dt + timedelta(days=freq_days)).strftime('%Y-%m-%d')
 
+                # Determine Uber pickup/dropoff from frequency flags
+                uber_pickup_freq = sub.get("uber_pickup_frequency", False)
+                uber_dropoff_freq = sub.get("uber_dropoff_frequency", False)
+                pickup_service = "Uber" if uber_pickup_freq else "LaundryDriver"
+                dropoff_service = "Uber" if uber_dropoff_freq else "LaundryDriver"
+
                 # Generate order ID
                 order_id = f"O-{uuid.uuid4().hex[:8].upper()}"
 
@@ -123,18 +129,20 @@ async def process_frequencies():
                             pickup_date, pickup_time_interval, dropoff_date, dropoff_time_interval,
                             laundry_bags, special_instructions, coupon, frequency,
                             sub_total, discounted_price, total_cost, grand_total,
-                            pricing_type, auto_generated, is_reviewed, cancel_reason,
+                            pricing_type, pickup_service, dropoff_service,
+                            auto_generated, is_reviewed, cancel_reason,
                             created_at, updated_at
                         ) VALUES (
                             %s,%s,%s,%s,'Online','OrderSubmitted','Active','Unpaid',
                             %s,%s,%s,%s,1,'',%s,%s,0,0,0,0,
-                            'per_pound',TRUE,FALSE,'',NOW(),NOW()
+                            'per_pound',%s,%s,TRUE,FALSE,'',NOW(),NOW()
                         )
                     """, (
                         order_id, laundry_id, customer_id, address_id,
                         future_pickup_date, pickup_time_interval,
                         dropoff_date, dropoff_time_interval,
                         None, frequency,
+                        pickup_service, dropoff_service,
                     ))
 
                     # Advance the future_pickup_date on the subscription
@@ -171,6 +179,100 @@ async def process_frequencies():
 
                 # Send notification to customer
                 _send_frequency_notification(customer_id, laundry_id, order_id, future_pickup_date, pickup_time_interval)
+
+                # Schedule Uber if applicable
+                if pickup_service == "Uber" or dropoff_service == "Uber":
+                    try:
+                        from app.routes.uber import (
+                            get_laundry_uber_credentials, get_uber_access_token,
+                            create_uber_quote, schedule_uber_delivery
+                        )
+                        import json as _json
+                        from zoneinfo import ZoneInfo as _ZoneInfo
+
+                        with get_db() as conn_uber:
+                            cur_uber = get_cursor(conn_uber)
+                            cur_uber.execute("""
+                                SELECT laundry_name, street, city, state, zip_code, country,
+                                       contact_phone, pickup_dropoff_instructions
+                                FROM shop.laundry_shops WHERE laundry_id = %s
+                            """, (laundry_id,))
+                            shop_row = cur_uber.fetchone()
+                            cur_uber.execute("""
+                                SELECT first_name, last_name, phone_number
+                                FROM shop.customers WHERE customer_id = %s
+                            """, (customer_id,))
+                            cust_row = cur_uber.fetchone()
+
+                        if shop_row and cust_row:
+                            laundry_addr = f"{shop_row['street']}, {shop_row['city']}, {shop_row['state']} {shop_row['zip_code']}, {shop_row['country']}"
+                            laundry_name_uber = shop_row["laundry_name"] or "Laundry"
+                            laundry_phone = shop_row["contact_phone"] or ""
+                            laundry_instructions = (shop_row["pickup_dropoff_instructions"] or "").strip()
+                            customer_name_uber = f"{cust_row['first_name'] or ''} {cust_row['last_name'] or ''}".strip()
+                            customer_phone = cust_row["phone_number"] or ""
+                            customer_addr = sub.get("address", "")
+                            addr_instructions = (sub.get("address_instructions") or "").strip()
+
+                            creds = get_laundry_uber_credentials(laundry_id)
+                            token = get_uber_access_token(creds["clientId"], creds["clientSecret"])
+                            local_tz = _ZoneInfo(creds["timeZone"])
+
+                            if pickup_service == "Uber" and pickup_time_interval:
+                                try:
+                                    s1, e1 = pickup_time_interval.split("-")
+                                    p_s = datetime.strptime(f"{future_pickup_date} {s1.strip()}", "%Y-%m-%d %H:%M").replace(tzinfo=local_tz)
+                                    p_e = datetime.strptime(f"{future_pickup_date} {e1.strip()}", "%Y-%m-%d %H:%M").replace(tzinfo=local_tz)
+                                    qid = create_uber_quote(token, creds["customerId"], creds["baseUrl"],
+                                                            customer_addr, laundry_addr, customer_phone, laundry_phone,
+                                                            p_s.isoformat(), p_e.isoformat(), "laundryPickup")
+                                    res = schedule_uber_delivery(token, creds["customerId"], creds["baseUrl"], qid,
+                                                                customer_addr, laundry_addr, customer_phone, laundry_phone,
+                                                                order_id, 1, customer_name_uber, laundry_name_uber,
+                                                                addr_instructions, laundry_instructions, laundry_name_uber,
+                                                                creds["uberEnv"], p_s.isoformat(), p_e.isoformat(), "laundryPickup")
+                                    with get_db() as cu:
+                                        c = get_cursor(cu)
+                                        c.execute("SELECT uber_info FROM orders.orders WHERE order_id = %s", (order_id,))
+                                        r = c.fetchone()
+                                        ui = (r["uber_info"] if r and r["uber_info"] else {}) or {}
+                                        ui["laundryPickup"] = {"deliveryId": res.get("id"), "feeCents": res.get("fee", 0), "trackingUrl": res.get("tracking_url")}
+                                        c.execute("UPDATE orders.orders SET uber_info = %s, uber_pickup_fee = %s, pickup_tracking_url = %s WHERE order_id = %s",
+                                                  (_json.dumps(ui), res.get("fee", 0) / 100.0, res.get("tracking_url"), order_id))
+                                    logger.info(f"Uber pickup scheduled for recurring order {order_id}")
+                                except Exception as ue:
+                                    logger.warning(f"Uber pickup failed for recurring {order_id}: {ue}")
+                                    with get_db() as fb:
+                                        get_cursor(fb).execute("UPDATE orders.orders SET pickup_service = 'LaundryDriver' WHERE order_id = %s", (order_id,))
+
+                            if dropoff_service == "Uber" and dropoff_time_interval:
+                                try:
+                                    s2, e2 = dropoff_time_interval.split("-")
+                                    d_s = datetime.strptime(f"{dropoff_date} {s2.strip()}", "%Y-%m-%d %H:%M").replace(tzinfo=local_tz)
+                                    d_e = datetime.strptime(f"{dropoff_date} {e2.strip()}", "%Y-%m-%d %H:%M").replace(tzinfo=local_tz)
+                                    qid2 = create_uber_quote(token, creds["customerId"], creds["baseUrl"],
+                                                             laundry_addr, customer_addr, laundry_phone, customer_phone,
+                                                             d_s.isoformat(), d_e.isoformat(), "laundryDropoff")
+                                    res2 = schedule_uber_delivery(token, creds["customerId"], creds["baseUrl"], qid2,
+                                                                  laundry_addr, customer_addr, laundry_phone, customer_phone,
+                                                                  order_id, 1, laundry_name_uber, customer_name_uber,
+                                                                  laundry_instructions, addr_instructions, laundry_name_uber,
+                                                                  creds["uberEnv"], d_s.isoformat(), d_e.isoformat(), "laundryDropoff")
+                                    with get_db() as cu2:
+                                        c2 = get_cursor(cu2)
+                                        c2.execute("SELECT uber_info FROM orders.orders WHERE order_id = %s", (order_id,))
+                                        r2 = c2.fetchone()
+                                        ui2 = (r2["uber_info"] if r2 and r2["uber_info"] else {}) or {}
+                                        ui2["laundryDropoff"] = {"deliveryId": res2.get("id"), "feeCents": res2.get("fee", 0), "trackingUrl": res2.get("tracking_url")}
+                                        c2.execute("UPDATE orders.orders SET uber_info = %s, uber_dropoff_fee = %s, dropoff_tracking_url = %s WHERE order_id = %s",
+                                                   (_json.dumps(ui2), res2.get("fee", 0) / 100.0, res2.get("tracking_url"), order_id))
+                                    logger.info(f"Uber dropoff scheduled for recurring order {order_id}")
+                                except Exception as ue2:
+                                    logger.warning(f"Uber dropoff failed for recurring {order_id}: {ue2}")
+                                    with get_db() as fb2:
+                                        get_cursor(fb2).execute("UPDATE orders.orders SET dropoff_service = 'LaundryDriver' WHERE order_id = %s", (order_id,))
+                    except Exception as uber_err:
+                        logger.warning(f"Uber scheduling error for recurring order {order_id}: {uber_err}")
 
                 orders_created += 1
                 logger.info(f"Created recurring order {order_id} for customer {customer_id} (freq: {frequency})")

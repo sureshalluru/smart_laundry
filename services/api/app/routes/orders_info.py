@@ -602,6 +602,10 @@ async def update_order_endpoint(
                 "laundry_bags": laundry_bags,
                 "updated_at": datetime.now(),
             }
+            # Save total_weight if provided (for per-bag orders to record weight for records)
+            total_weight = body.get("totalWeight")
+            if total_weight is not None:
+                update_fields["total_weight"] = float(total_weight)
             if empId:
                 update_fields["last_updated_by"] = empId
             if order_status:
@@ -1059,6 +1063,7 @@ def get_orders_by_status(cur, laundry_id, operation, page=1, limit=30, order_typ
             "lastUpdatedBy": r["last_updated_by"],
             "customerPaymentId": r["customer_payment_id"] or "",
             "imageUrl": r["image_url"],
+            "weightImageUrl": r.get("weight_image_url"),
             "balanceDue": float(balance_due),
             "paidAmount": float(paid_amount),
         })
@@ -1185,6 +1190,8 @@ def get_single_order(cur, laundry_id, order_id):
             "products": products,
             "specialInstructions": order["special_instructions"],
             "laundryBags": order["laundry_bags"],
+            "pricingType": order.get("pricing_type", "per_pound"),
+            "totalWeight": float(order["total_weight"]) if order.get("total_weight") else None,
             "pickupDate": str(order["pickup_date"]) if order["pickup_date"] else None,
             "pickupTimeInterval": order["pickup_time_interval"],
             "dropoffDate": str(order["dropoff_date"]) if order["dropoff_date"] else None,
@@ -1200,6 +1207,7 @@ def get_single_order(cur, laundry_id, order_id):
             "frequency": order["frequency"],
             "isReviewed": order["is_reviewed"],
             "imageUrl": order["image_url"],
+            "weightImageUrl": order.get("weight_image_url"),
             "holdPaymentIntentId": order["hold_payment_intent_id"],
             "lastUpdatedBy": order["last_updated_by"],
             "createdAt": str(order["created_at"]),

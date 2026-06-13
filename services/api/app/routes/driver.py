@@ -85,22 +85,40 @@ async def upload_image(
     body: dict = Body({}),
     current_user: dict = Depends(get_current_user),
 ):
-    """Upload delivery/pickup/scale image — stores as base64 in DB."""
+    """Upload delivery/pickup/scale image to S3 and store URL in DB."""
     image_base64 = body.get("imageBase64", "")
     order_id = orderId or body.get("orderId")
+    laundry_id = laundryId or body.get("laundryId", "1")
     img_type = imageType or body.get("imageType", "pickup")  # "pickup" or "weight"
     
     if not order_id or not image_base64:
         return {"statusCode": 400, "body": {"message": "Missing orderId or image data"}}
 
-    if len(image_base64) > 700000:
-        return {"statusCode": 400, "body": {"message": "Image too large. Please use a smaller photo."}}
+    # Upload to S3
+    from app.services.s3_service import upload_order_image
+    result = upload_order_image(laundry_id, order_id, image_base64, img_type)
 
+    if result["status"] != "success":
+        # Fallback: store base64 directly in DB if S3 fails (ensure data isn't lost)
+        logger.warning(f"S3 upload failed for {order_id}, falling back to DB storage: {result.get('message')}")
+        # Store with data: prefix so display works
+        if not image_base64.startswith("data:"):
+            image_base64 = f"data:image/jpeg;base64,{image_base64}"
+        with get_db() as conn:
+            cur = get_cursor(conn)
+            if img_type == "weight":
+                cur.execute("UPDATE orders.orders SET weight_image_url = %s, updated_at = NOW() WHERE order_id = %s", (image_base64, order_id))
+            else:
+                cur.execute("UPDATE orders.orders SET image_url = %s, updated_at = NOW() WHERE order_id = %s", (image_base64, order_id))
+        return {"statusCode": 200, "body": {"message": f"{img_type.capitalize()} image saved (local fallback)"}}
+
+    # Store S3 URL in DB
+    image_url = result["url"]
     with get_db() as conn:
         cur = get_cursor(conn)
         if img_type == "weight":
-            cur.execute("UPDATE orders.orders SET weight_image_url = %s, updated_at = NOW() WHERE order_id = %s", (image_base64, order_id))
+            cur.execute("UPDATE orders.orders SET weight_image_url = %s, updated_at = NOW() WHERE order_id = %s", (image_url, order_id))
         else:
-            cur.execute("UPDATE orders.orders SET image_url = %s, updated_at = NOW() WHERE order_id = %s", (image_base64, order_id))
+            cur.execute("UPDATE orders.orders SET image_url = %s, updated_at = NOW() WHERE order_id = %s", (image_url, order_id))
 
-    return {"statusCode": 200, "body": {"message": f"{img_type.capitalize()} image uploaded successfully"}}
+    return {"statusCode": 200, "body": {"message": f"{img_type.capitalize()} image uploaded successfully", "url": image_url}}

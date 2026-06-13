@@ -593,6 +593,9 @@ if (parsedBody.estimatedFeeCents) {
   else setDropoffEstimate(estimate);
 } else {
   console.warn("🚫 No estimatedFeeCents in response:", parsedBody);
+  if (parsedBody.error) {
+    console.error("Uber quote error:", parsedBody.error);
+  }
 }
   } catch (error) {
     console.error("[Uber ERROR] Fetch failed:", error);

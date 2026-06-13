@@ -2121,6 +2121,43 @@ const { open: openCancelUber, ModalUI: CancelUberModal } = useCancelUberHandoff(
                                         </Box>
                                     )}
 
+                                    {/* Laundry Photos Display */}
+                                    {(selectedOrderDetails.imageUrl || selectedOrderDetails.weightImageUrl) && (
+                                        <Box mb={4} p={3} bg="gray.50" borderRadius="md">
+                                            <Text fontSize={fontSize} fontWeight="600" mb={2}>📷 Laundry Photos</Text>
+                                            <HStack spacing={3} flexWrap="wrap">
+                                                {selectedOrderDetails.imageUrl && (
+                                                    <Box>
+                                                        <Text fontSize="xs" color="gray.500" mb={1}>Pickup</Text>
+                                                        <img
+                                                            src={
+                                                                selectedOrderDetails.imageUrl.startsWith('data:') || selectedOrderDetails.imageUrl.startsWith('http')
+                                                                    ? selectedOrderDetails.imageUrl
+                                                                    : `data:image/jpeg;base64,${selectedOrderDetails.imageUrl}`
+                                                            }
+                                                            alt="Pickup photo"
+                                                            style={{ maxHeight: '150px', borderRadius: '8px', objectFit: 'cover' }}
+                                                        />
+                                                    </Box>
+                                                )}
+                                                {selectedOrderDetails.weightImageUrl && (
+                                                    <Box>
+                                                        <Text fontSize="xs" color="gray.500" mb={1}>Weight/Scale</Text>
+                                                        <img
+                                                            src={
+                                                                selectedOrderDetails.weightImageUrl.startsWith('data:') || selectedOrderDetails.weightImageUrl.startsWith('http')
+                                                                    ? selectedOrderDetails.weightImageUrl
+                                                                    : `data:image/jpeg;base64,${selectedOrderDetails.weightImageUrl}`
+                                                            }
+                                                            alt="Weight photo"
+                                                            style={{ maxHeight: '150px', borderRadius: '8px', objectFit: 'cover' }}
+                                                        />
+                                                    </Box>
+                                                )}
+                                            </HStack>
+                                        </Box>
+                                    )}
+
                                     {/* Products */}
                                     {(selectedOrderDetails.products?.length > 0 || isEditMode) && (
                                         <Box mb={4}>
@@ -2296,6 +2333,47 @@ const { open: openCancelUber, ModalUI: CancelUberModal } = useCancelUberHandoff(
                                                     fontSize={fontSize}
                                                 >
                                                     {selectedOrderDetails.laundryBags ?? "0"}
+                                                </Text>
+                                            )}
+                                        </Box>
+
+                                        {/* Total Weight (for records — especially per-bag orders) */}
+                                        <Box flex="1">
+                                            <HStack mb={1}>
+                                                <Text fontWeight="semibold" fontSize={fontSize}>⚖️ Total Weight (lbs)</Text>
+                                                {selectedOrderDetails.pricingType === 'per_bag' && (
+                                                    <Badge colorScheme="purple" fontSize="xs">Per Bag</Badge>
+                                                )}
+                                            </HStack>
+                                            {isEditMode ? (
+                                                <NumberInput
+                                                    value={selectedOrderDetails.totalWeight || ''}
+                                                    min={0}
+                                                    precision={1}
+                                                    step={0.5}
+                                                    onChange={(value) =>
+                                                        setSelectedOrderDetails((prev) => ({
+                                                            ...prev,
+                                                            totalWeight: value,
+                                                        }))
+                                                    }
+                                                    size={inputSize}
+                                                    width="100%"
+                                                >
+                                                    <NumberInputField p={2} placeholder="Enter weight"/>
+                                                    <NumberInputStepper>
+                                                        <NumberIncrementStepper size="sm"/>
+                                                        <NumberDecrementStepper size="sm"/>
+                                                    </NumberInputStepper>
+                                                </NumberInput>
+                                            ) : (
+                                                <Text
+                                                    bg="gray.50"
+                                                    p={3}
+                                                    borderRadius="md"
+                                                    fontSize={fontSize}
+                                                >
+                                                    {selectedOrderDetails.totalWeight ? `${selectedOrderDetails.totalWeight} lbs` : "Not recorded"}
                                                 </Text>
                                             )}
                                         </Box>
@@ -3050,7 +3128,7 @@ const handleAssignLaundryDriver = async (customAddress) => {
 
     const handleSave = async (updatedOrderDetails, laundryId) => {
         // console.log("initiate update order details:", updatedOrderDetails);
-        const {orderId, orderStatus, services, products, coupon, laundryBags} = updatedOrderDetails;
+        const {orderId, orderStatus, services, products, coupon, laundryBags, totalWeight} = updatedOrderDetails;
         //TODO: If the order is cancelled then we need to remove the current orders
         // list from the customers table as well in the current orders list
 
@@ -3064,6 +3142,7 @@ const handleAssignLaundryDriver = async (customAddress) => {
             orderStatus,
             coupon,
             laundryBags,
+            totalWeight: totalWeight || undefined,
         };
 
         if ((servicesToAddMap[orderId] || []).length > 0) {

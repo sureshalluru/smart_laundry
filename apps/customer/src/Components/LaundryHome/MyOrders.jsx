@@ -1258,13 +1258,13 @@ const MyOrders = ({ customerId, laundryId, laundryTimeZone }) => {
                                             {orderDetails.imageUrl && (
                                                 <Box>
                                                     <Text fontSize="xs" color="gray.500" mb={1}>Pickup</Text>
-                                                    <Image src={orderDetails.imageUrl} alt="Pickup photo" maxH="150px" borderRadius="md" objectFit="cover" />
+                                                    <Image src={orderDetails.imageUrl.startsWith('data:') || orderDetails.imageUrl.startsWith('http') ? orderDetails.imageUrl : `data:image/jpeg;base64,${orderDetails.imageUrl}`} alt="Pickup photo" maxH="150px" borderRadius="md" objectFit="cover" />
                                                 </Box>
                                             )}
                                             {orderDetails.weightImageUrl && (
                                                 <Box>
                                                     <Text fontSize="xs" color="gray.500" mb={1}>Weight</Text>
-                                                    <Image src={orderDetails.weightImageUrl} alt="Weight photo" maxH="150px" borderRadius="md" objectFit="cover" />
+                                                    <Image src={orderDetails.weightImageUrl.startsWith('data:') || orderDetails.weightImageUrl.startsWith('http') ? orderDetails.weightImageUrl : `data:image/jpeg;base64,${orderDetails.weightImageUrl}`} alt="Weight photo" maxH="150px" borderRadius="md" objectFit="cover" />
                                                 </Box>
                                             )}
                                         </HStack>

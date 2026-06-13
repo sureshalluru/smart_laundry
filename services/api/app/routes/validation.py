@@ -142,7 +142,7 @@ def _get_laundry_info(cur, laundry_id, is_customer=None):
     frequency_interval = [r["interval"] for r in cur.fetchall()]
 
     # Uber credentials
-    cur.execute("SELECT env FROM shop.laundry_uber_credentials WHERE laundry_id = %s LIMIT 1", (laundry_id,))
+    cur.execute("SELECT env FROM shop.laundry_uber_credentials WHERE laundry_id = %s ORDER BY env DESC LIMIT 1", (laundry_id,))
     uber_row = cur.fetchone()
 
     # Frequency promotions

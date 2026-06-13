@@ -94,6 +94,12 @@ async def customer_place_order(
         laundry_bags = int(body.get("laundryBags", 1) or 1)
         bag_price = round(float(str(body.get("bagPrice", 0) or 0)), 2)
 
+        # Uber/delivery service fields
+        pickup_service = body.get("pickupService", "LaundryDriver") or "LaundryDriver"
+        dropoff_service = body.get("dropoffService", "LaundryDriver") or "LaundryDriver"
+        uber_pickup_frequency = body.get("uberPickupFrequency", False)
+        uber_dropoff_frequency = body.get("uberDropoffFrequency", False)
+
         if not laundry_id or not customer_id:
             return {"status": "error", "message": "Missing required parameters"}
 
@@ -180,19 +186,20 @@ async def customer_place_order(
                     pickup_date, pickup_time_interval, dropoff_date, dropoff_time_interval,
                     laundry_bags, special_instructions, coupon, frequency,
                     sub_total, discounted_price, total_cost, grand_total,
-                    pricing_type, pay_by_invoice, auto_generated, is_reviewed, cancel_reason,
+                    pricing_type, pay_by_invoice, pickup_service, dropoff_service,
+                    auto_generated, is_reviewed, cancel_reason,
                     created_at, updated_at
                 ) VALUES (
                     %s,%s,%s,%s,'Online','OrderSubmitted','Active','Unpaid',
                     %s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,
-                    %s,%s,FALSE,FALSE,'',NOW(),NOW()
+                    %s,%s,%s,%s,FALSE,FALSE,'',NOW(),NOW()
                 )
             """, (
                 order_id, laundry_id, customer_id, address_id,
                 pickup_date, pickup_time_interval, dropoff_date, dropoff_time_interval,
                 laundry_bags, special_instructions, coupon, frequency,
                 sub_total, discounted_price, total_cost, grand_total,
-                pricing_type, pay_by_invoice,
+                pricing_type, pay_by_invoice, pickup_service, dropoff_service,
             ))
 
             for svc in services:
@@ -276,6 +283,150 @@ async def customer_place_order(
             except Exception as hold_err:
                 logger.warning(f"$1 hold error for order {order_id}: {hold_err}")
                 # Don't fail the order if hold fails — just log it
+
+        # Schedule Uber pickup/dropoff if selected
+        if pickup_service == "Uber" or dropoff_service == "Uber":
+            try:
+                from app.routes.uber import (
+                    get_laundry_uber_credentials, get_uber_access_token,
+                    create_uber_quote, schedule_uber_delivery
+                )
+                import json as _json
+                from zoneinfo import ZoneInfo as _ZoneInfo
+                from datetime import datetime as _dt
+
+                # Fetch laundry info for address and contacts
+                with get_db() as conn_uber:
+                    cur_uber = get_cursor(conn_uber)
+                    cur_uber.execute("""
+                        SELECT laundry_name, street, city, state, zip_code, country,
+                               contact_phone, pickup_dropoff_instructions
+                        FROM shop.laundry_shops WHERE laundry_id = %s
+                    """, (laundry_id,))
+                    shop_row = cur_uber.fetchone()
+
+                    cur_uber.execute("""
+                        SELECT first_name, last_name, phone_number
+                        FROM shop.customers WHERE customer_id = %s
+                    """, (customer_id,))
+                    cust_row = cur_uber.fetchone()
+
+                if shop_row and cust_row:
+                    laundry_addr = f"{shop_row['street']}, {shop_row['city']}, {shop_row['state']} {shop_row['zip_code']}, {shop_row['country']}"
+                    laundry_name_uber = shop_row["laundry_name"] or "Laundry"
+                    laundry_phone = shop_row["contact_phone"] or ""
+                    laundry_instructions = (shop_row["pickup_dropoff_instructions"] or "").strip()
+                    customer_name = f"{cust_row['first_name'] or ''} {cust_row['last_name'] or ''}".strip()
+                    customer_phone = cust_row["phone_number"] or ""
+
+                    creds = get_laundry_uber_credentials(laundry_id)
+                    token = get_uber_access_token(creds["clientId"], creds["clientSecret"])
+                    local_tz = _ZoneInfo(creds["timeZone"])
+
+                    if pickup_service == "Uber" and pickup_date and pickup_time_interval:
+                        try:
+                            start_str, end_str = pickup_time_interval.split("-")
+                            p_start = _dt.strptime(f"{pickup_date} {start_str.strip()}", "%Y-%m-%d %H:%M").replace(tzinfo=local_tz)
+                            p_end = _dt.strptime(f"{pickup_date} {end_str.strip()}", "%Y-%m-%d %H:%M").replace(tzinfo=local_tz)
+
+                            p_notes = (address_instructions or "").strip()
+                            d_notes = laundry_instructions
+
+                            quote_id = create_uber_quote(
+                                token, creds["customerId"], creds["baseUrl"],
+                                address_text, laundry_addr, customer_phone, laundry_phone,
+                                p_start.isoformat(), p_end.isoformat(), "laundryPickup"
+                            )
+                            result = schedule_uber_delivery(
+                                token, creds["customerId"], creds["baseUrl"], quote_id,
+                                address_text, laundry_addr, customer_phone, laundry_phone,
+                                order_id, laundry_bags, customer_name, laundry_name_uber,
+                                p_notes, d_notes, laundry_name_uber, creds["uberEnv"],
+                                p_start.isoformat(), p_end.isoformat(), "laundryPickup"
+                            )
+
+                            # Store Uber info on order
+                            uber_info_pickup = {
+                                "deliveryId": result.get("id"),
+                                "quoteId": result.get("quote_id"),
+                                "status": result.get("status"),
+                                "feeCents": result.get("fee", 0),
+                                "trackingUrl": result.get("tracking_url")
+                            }
+                            with get_db() as conn_u:
+                                cur_u = get_cursor(conn_u)
+                                cur_u.execute("SELECT uber_info FROM orders.orders WHERE order_id = %s", (order_id,))
+                                r = cur_u.fetchone()
+                                existing = (r["uber_info"] if r and r["uber_info"] else {}) or {}
+                                existing["laundryPickup"] = uber_info_pickup
+                                fee_dollars = result.get("fee", 0) / 100.0
+                                cur_u.execute("""
+                                    UPDATE orders.orders
+                                    SET uber_info = %s, uber_pickup_fee = %s,
+                                        pickup_tracking_url = %s
+                                    WHERE order_id = %s
+                                """, (_json.dumps(existing), fee_dollars,
+                                      result.get("tracking_url"), order_id))
+                            logger.info(f"Uber pickup scheduled for order {order_id}")
+                        except Exception as ue:
+                            logger.warning(f"Uber pickup scheduling failed for {order_id}, falling back to LaundryDriver: {ue}")
+                            with get_db() as conn_fb:
+                                cur_fb = get_cursor(conn_fb)
+                                cur_fb.execute("UPDATE orders.orders SET pickup_service = 'LaundryDriver' WHERE order_id = %s", (order_id,))
+
+                    if dropoff_service == "Uber" and dropoff_date and dropoff_time_interval:
+                        try:
+                            start_str2, end_str2 = dropoff_time_interval.split("-")
+                            d_start = _dt.strptime(f"{dropoff_date} {start_str2.strip()}", "%Y-%m-%d %H:%M").replace(tzinfo=local_tz)
+                            d_end = _dt.strptime(f"{dropoff_date} {end_str2.strip()}", "%Y-%m-%d %H:%M").replace(tzinfo=local_tz)
+
+                            p_notes2 = laundry_instructions
+                            d_notes2 = (address_instructions or "").strip()
+
+                            quote_id2 = create_uber_quote(
+                                token, creds["customerId"], creds["baseUrl"],
+                                laundry_addr, address_text, laundry_phone, customer_phone,
+                                d_start.isoformat(), d_end.isoformat(), "laundryDropoff"
+                            )
+                            result2 = schedule_uber_delivery(
+                                token, creds["customerId"], creds["baseUrl"], quote_id2,
+                                laundry_addr, address_text, laundry_phone, customer_phone,
+                                order_id, laundry_bags, laundry_name_uber, customer_name,
+                                p_notes2, d_notes2, laundry_name_uber, creds["uberEnv"],
+                                d_start.isoformat(), d_end.isoformat(), "laundryDropoff"
+                            )
+
+                            uber_info_dropoff = {
+                                "deliveryId": result2.get("id"),
+                                "quoteId": result2.get("quote_id"),
+                                "status": result2.get("status"),
+                                "feeCents": result2.get("fee", 0),
+                                "trackingUrl": result2.get("tracking_url")
+                            }
+                            with get_db() as conn_u2:
+                                cur_u2 = get_cursor(conn_u2)
+                                cur_u2.execute("SELECT uber_info FROM orders.orders WHERE order_id = %s", (order_id,))
+                                r2 = cur_u2.fetchone()
+                                existing2 = (r2["uber_info"] if r2 and r2["uber_info"] else {}) or {}
+                                existing2["laundryDropoff"] = uber_info_dropoff
+                                fee_dollars2 = result2.get("fee", 0) / 100.0
+                                cur_u2.execute("""
+                                    UPDATE orders.orders
+                                    SET uber_info = %s, uber_dropoff_fee = %s,
+                                        dropoff_tracking_url = %s
+                                    WHERE order_id = %s
+                                """, (_json.dumps(existing2), fee_dollars2,
+                                      result2.get("tracking_url"), order_id))
+                            logger.info(f"Uber dropoff scheduled for order {order_id}")
+                        except Exception as ue2:
+                            logger.warning(f"Uber dropoff scheduling failed for {order_id}, falling back to LaundryDriver: {ue2}")
+                            with get_db() as conn_fb2:
+                                cur_fb2 = get_cursor(conn_fb2)
+                                cur_fb2.execute("UPDATE orders.orders SET dropoff_service = 'LaundryDriver' WHERE order_id = %s", (order_id,))
+
+            except Exception as uber_err:
+                logger.warning(f"Uber scheduling error for order {order_id}: {uber_err}")
+                # Don't fail the order — just log it and leave service as-is
 
         # Send order confirmation email via Brevo
         try:
@@ -692,6 +843,21 @@ async def create_customer_review(body: dict = Body(...)):
     if not order_id or not customer_id or rating == 0:
         return {"statusCode": 400, "body": {"status": "error", "message": "Missing required fields"}}
 
+    # Upload review image to S3 if provided
+    photo_url = None
+    if image_base64:
+        try:
+            from app.services.s3_service import upload_review_image
+            s3_result = upload_review_image(laundry_id or "1", order_id, image_base64)
+            if s3_result["status"] == "success":
+                photo_url = s3_result["url"]
+            else:
+                # Fallback: store base64 directly
+                photo_url = image_base64 if image_base64.startswith("data:") else f"data:image/jpeg;base64,{image_base64}"
+        except Exception as s3_err:
+            logger.warning(f"S3 review image upload failed: {s3_err}")
+            photo_url = image_base64 if image_base64.startswith("data:") else f"data:image/jpeg;base64,{image_base64}"
+
     with get_db() as conn:
         cur = get_cursor(conn)
 
@@ -715,7 +881,7 @@ async def create_customer_review(body: dict = Body(...)):
             INSERT INTO orders.order_reviews (review_id, order_id, customer_id, laundry_id, emp_id, employee_rating, review_comment, photo_url, review_date)
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, NOW())
             ON CONFLICT (order_id) DO UPDATE SET employee_rating = EXCLUDED.employee_rating, review_comment = EXCLUDED.review_comment, photo_url = EXCLUDED.photo_url
-        """, (review_id, order_id, customer_id, laundry_id, employee_id, rating, comments, image_base64))
+        """, (review_id, order_id, customer_id, laundry_id, employee_id, rating, comments, photo_url))
 
         # Mark order as reviewed
         cur.execute("UPDATE orders.orders SET is_reviewed = TRUE WHERE order_id = %s", (order_id,))

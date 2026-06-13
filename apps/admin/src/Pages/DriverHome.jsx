@@ -38,10 +38,31 @@ import DriverNoDelivery from '../images/DriverNoDelivery.png';
 /* ───────────────────────── Helper: convert File → base64 ───────────────────────── */
 const fileToBase64 = (file) =>
   new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.readAsDataURL(file);
-    reader.onload = () => resolve(reader.result.split(',')[1]);
-    reader.onerror = (err) => reject(err);
+    // Compress image before upload for reliability
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    const img = new window.Image();
+    img.onload = () => {
+      // Resize to max 1200px wide while maintaining aspect ratio
+      const maxWidth = 1200;
+      const maxHeight = 1200;
+      let width = img.width;
+      let height = img.height;
+      if (width > maxWidth || height > maxHeight) {
+        const ratio = Math.min(maxWidth / width, maxHeight / height);
+        width = Math.round(width * ratio);
+        height = Math.round(height * ratio);
+      }
+      canvas.width = width;
+      canvas.height = height;
+      ctx.drawImage(img, 0, 0, width, height);
+      // Export as JPEG at 80% quality
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+      // Send raw base64 (without data: prefix) — backend handles both formats
+      resolve(dataUrl.split(',')[1]);
+    };
+    img.onerror = (err) => reject(err);
+    img.src = URL.createObjectURL(file);
   });
 
 /* Map orderStatus → { label, color } */
@@ -519,6 +540,39 @@ const DriverHome = ({ laundryId }) => {
                           Save
                         </Button>
                       </HStack>
+                    )}
+
+                    {/* Confirm Pickup button for pickup orders */}
+                    {order.orderStatus?.toLowerCase() === 'ordersubmitted' && (
+                      <Button
+                        size="sm"
+                        colorScheme="teal"
+                        mt={2}
+                        width="100%"
+                        isLoading={loadingOrderIds[`pickup_${order.orderId}`]}
+                        onClick={async () => {
+                          setLoadingOrderIds(p => ({ ...p, [`pickup_${order.orderId}`]: true }));
+                          try {
+                            const bags = order._bagCount || order.laundryBags || 1;
+                            await axios.put(
+                              `${process.env.REACT_APP_AWS_API_URL}/api/admin/update-order`,
+                              { orderStatus: 'ReadyForIntake', laundryBags: bags },
+                              { params: { operation: 'updateOrder', orderId: order.orderId, laundryId, empId: '' }, headers: { Authorization: `Bearer ${authToken}` } }
+                            );
+                            toast({ title: '✅ Pickup Confirmed!', status: 'success', duration: 3000 });
+                            setOrders((prev) =>
+                              prev.map((o) => (o.orderId === order.orderId ? { ...o, orderStatus: 'ReadyForIntake', laundryBags: bags } : o))
+                            );
+                          } catch (err) {
+                            console.error(err);
+                            toast({ title: 'Error confirming pickup', status: 'error', duration: 3000 });
+                          } finally {
+                            setLoadingOrderIds(p => ({ ...p, [`pickup_${order.orderId}`]: false }));
+                          }
+                        }}
+                      >
+                        ✓ Confirm Pickup
+                      </Button>
                     )}
 
                     {/* Confirm Delivery button for dropoff orders */}
