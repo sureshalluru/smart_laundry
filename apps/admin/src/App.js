@@ -248,6 +248,11 @@ function App() {
                                 <WrappedLaundryInfoManagement validateEmpCredentials={validateEmpCredentials} type="logoAndDomain"/>
                             </Suspense>
                         }/>
+                        <Route path="deliverySchedule" element={
+                            <Suspense fallback={<LoadingSpinner/>}>
+                                <WrappedLaundryInfoManagement validateEmpCredentials={validateEmpCredentials} type="deliverySchedule"/>
+                            </Suspense>
+                        }/>
                         <Route path="promotions" element={
                             <Suspense fallback={<LoadingSpinner/>}>
                                 <WrappedPromotionsPage

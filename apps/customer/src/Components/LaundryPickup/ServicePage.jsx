@@ -640,7 +640,7 @@ useEffect(() => {
                     (item) => item.serviceName === service.service
                 );
                 const priceLabel = selectedService
-                    ? selectedService.inputWeight === 'true'
+                    ? selectedService.inputWeight
                         ? `$${selectedService.price}/lb`
                         : `$${selectedService.price}/piece`
                     : '';

@@ -512,6 +512,17 @@ const SidebarContent = ({
                 >
                     Servicable ZipCodes
                 </Button>
+                <Button as="a" href={`/${laundryId}/admin/deliverySchedule`}
+                    leftIcon={<Icon as={FaCogs} />}
+                    variant="ghost"
+                    colorScheme="green"
+                    justifyContent="start"
+                    size="sm"
+                    maxWidth="100%"
+                    onClick={() => navigate(`/${laundryId}/admin/deliverySchedule`)}
+                >
+                    Delivery Schedule
+                </Button>
             </VStack>
         </Collapse>
         <Button as="a" href={`/${laundryId}/admin/promotions`}

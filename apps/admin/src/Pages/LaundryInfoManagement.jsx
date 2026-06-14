@@ -214,6 +214,154 @@ const ReusableModal = React.memo(({ isOpen, onClose, title, footerButtons, child
     </Modal>
 ));
 
+/* ─── Delivery Schedule Section ─────────────────────────────────────────────── */
+const DAYS_OF_WEEK = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+
+const DeliveryScheduleSection = ({ laundryId }) => {
+    const toast = useToast();
+    const [slots, setSlots] = useState([]);
+    const [deliveryTimeInterval, setDeliveryTimeInterval] = useState(2);
+    const [loading, setLoading] = useState(true);
+    const [saving, setSaving] = useState(false);
+    const authToken = localStorage.getItem('idToken');
+
+    useEffect(() => {
+        const fetchSchedule = async () => {
+            try {
+                const res = await axios.get(`${process.env.REACT_APP_AWS_API_URL}/api/laundry/delivery-schedule`, {
+                    params: { laundryId },
+                    headers: { Authorization: `Bearer ${authToken}` }
+                });
+                const data = res.data?.body || res.data;
+                if (data.deliveryTimeSlots) {
+                    setSlots(data.deliveryTimeSlots);
+                }
+                if (data.deliveryTimeInterval) {
+                    setDeliveryTimeInterval(data.deliveryTimeInterval);
+                }
+            } catch (err) {
+                console.error(err);
+                toast({ title: 'Error loading schedule', status: 'error', duration: 3000 });
+            } finally {
+                setLoading(false);
+            }
+        };
+        if (laundryId) fetchSchedule();
+    }, [laundryId]);
+
+    const handleSlotChange = (day, field, value) => {
+        setSlots(prev => {
+            const existing = prev.find(s => s.day === day);
+            if (existing) {
+                return prev.map(s => s.day === day ? { ...s, [field]: value } : s);
+            } else {
+                return [...prev, { day, startTime: '08:00', endTime: '17:00', [field]: value }];
+            }
+        });
+    };
+
+    const toggleDay = (day, enabled) => {
+        if (enabled) {
+            setSlots(prev => [...prev, { day, startTime: '08:00', endTime: '17:00' }]);
+        } else {
+            setSlots(prev => prev.filter(s => s.day !== day));
+        }
+    };
+
+    const handleSave = async () => {
+        setSaving(true);
+        try {
+            await axios.put(`${process.env.REACT_APP_AWS_API_URL}/api/laundry/delivery-schedule`, {
+                laundryId,
+                deliveryTimeSlots: slots,
+                deliveryTimeInterval,
+            }, {
+                headers: { Authorization: `Bearer ${authToken}` }
+            });
+            toast({ title: 'Schedule saved!', status: 'success', duration: 3000 });
+        } catch (err) {
+            console.error(err);
+            toast({ title: 'Error saving schedule', status: 'error', duration: 3000 });
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    if (loading) return <Flex justify="center" p={8}><Spinner size="lg" /></Flex>;
+
+    return (
+        <Box p={4}>
+            <Text fontSize="xl" fontWeight="bold" mb={4}>Delivery Schedule</Text>
+            <Text fontSize="sm" color="gray.600" mb={4}>
+                Configure which days and hours are available for pickup/delivery. Instant Uber pickup is only available during these hours.
+            </Text>
+
+            <Box mb={6} maxW="300px">
+                <Text fontWeight="semibold" mb={1}>Time Slot Interval (hours)</Text>
+                <Select value={deliveryTimeInterval} onChange={(e) => setDeliveryTimeInterval(Number(e.target.value))}>
+                    <option value={1}>1 hour</option>
+                    <option value={2}>2 hours</option>
+                    <option value={3}>3 hours</option>
+                    <option value={4}>4 hours</option>
+                </Select>
+            </Box>
+
+            <Table variant="simple" size="sm" border="1px solid" borderColor="gray.200">
+                <Thead bg="blue.50">
+                    <Tr>
+                        <Th>Day</Th>
+                        <Th>Enabled</Th>
+                        <Th>Start Time</Th>
+                        <Th>End Time</Th>
+                    </Tr>
+                </Thead>
+                <Tbody>
+                    {DAYS_OF_WEEK.map(day => {
+                        const slot = slots.find(s => s.day === day);
+                        const enabled = !!slot;
+                        return (
+                            <Tr key={day}>
+                                <Td fontWeight="semibold">{day}</Td>
+                                <Td>
+                                    <input
+                                        type="checkbox"
+                                        checked={enabled}
+                                        onChange={(e) => toggleDay(day, e.target.checked)}
+                                    />
+                                </Td>
+                                <Td>
+                                    <Input
+                                        type="time"
+                                        size="sm"
+                                        width="130px"
+                                        value={slot?.startTime || '08:00'}
+                                        isDisabled={!enabled}
+                                        onChange={(e) => handleSlotChange(day, 'startTime', e.target.value)}
+                                    />
+                                </Td>
+                                <Td>
+                                    <Input
+                                        type="time"
+                                        size="sm"
+                                        width="130px"
+                                        value={slot?.endTime || '17:00'}
+                                        isDisabled={!enabled}
+                                        onChange={(e) => handleSlotChange(day, 'endTime', e.target.value)}
+                                    />
+                                </Td>
+                            </Tr>
+                        );
+                    })}
+                </Tbody>
+            </Table>
+
+            <Button colorScheme="blue" mt={4} onClick={handleSave} isLoading={saving}>
+                Save Schedule
+            </Button>
+        </Box>
+    );
+};
+
 const LaundryInfoManagement = ({ validateEmpCredentials, type, empPrefix }) => {
     const { laundryId } = useParams();
     const [servicesData, setServicesData] = useState([]);
@@ -1287,6 +1435,11 @@ const LaundryInfoManagement = ({ validateEmpCredentials, type, empPrefix }) => {
         
 
         </Flex>
+
+            {/* Delivery Schedule */}
+            {type === "deliverySchedule" && (
+                <DeliveryScheduleSection laundryId={laundryId} />
+            )}
 
             {/* Table for Services */}
             {type === "services" && (              

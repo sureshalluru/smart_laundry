@@ -135,3 +135,68 @@ def _get_full_laundry_info(cur, laundry_id):
             "instorePickupTimeSlots": instore_slots,
         }
     }}
+
+
+@router.put("/delivery-schedule")
+async def update_delivery_schedule(
+    body: dict = Body(...),
+    current_user: dict = Depends(get_current_user),
+):
+    """Update delivery time slots and interval for a laundry."""
+    laundry_id = body.get("laundryId")
+    slots = body.get("deliveryTimeSlots", [])
+    delivery_time_interval = body.get("deliveryTimeInterval")
+
+    if not laundry_id:
+        return {"statusCode": 400, "body": {"status": "error", "message": "Missing laundryId"}}
+
+    with get_db() as conn:
+        cur = get_cursor(conn)
+
+        # Update delivery time interval on laundry_shops if provided
+        if delivery_time_interval is not None:
+            cur.execute("""
+                UPDATE shop.laundry_shops SET delivery_time_interval = %s WHERE laundry_id = %s
+            """, (int(delivery_time_interval), laundry_id))
+
+        # Replace all delivery time slots
+        cur.execute("DELETE FROM shop.delivery_time_slots WHERE laundry_id = %s", (laundry_id,))
+        for slot in slots:
+            day = slot.get("day")
+            start_time = slot.get("startTime")
+            end_time = slot.get("endTime")
+            if day and start_time and end_time:
+                cur.execute("""
+                    INSERT INTO shop.delivery_time_slots (laundry_id, day_of_week, start_time, end_time)
+                    VALUES (%s, %s, %s, %s)
+                """, (laundry_id, day, start_time, end_time))
+
+    return {"statusCode": 200, "body": {"status": "success", "message": "Delivery schedule updated"}}
+
+
+@router.get("/delivery-schedule")
+async def get_delivery_schedule(
+    laundryId: str = Query(...),
+    current_user: dict = Depends(get_current_user),
+):
+    """Get delivery time slots and interval for a laundry."""
+    with get_db() as conn:
+        cur = get_cursor(conn)
+
+        cur.execute("SELECT delivery_time_interval FROM shop.laundry_shops WHERE laundry_id = %s", (laundryId,))
+        shop = cur.fetchone()
+
+        cur.execute("""
+            SELECT day_of_week AS day, start_time AS "startTime", end_time AS "endTime"
+            FROM shop.delivery_time_slots WHERE laundry_id = %s ORDER BY id
+        """, (laundryId,))
+        slots = [{"day": r["day"], "startTime": str(r["startTime"])[:5], "endTime": str(r["endTime"])[:5]} for r in cur.fetchall()]
+
+    return {
+        "statusCode": 200,
+        "body": {
+            "status": "success",
+            "deliveryTimeInterval": shop["delivery_time_interval"] if shop else 2,
+            "deliveryTimeSlots": slots,
+        }
+    }
