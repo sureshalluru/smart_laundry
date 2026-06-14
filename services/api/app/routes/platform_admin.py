@@ -269,3 +269,189 @@ async def reset_registration_code(laundry_id: str, x_platform_key: str = Header(
         """, (new_code, laundry_id))
 
     return {"status": "success", "newCode": new_code}
+
+
+@router.post("/onboard")
+async def self_service_onboard(body: dict = Body(...)):
+    """
+    Self-service onboarding endpoint for new tenants.
+    No auth required — creates a full laundry setup from the onboarding form.
+    """
+    laundry_name = body.get("laundryName", "").strip()
+    timezone = body.get("timezone", "America/Chicago")
+    street = body.get("street", "")
+    city = body.get("city", "")
+    state = body.get("state", "")
+    zip_code = body.get("zipCode", "")
+    country = body.get("country", "USA")
+    contact_phone = body.get("contactPhone", "")
+    contact_email = body.get("contactEmail", "")
+
+    # Owner
+    owner_first_name = body.get("ownerFirstName", "")
+    owner_last_name = body.get("ownerLastName", "")
+    owner_phone = body.get("ownerPhone", "")
+    owner_email = body.get("ownerEmail", "")
+
+    # Services
+    services = body.get("services", [])
+
+    # Schedule
+    delivery_time_slots = body.get("deliveryTimeSlots", [])
+    delivery_time_interval = int(body.get("deliveryTimeInterval", 2))
+
+    # Payments
+    stripe_public_key = body.get("stripePublicKey", "")
+    stripe_private_key = body.get("stripePrivateKey", "")
+
+    # Serviceable zip codes
+    serviceable_zip_codes = body.get("serviceableZipCodes", [])
+
+    if not laundry_name:
+        return {"status": "error", "message": "Laundry name is required"}
+    if not owner_phone:
+        return {"status": "error", "message": "Owner phone number is required"}
+
+    try:
+        import json as json_mod
+
+        # Generate laundry ID
+        with get_db() as conn:
+            cur = get_cursor(conn)
+            cur.execute("SELECT MAX(CAST(laundry_id AS INTEGER)) as max_id FROM shop.laundry_shops WHERE laundry_id ~ '^[0-9]+$'")
+            row = cur.fetchone()
+            next_id = str((row["max_id"] or 0) + 1)
+
+        # Generate codes
+        reg_code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=8))
+        emp_prefix = ''.join(c for c in laundry_name[:3] if c.isalpha()).upper() + next_id
+        owner_emp_id = emp_prefix + "1"
+        owner_passcode = ''.join(random.choices(string.digits, k=4))
+
+        with get_db() as conn:
+            cur = get_cursor(conn)
+
+            # 1. Create laundry shop
+            cur.execute("""
+                INSERT INTO shop.laundry_shops (
+                    laundry_id, laundry_name, laundry_timezone,
+                    street, city, state, zip_code, country,
+                    contact_phone, contact_email,
+                    device_registration_code, bag_price,
+                    stripe_public_key, stripe_private_key,
+                    delivery_time_interval, emp_prefix,
+                    serviceable_zip_codes
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """, (
+                next_id, laundry_name, timezone,
+                street, city, state, zip_code, country,
+                contact_phone, contact_email,
+                reg_code, 30.00,
+                stripe_public_key, stripe_private_key,
+                delivery_time_interval, emp_prefix,
+                json_mod.dumps(serviceable_zip_codes) if serviceable_zip_codes else json_mod.dumps([zip_code] if zip_code else []),
+            ))
+
+            # 2. Create owner employee
+            cur.execute("""
+                INSERT INTO shop.employees (emp_id, first_name, last_name, role, passcode, laundry_id, is_active, email)
+                VALUES (%s, %s, %s, 'Admin', %s, %s, TRUE, %s)
+            """, (owner_emp_id, owner_first_name, owner_last_name, owner_passcode, next_id, owner_email))
+
+            # 3. Create services
+            for svc in services:
+                svc_name = svc.get("serviceName", "").strip()
+                if not svc_name:
+                    continue
+                price = float(svc.get("price", 0))
+                input_weight = svc.get("inputWeight", True)
+                customer_access = svc.get("customerAccess", True)
+                cur.execute("""
+                    INSERT INTO shop.laundry_services (laundry_id, service_name, price, input_weight, customer_access, is_active)
+                    VALUES (%s, %s, %s, %s, %s, TRUE)
+                """, (next_id, svc_name, price, input_weight, customer_access))
+
+            # 4. Create delivery time slots
+            for slot in delivery_time_slots:
+                day = slot.get("day")
+                start_time = slot.get("startTime")
+                end_time = slot.get("endTime")
+                if day and start_time and end_time:
+                    cur.execute("""
+                        INSERT INTO shop.delivery_time_slots (laundry_id, day_of_week, start_time, end_time)
+                        VALUES (%s, %s, %s, %s)
+                    """, (next_id, day, start_time, end_time))
+
+            # 5. Create default in-store pickup time slots (same as delivery)
+            for slot in delivery_time_slots:
+                day = slot.get("day")
+                start_time = slot.get("startTime")
+                end_time = slot.get("endTime")
+                if day and start_time and end_time:
+                    cur.execute("""
+                        INSERT INTO shop.instore_pickup_time_slots (laundry_id, day_of_week, start_time, end_time)
+                        VALUES (%s, %s, %s, %s)
+                    """, (next_id, day, start_time, end_time))
+
+        logger.info(f"New laundry onboarded: {laundry_name} (ID: {next_id})")
+
+        # 6. Send signed agreement email to platform owner
+        agreement = body.get("agreement", {})
+        logger.info(f"Agreement data received: signed={agreement.get('signed')}, name={agreement.get('signatureName')}")
+        if agreement.get("signed") or agreement.get("signatureName"):
+            try:
+                from app.services.notification_service import send_email
+                agreement_html = f"""
+                <h2>New Tenant Agreement Signed</h2>
+                <hr/>
+                <h3>Tenant Information</h3>
+                <table style="border-collapse:collapse;width:100%;max-width:600px;">
+                    <tr><td style="padding:6px;font-weight:bold;border:1px solid #ddd;">Laundry Name</td><td style="padding:6px;border:1px solid #ddd;">{laundry_name}</td></tr>
+                    <tr><td style="padding:6px;font-weight:bold;border:1px solid #ddd;">Laundry ID</td><td style="padding:6px;border:1px solid #ddd;">{next_id}</td></tr>
+                    <tr><td style="padding:6px;font-weight:bold;border:1px solid #ddd;">Owner</td><td style="padding:6px;border:1px solid #ddd;">{owner_first_name} {owner_last_name}</td></tr>
+                    <tr><td style="padding:6px;font-weight:bold;border:1px solid #ddd;">Phone</td><td style="padding:6px;border:1px solid #ddd;">{owner_phone}</td></tr>
+                    <tr><td style="padding:6px;font-weight:bold;border:1px solid #ddd;">Email</td><td style="padding:6px;border:1px solid #ddd;">{owner_email}</td></tr>
+                    <tr><td style="padding:6px;font-weight:bold;border:1px solid #ddd;">Address</td><td style="padding:6px;border:1px solid #ddd;">{street}, {city}, {state} {zip_code}</td></tr>
+                </table>
+
+                <h3 style="margin-top:20px;">Agreement Terms</h3>
+                <p style="background:#f7f7f7;padding:12px;border-radius:6px;font-size:14px;">
+                    {agreement.get('terms', 'Platform fee of $149/month when monthly revenue exceeds $2,999. Invoice sent end of month, due within 30 days.')}
+                </p>
+
+                <h3 style="margin-top:20px;">Electronic Signature</h3>
+                <table style="border-collapse:collapse;width:100%;max-width:600px;">
+                    <tr><td style="padding:6px;font-weight:bold;border:1px solid #ddd;">Signed By</td><td style="padding:6px;border:1px solid #ddd;font-style:italic;font-size:18px;">{agreement.get('signatureName', 'N/A')}</td></tr>
+                    <tr><td style="padding:6px;font-weight:bold;border:1px solid #ddd;">Date</td><td style="padding:6px;border:1px solid #ddd;">{agreement.get('signatureDate', 'N/A')}</td></tr>
+                    <tr><td style="padding:6px;font-weight:bold;border:1px solid #ddd;">Agreement Status</td><td style="padding:6px;border:1px solid #ddd;color:green;font-weight:bold;">SIGNED</td></tr>
+                </table>
+
+                <hr style="margin-top:20px;"/>
+                <p style="font-size:12px;color:#666;">This agreement was electronically signed during self-service onboarding.</p>
+                """
+                result_email = send_email("roundrocklaundry@gmail.com", f"New Tenant Agreement: {laundry_name}", agreement_html)
+                logger.info(f"Agreement email result for {laundry_name}: {result_email}")
+            except Exception as email_err:
+                logger.warning(f"Failed to send agreement email for {laundry_name}: {email_err}")
+        else:
+            logger.warning(f"Agreement not signed for {laundry_name}, skipping email")
+
+        return {
+            "status": "success",
+            "laundry": {
+                "laundryId": next_id,
+                "laundryName": laundry_name,
+                "deviceRegistrationCode": reg_code,
+                "adminUrl": f"/{next_id}/admin",
+                "customerUrl": f"/{next_id}/site",
+            },
+            "owner": {
+                "employeeId": owner_emp_id,
+                "passcode": owner_passcode,
+                "name": f"{owner_first_name} {owner_last_name}".strip(),
+            },
+        }
+
+    except Exception as e:
+        logger.exception("Onboarding failed")
+        return {"status": "error", "message": f"Onboarding failed: {str(e)}"}

@@ -17,6 +17,7 @@ import GetStarted from "./Components/Landing/GetStarted";
 import LandingPage from './Pages/LandingPage';
 import LaundryLandingWrapper from './Pages/LaundryLandingWrapper';
 import PlatformAdminPage from './Pages/PlatformAdminPage';
+import OnboardingPage from './Pages/OnboardingPage';
 import { Navigate } from 'react-router-dom';
 import theme from './theme';
 
@@ -42,6 +43,7 @@ function App() {
 
                         <Route path="/invalid" element={<NoPage />} />
                         <Route path="/platform-admin" element={<PlatformAdminPage />} />
+                        <Route path="/onboard" element={<OnboardingPage />} />
 
                         <Route path="/:laundryId/*" element={
                             <LaundryProvider>
