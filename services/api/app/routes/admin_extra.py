@@ -113,6 +113,13 @@ async def cancel_order_admin(
         except Exception as e:
             logger.warning(f"Error reversing holds for order {order_id}: {e}")
 
+    # Send cancellation notification to customer
+    try:
+        from app.routes.customer_public import _send_cancel_notification
+        _send_cancel_notification(order_id, laundry_id, customer_id, cancel_reason, cancelled_by="admin")
+    except Exception as notif_err:
+        logger.warning(f"Cancel notification failed for {order_id}: {notif_err}")
+
     return {"status": "success", "message": "Order canceled successfully"}
 
 

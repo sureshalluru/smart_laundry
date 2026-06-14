@@ -632,6 +632,14 @@ async def update_order_endpoint(
             values = list(update_fields.values()) + [orderId]
             cur.execute(f"UPDATE orders.orders SET {set_clause} WHERE order_id = %s", values)
 
+            # Notify customer when order is canceled via status change
+            if order_status in ("OrderCanceled", "Cancelled"):
+                try:
+                    from app.routes.customer_public import _send_cancel_notification
+                    _send_cancel_notification(orderId, laundryId, current_order.get("customer_id"), "", cancelled_by="admin")
+                except Exception as cancel_notif_err:
+                    logger.warning(f"Cancel notification failed for {orderId}: {cancel_notif_err}")
+
             # Auto-notify customer when status changes to ProcessingCompleted
             if order_status == "ProcessingCompleted":
                 try:

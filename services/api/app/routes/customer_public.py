@@ -703,7 +703,65 @@ async def cancel_customer_order(
         except Exception as e:
             logger.warning(f"Error reversing holds for order {order_id}: {e}")
 
+    # Send cancellation notification to customer
+    _send_cancel_notification(order_id, laundry_id, customer_id, cancel_reason, cancelled_by="customer")
+
     return {"status": "success", "message": "Order canceled"}
+
+
+# Send cancellation notification (used by both customer and admin cancel)
+def _send_cancel_notification(order_id, laundry_id, customer_id, cancel_reason, cancelled_by="customer"):
+    """Send email/SMS notification when an order is canceled."""
+    try:
+        from app.services.notification_service import send_email, send_sms
+
+        with get_db() as conn:
+            cur = get_cursor(conn)
+            cur.execute("""
+                SELECT c.first_name, c.email, c.phone_number, c.notif_email, c.notif_phone,
+                       ls.laundry_name, ls.contact_email
+                FROM shop.customers c
+                JOIN orders.orders o ON o.customer_id = c.customer_id
+                JOIN shop.laundry_shops ls ON ls.laundry_id = o.laundry_id
+                WHERE o.order_id = %s
+            """, (order_id,))
+            row = cur.fetchone()
+
+        if not row:
+            return
+
+        first_name = row["first_name"] or "Customer"
+        laundry_name = row["laundry_name"] or "Your Laundry"
+        reason_text = f" Reason: {cancel_reason}" if cancel_reason else ""
+
+        if cancelled_by == "customer":
+            subject = f"Order {order_id} - Cancellation Confirmed"
+            html_body = f"""
+            <h2>Order Canceled</h2>
+            <p>Hi {first_name},</p>
+            <p>Your order <strong>{order_id}</strong> has been canceled as requested.{reason_text}</p>
+            <p>If you have any questions, please don't hesitate to reach out.</p>
+            <p>— {laundry_name}</p>
+            """
+            sms_msg = f"Hi {first_name}, your order {order_id} has been canceled.{reason_text} - {laundry_name}"
+        else:
+            subject = f"Order {order_id} - Canceled by {laundry_name}"
+            html_body = f"""
+            <h2>Order Canceled</h2>
+            <p>Hi {first_name},</p>
+            <p>Your order <strong>{order_id}</strong> has been canceled by {laundry_name}.{reason_text}</p>
+            <p>If you have questions about this cancellation, please contact us.</p>
+            <p>— {laundry_name}</p>
+            """
+            sms_msg = f"Hi {first_name}, order {order_id} has been canceled by {laundry_name}.{reason_text}"
+
+        if row.get("notif_email", True) and row["email"]:
+            send_email(row["email"], subject, html_body)
+        if row.get("notif_phone", True) and row["phone_number"]:
+            send_sms(row["phone_number"], sms_msg)
+
+    except Exception as e:
+        logger.warning(f"Failed to send cancel notification for {order_id}: {e}")
 
 
 @router.get("/validate-promo-code")
