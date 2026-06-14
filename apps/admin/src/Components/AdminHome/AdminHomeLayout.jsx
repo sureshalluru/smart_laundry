@@ -589,6 +589,15 @@ const SidebarContent = ({
         >
             Dashboard
         </Button>
+        <Button as="a" href={`/${laundryId}/admin/faq`}
+                leftIcon={<FaClipboardList />}
+                variant="ghost"
+                colorScheme="blue"
+                justifyContent="flex-start"
+                onClick={() => navigate(`/${laundryId}/admin/faq`)}
+        >
+            FAQ
+        </Button>
         <Button
             leftIcon={<FaSignOutAlt />}
             variant="ghost"

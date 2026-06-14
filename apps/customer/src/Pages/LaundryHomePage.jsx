@@ -15,7 +15,7 @@ import {
     DrawerCloseButton,
     useDisclosure
 } from '@chakra-ui/react';
-import {FiMenu, FiCalendar, FiList, FiUser, FiLogOut} from 'react-icons/fi';
+import {FiMenu, FiCalendar, FiList, FiUser, FiLogOut, FiHelpCircle} from 'react-icons/fi';
 import {FaWallet} from "react-icons/fa";
 import {useAuthenticator} from "../Context/AuthContext";
 import {useNavigate, Routes, Route, useLocation} from "react-router-dom";
@@ -24,6 +24,7 @@ import MyOrders from "../Components/LaundryHome/MyOrders";
 import Account from "../Components/LaundryHome/Account";
 import OrderSuccess from "../Components/LaundryHome/OrderSuccess";
 import NoPage from "./NoPage";
+import FAQPage from "./FAQPage";
 import {Elements} from "@stripe/react-stripe-js";
 import {loadStripe} from "@stripe/stripe-js";
 import {LaundryContext} from "../Components/Contexts/LaundryContext";
@@ -60,7 +61,8 @@ const LaundryHomePage = ({laundryId, customerId, customerPaymentId: initialCusto
         {label: 'Schedule Order', icon: FiCalendar, path: 'schedule-order'},
         {label: 'My Orders', icon: FiList, path: 'my-orders'},
         {label: 'Account', icon: FiUser, path: 'account'},
-        {label: 'Payment Methods', icon: FaWallet, path: 'payment'}
+        {label: 'Payment Methods', icon: FaWallet, path: 'payment'},
+        {label: 'FAQ', icon: FiHelpCircle, path: 'faq'}
     ];
 
 
@@ -264,6 +266,7 @@ const LaundryHomePage = ({laundryId, customerId, customerPaymentId: initialCusto
                             </Elements>}
                         />
                         <Route path="order-success" element={<OrderSuccess laundryId={laundryId} />} />
+                        <Route path="faq" element={<FAQPage />} />
                         {/* Fallback */}
                         <Route path="*" element={<NoPage />} />
                     </Routes>
