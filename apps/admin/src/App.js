@@ -25,6 +25,7 @@ const ChatPage = lazy(() => import('./Pages/ChatPage'));
 const ZipInterestPage = lazy(() => import('./Pages/ZipInterestPage'));
 const DashboardPage = lazy(() => import('./Pages/DashboardPage'));
 const FAQPage = lazy(() => import('./Pages/FAQPage'));
+const EngagementPage = lazy(() => import('./Pages/EngagementPage'));
 
 // ── Shared Components ────────────────────────────────────────────────────────
 
@@ -182,6 +183,7 @@ function App() {
     const WrappedZipInterestPage = withLaundryValidation(ZipInterestPage);
     const WrappedDashboardPage = withLaundryValidation(DashboardPage);
     const WrappedFAQPage = withLaundryValidation(FAQPage);
+    const WrappedEngagementPage = withLaundryValidation(EngagementPage);
 
     return (
         <ChakraProvider>
@@ -290,6 +292,11 @@ function App() {
                         <Route path="faq" element={
                             <Suspense fallback={<LoadingSpinner/>}>
                                 <WrappedFAQPage/>
+                            </Suspense>
+                        }/>
+                        <Route path="engagement" element={
+                            <Suspense fallback={<LoadingSpinner/>}>
+                                <WrappedEngagementPage/>
                             </Suspense>
                         }/>
                     </Route>

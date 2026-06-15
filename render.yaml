@@ -47,3 +47,16 @@ services:
           type: web
           name: smart-laundry
           property: host
+
+  # Cron job: Customer engagement reminders daily at 10 AM CT (15:00 UTC)
+  - type: cron
+    name: engagement-processor
+    runtime: python
+    buildCommand: cd services/api && pip install -r requirements.txt
+    schedule: "0 15 * * *"
+    command: cd services/api && python -c "import requests; r = requests.post('https://smart-laundry.onrender.com/api/engagement/process'); print(r.json())"
+    envVars:
+      - fromService:
+          type: web
+          name: smart-laundry
+          property: host

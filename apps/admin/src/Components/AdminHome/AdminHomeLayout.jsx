@@ -598,6 +598,15 @@ const SidebarContent = ({
         >
             FAQ
         </Button>
+        <Button as="a" href={`/${laundryId}/admin/engagement`}
+                leftIcon={<FaClipboardList />}
+                variant="ghost"
+                colorScheme="orange"
+                justifyContent="flex-start"
+                onClick={() => navigate(`/${laundryId}/admin/engagement`)}
+        >
+            Engagement
+        </Button>
         <Button
             leftIcon={<FaSignOutAlt />}
             variant="ghost"
