@@ -16,7 +16,7 @@ import { FaHistory, FaTicketAlt, FaReceipt, FaFileInvoice  } from "react-icons/f
 import {NotificationButton} from "./SendNotification";
 import axios from "axios";
 
-const OrderActionsDrawer = ({ isOpen, onClose, order, handleOrderHistory, handlePrintTicket, handlePrintReceipt, setSelectedOrder, setInvoiceModalOpen, setPaymentInstructions, setSendEmail }) => {
+const OrderActionsDrawer = ({ isOpen, onClose, order, handleOrderHistory, handlePrintTicket, handlePrintReceipt, setSelectedOrder, setInvoiceModalOpen, setPaymentInstructions, setSendEmail, laundryId }) => {
     const drawerSize = useBreakpointValue({ base: "xs", sm: "xs", md: "sm", lg: "xs", xl: "xs" });
     const drawerMaxHeight = useBreakpointValue({ base: "70vh", sm: "65vh", md: "60vh" });
     const drawerWidth = useBreakpointValue({
@@ -125,8 +125,8 @@ const OrderActionsDrawer = ({ isOpen, onClose, order, handleOrderHistory, handle
 
                             {order.orderId.startsWith("IS-") && <NotificationButton order={order} />}
 
-                            {/* Send Invoice button for unpaid orders */}
-                            {order.paymentStatus !== "Paid" && (
+                            {/* Send Invoice button — only for pay-by-invoice orders */}
+                            {order.payByInvoice && order.paymentStatus !== "Paid" && order.paymentStatus !== "Invoice Sent" && (
                                 <Tooltip label="Send Invoice (Net 30)" placement="top">
                                     <IconButton
                                         icon={<FaFileInvoice />}
@@ -137,7 +137,7 @@ const OrderActionsDrawer = ({ isOpen, onClose, order, handleOrderHistory, handle
                                             try {
                                                 const res = await axios.post(
                                                     `${process.env.REACT_APP_AWS_API_URL}/api/payment/create-invoice`,
-                                                    { orderId: order.orderId, laundryId: order.laundryId, customerEmail: order.customerEmail, customerName: order.customerName },
+                                                    { orderId: order.orderId, laundryId: laundryId, customerEmail: order.customerEmail, customerName: order.customerName },
                                                     { headers: { Authorization: `Bearer ${localStorage.getItem('idToken')}` } }
                                                 );
                                                 if (res.data.status === 'success') {

@@ -4282,6 +4282,7 @@ const handleAssignLaundryDriver = async (customAddress) => {
                     setInvoiceModalOpen={setInvoiceModalOpen}
                     setPaymentInstructions={setPaymentInstructions}
                     setSendEmail={setSendEmail}
+                    laundryId={laundryId}
                 />
 
                 <InvoiceModal

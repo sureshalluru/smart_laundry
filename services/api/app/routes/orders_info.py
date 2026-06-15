@@ -1076,6 +1076,7 @@ def get_orders_by_status(cur, laundry_id, operation, page=1, limit=30, order_typ
             "customerPaymentId": r["customer_payment_id"] or "",
             "imageUrl": r["image_url"],
             "weightImageUrl": r.get("weight_image_url"),
+            "payByInvoice": r.get("pay_by_invoice", False),
             "balanceDue": float(balance_due),
             "paidAmount": float(paid_amount),
         })
@@ -1203,6 +1204,7 @@ def get_single_order(cur, laundry_id, order_id):
             "specialInstructions": order["special_instructions"],
             "laundryBags": order["laundry_bags"],
             "pricingType": order.get("pricing_type", "per_pound"),
+            "payByInvoice": order.get("pay_by_invoice", False),
             "totalWeight": float(order["total_weight"]) if order.get("total_weight") else None,
             "pickupDate": str(order["pickup_date"]) if order["pickup_date"] else None,
             "pickupTimeInterval": order["pickup_time_interval"],
