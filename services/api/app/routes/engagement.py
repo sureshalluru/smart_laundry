@@ -159,8 +159,9 @@ def _process_laundry_engagement(laundry_id, config, today, results):
         if config["abandoned_enabled"]:
             cur.execute("""
                 SELECT c.customer_id, c.first_name, c.phone_number, c.email, c.created_at
-                FROM shop.customers c
-                WHERE c.laundry_id = %s
+                FROM shop.customer_payment_profiles cpp
+                JOIN shop.customers c ON c.customer_id = cpp.customer_id
+                WHERE cpp.laundry_id = %s
                   AND NOT EXISTS (SELECT 1 FROM orders.orders o WHERE o.customer_id = c.customer_id AND o.laundry_id = %s)
                   AND c.created_at < NOW() - INTERVAL '1 day'
                   AND c.created_at > NOW() - INTERVAL '7 months'
@@ -194,13 +195,13 @@ def _process_laundry_engagement(laundry_id, config, today, results):
             cur.execute("""
                 SELECT c.customer_id, c.first_name, c.phone_number, c.email,
                        MAX(o.created_at) as last_order_date
-                FROM shop.customers c
-                JOIN orders.orders o ON o.customer_id = c.customer_id AND o.laundry_id = %s
-                WHERE c.laundry_id = %s
+                FROM orders.orders o
+                JOIN shop.customers c ON c.customer_id = o.customer_id
+                WHERE o.laundry_id = %s
                 GROUP BY c.customer_id, c.first_name, c.phone_number, c.email
                 HAVING MAX(o.created_at) < NOW() - INTERVAL '30 days'
                    AND MAX(o.created_at) > NOW() - INTERVAL '90 days'
-            """, (laundry_id, laundry_id))
+            """, (laundry_id,))
             dormant = cur.fetchall()
 
             promo_text = _get_promo_text(config["dormant_promo_code"], laundry_id)
@@ -218,12 +219,12 @@ def _process_laundry_engagement(laundry_id, config, today, results):
             cur.execute("""
                 SELECT c.customer_id, c.first_name, c.phone_number, c.email,
                        MAX(o.created_at) as last_order_date
-                FROM shop.customers c
-                JOIN orders.orders o ON o.customer_id = c.customer_id AND o.laundry_id = %s
-                WHERE c.laundry_id = %s
+                FROM orders.orders o
+                JOIN shop.customers c ON c.customer_id = o.customer_id
+                WHERE o.laundry_id = %s
                 GROUP BY c.customer_id, c.first_name, c.phone_number, c.email
                 HAVING MAX(o.created_at) < NOW() - INTERVAL '90 days'
-            """, (laundry_id, laundry_id))
+            """, (laundry_id,))
             winback = cur.fetchall()
 
             promo_text = _get_promo_text(config["winback_promo_code"], laundry_id)
@@ -241,9 +242,12 @@ def _process_laundry_engagement(laundry_id, config, today, results):
             today_key = (today.month, today.day)
             if today_key in HOLIDAYS:
                 holiday_name = HOLIDAYS[today_key]
+                # Get all customers who have ordered from this laundry
                 cur.execute("""
-                    SELECT customer_id, first_name, phone_number, email
-                    FROM shop.customers WHERE laundry_id = %s
+                    SELECT DISTINCT c.customer_id, c.first_name, c.phone_number, c.email
+                    FROM orders.orders o
+                    JOIN shop.customers c ON c.customer_id = o.customer_id
+                    WHERE o.laundry_id = %s
                 """, (laundry_id,))
                 all_customers = cur.fetchall()
 
@@ -343,37 +347,41 @@ async def get_engagement_stats(
     with get_db() as conn:
         cur = get_cursor(conn)
 
-        # Abandoned: registered, never ordered
+        # Abandoned: registered, never ordered for this laundry
+        # We identify customers through customer_payment_profiles (they registered with this laundry)
         cur.execute("""
-            SELECT COUNT(*) as cnt FROM shop.customers c
-            WHERE c.laundry_id = %s
-              AND NOT EXISTS (SELECT 1 FROM orders.orders o WHERE o.customer_id = c.customer_id AND o.laundry_id = %s)
+            SELECT COUNT(*) as cnt FROM shop.customer_payment_profiles cpp
+            JOIN shop.customers c ON c.customer_id = cpp.customer_id
+            WHERE cpp.laundry_id = %s
+              AND NOT EXISTS (SELECT 1 FROM orders.orders o WHERE o.customer_id = cpp.customer_id AND o.laundry_id = %s)
               AND c.created_at > NOW() - INTERVAL '7 months'
         """, (laundryId, laundryId))
         abandoned = cur.fetchone()["cnt"]
 
         # Dormant: 30-90 days inactive
         cur.execute("""
-            SELECT COUNT(DISTINCT c.customer_id) as cnt
-            FROM shop.customers c
-            JOIN orders.orders o ON o.customer_id = c.customer_id AND o.laundry_id = %s
-            WHERE c.laundry_id = %s
-            GROUP BY c.customer_id
-            HAVING MAX(o.created_at) < NOW() - INTERVAL '30 days'
-               AND MAX(o.created_at) > NOW() - INTERVAL '90 days'
-        """, (laundryId, laundryId))
-        dormant = len(cur.fetchall())
+            SELECT COUNT(*) as cnt FROM (
+                SELECT o.customer_id
+                FROM orders.orders o
+                WHERE o.laundry_id = %s
+                GROUP BY o.customer_id
+                HAVING MAX(o.created_at) < NOW() - INTERVAL '30 days'
+                   AND MAX(o.created_at) > NOW() - INTERVAL '90 days'
+            ) sub
+        """, (laundryId,))
+        dormant = cur.fetchone()["cnt"]
 
         # Win-back: 90+ days inactive
         cur.execute("""
-            SELECT COUNT(DISTINCT c.customer_id) as cnt
-            FROM shop.customers c
-            JOIN orders.orders o ON o.customer_id = c.customer_id AND o.laundry_id = %s
-            WHERE c.laundry_id = %s
-            GROUP BY c.customer_id
-            HAVING MAX(o.created_at) < NOW() - INTERVAL '90 days'
-        """, (laundryId, laundryId))
-        winback = len(cur.fetchall())
+            SELECT COUNT(*) as cnt FROM (
+                SELECT o.customer_id
+                FROM orders.orders o
+                WHERE o.laundry_id = %s
+                GROUP BY o.customer_id
+                HAVING MAX(o.created_at) < NOW() - INTERVAL '90 days'
+            ) sub
+        """, (laundryId,))
+        winback = cur.fetchone()["cnt"]
 
         # Active: ordered in last 30 days
         cur.execute("""
