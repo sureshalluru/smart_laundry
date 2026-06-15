@@ -378,12 +378,15 @@ async def self_service_onboard(body: dict = Body(...)):
                     s3 = get_s3_client()
                     s3.put_object(Bucket="laundrylogos", Key=s3_key, Body=logo_bytes, ContentType="image/png")
                     logo_url = f"https://laundrylogos.s3.amazonaws.com/{s3_key}"
-                    cur.execute("UPDATE shop.laundry_shops SET logo_url = %s WHERE laundry_id = %s", (logo_url, next_id))
+                    cur.execute("UPDATE shop.laundry_shops SET laundry_logo = %s WHERE laundry_id = %s", (logo_url, next_id))
                 except Exception as logo_err:
                     logger.warning(f"Logo upload failed for {laundry_name}: {logo_err}")
                     # Store base64 as fallback
-                    cur.execute("UPDATE shop.laundry_shops SET logo_url = %s WHERE laundry_id = %s",
-                                (f"data:image/png;base64,{logo_base64}", next_id))
+                    try:
+                        cur.execute("UPDATE shop.laundry_shops SET laundry_logo = %s WHERE laundry_id = %s",
+                                    (f"data:image/png;base64,{logo_base64}", next_id))
+                    except Exception:
+                        pass  # Don't let logo failure break onboarding
 
             # 2. Create owner employee
             cur.execute("""

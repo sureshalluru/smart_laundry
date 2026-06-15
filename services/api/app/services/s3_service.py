@@ -29,12 +29,7 @@ def get_s3_client():
                 "s3",
                 region_name=settings.aws_region or "us-east-1",
             )
-            # Test connection
-            _s3_client.list_buckets()
-            logger.info("S3 client initialized successfully")
-        except NoCredentialsError:
-            logger.warning("AWS credentials not found. S3 uploads will fail.")
-            _s3_client = boto3.client("s3", region_name="us-east-1")
+            logger.info("S3 client initialized")
         except Exception as e:
             logger.warning(f"S3 client init warning: {e}")
             _s3_client = boto3.client("s3", region_name="us-east-1")
