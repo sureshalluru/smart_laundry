@@ -111,9 +111,19 @@ export default function AuthenticationPage() {
         if (currentPage === "otpValidation") setOtpTimer(180);
     }, [currentPage]);
 
-    const loginBg = laundryData?.themeColor === 'green'
-        ? "linear-gradient(180deg, #F0FFF4 0%, #C6F6D5 50%, #9AE6B4 100%)"
-        : "linear-gradient(180deg, #EBF8FF 0%, #BEE3F8 50%, #90CDF4 100%)";
+    const loginBg = (() => {
+        const bgMap = {
+            blue: "linear-gradient(180deg, #EBF8FF 0%, #BEE3F8 50%, #90CDF4 100%)",
+            green: "linear-gradient(180deg, #F0FFF4 0%, #C6F6D5 50%, #9AE6B4 100%)",
+            purple: "linear-gradient(180deg, #FAF5FF 0%, #D6BCFA 50%, #B794F4 100%)",
+            teal: "linear-gradient(180deg, #E6FFFA 0%, #81E6D9 50%, #4FD1C5 100%)",
+            orange: "linear-gradient(180deg, #FFFAF0 0%, #FBD38D 50%, #F6AD55 100%)",
+            red: "linear-gradient(180deg, #FFF5F5 0%, #FEB2B2 50%, #FC8181 100%)",
+            pink: "linear-gradient(180deg, #FFF5F7 0%, #FBB6CE 50%, #F687B3 100%)",
+            cyan: "linear-gradient(180deg, #EDFDFD 0%, #9DECF9 50%, #76E4F7 100%)",
+        };
+        return bgMap[laundryData?.themeColor] || bgMap.blue;
+    })();
 
     return (
         <Flex

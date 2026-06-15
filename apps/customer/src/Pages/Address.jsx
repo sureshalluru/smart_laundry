@@ -99,9 +99,19 @@ const Address = () => {
         setIsAddressSelected(false);
     };
 
-    const themeGradient = laundryData?.themeColor === 'green'
-        ? "linear-gradient(180deg, #F0FFF4 0%, #C6F6D5 100%)"
-        : "linear-gradient(180deg, #EBF8FF 0%, #BEE3F8 100%)";
+    const themeGradient = (() => {
+        const gradientMap = {
+            blue: "linear-gradient(180deg, #EBF8FF 0%, #BEE3F8 100%)",
+            green: "linear-gradient(180deg, #F0FFF4 0%, #C6F6D5 100%)",
+            purple: "linear-gradient(180deg, #FAF5FF 0%, #D6BCFA 100%)",
+            teal: "linear-gradient(180deg, #E6FFFA 0%, #81E6D9 100%)",
+            orange: "linear-gradient(180deg, #FFFAF0 0%, #FBD38D 100%)",
+            red: "linear-gradient(180deg, #FFF5F5 0%, #FEB2B2 100%)",
+            pink: "linear-gradient(180deg, #FFF5F7 0%, #FBB6CE 100%)",
+            cyan: "linear-gradient(180deg, #EDFDFD 0%, #9DECF9 100%)",
+        };
+        return gradientMap[laundryData?.themeColor] || gradientMap.blue;
+    })();
 
     return (
         <Box bg={themeGradient} minH="100vh" display="flex" flexDirection="column" alignItems="center" justifyContent="flex-start" px={[7, 9, 11]} py={[12, 16, 20]}>

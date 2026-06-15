@@ -304,6 +304,12 @@ async def self_service_onboard(body: dict = Body(...)):
     stripe_public_key = body.get("stripePublicKey", "")
     stripe_private_key = body.get("stripePrivateKey", "")
 
+    # Branding
+    theme_color = body.get("themeColor", "blue")
+    logo_base64 = body.get("logoBase64")
+    custom_domain = body.get("customDomain", "")
+    tagline = body.get("tagline", "")
+
     # Serviceable zip codes
     serviceable_zip_codes = body.get("serviceableZipCodes", [])
 
@@ -332,6 +338,14 @@ async def self_service_onboard(body: dict = Body(...)):
             cur = get_cursor(conn)
 
             # 1. Create laundry shop
+            # Build site_content JSONB for branding
+            site_content = {
+                "themeColor": theme_color,
+                "tagline": tagline,
+                "heroTitle": f"Welcome to {laundry_name}",
+                "heroSubtitle": tagline or "Professional laundry service at your doorstep",
+            }
+
             cur.execute("""
                 INSERT INTO shop.laundry_shops (
                     laundry_id, laundry_name, laundry_timezone,
@@ -340,8 +354,8 @@ async def self_service_onboard(body: dict = Body(...)):
                     device_registration_code, bag_price,
                     stripe_public_key, stripe_private_key,
                     delivery_time_interval, emp_prefix,
-                    serviceable_zip_codes
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    serviceable_zip_codes, user_domain, site_content
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """, (
                 next_id, laundry_name, timezone,
                 street, city, state, zip_code, country,
@@ -350,7 +364,26 @@ async def self_service_onboard(body: dict = Body(...)):
                 stripe_public_key, stripe_private_key,
                 delivery_time_interval, emp_prefix,
                 json_mod.dumps(serviceable_zip_codes) if serviceable_zip_codes else json_mod.dumps([zip_code] if zip_code else []),
+                custom_domain or None,
+                json_mod.dumps(site_content),
             ))
+
+            # Upload logo if provided
+            if logo_base64:
+                try:
+                    from app.services.s3_service import get_s3_client
+                    import base64
+                    logo_bytes = base64.b64decode(logo_base64)
+                    s3_key = f"logos/{next_id}/logo.png"
+                    s3 = get_s3_client()
+                    s3.put_object(Bucket="laundrylogos", Key=s3_key, Body=logo_bytes, ContentType="image/png")
+                    logo_url = f"https://laundrylogos.s3.amazonaws.com/{s3_key}"
+                    cur.execute("UPDATE shop.laundry_shops SET logo_url = %s WHERE laundry_id = %s", (logo_url, next_id))
+                except Exception as logo_err:
+                    logger.warning(f"Logo upload failed for {laundry_name}: {logo_err}")
+                    # Store base64 as fallback
+                    cur.execute("UPDATE shop.laundry_shops SET logo_url = %s WHERE laundry_id = %s",
+                                (f"data:image/png;base64,{logo_base64}", next_id))
 
             # 2. Create owner employee
             cur.execute("""

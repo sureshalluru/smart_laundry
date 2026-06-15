@@ -67,10 +67,14 @@ const LaundryHomePage = ({laundryId, customerId, customerPaymentId: initialCusto
 
 
     const themeColor = laundryData?.themeColor || 'blue';
-    const sidebarBg = themeColor === 'green' ? 'green.700' : 'blue.700';
-    const sidebarHoverBg = themeColor === 'green' ? 'green.600' : 'blue.600';
-    const sidebarDarkBg = themeColor === 'green' ? 'green.800' : 'blue.800';
-    const pageBg = themeColor === 'green' ? '#F0FFF4' : '#EBF8FF';
+    const sidebarBg = `${themeColor}.700`;
+    const sidebarHoverBg = `${themeColor}.600`;
+    const sidebarDarkBg = `${themeColor}.800`;
+    const pageBgMap = {
+        blue: '#EBF8FF', green: '#F0FFF4', purple: '#FAF5FF', teal: '#E6FFFA',
+        orange: '#FFFAF0', red: '#FFF5F5', pink: '#FFF5F7', cyan: '#EDFDFD',
+    };
+    const pageBg = pageBgMap[themeColor] || '#EBF8FF';
 
     return (
         <Box bg={pageBg} minHeight="100vh">

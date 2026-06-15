@@ -16,8 +16,20 @@ const TIMEZONES = [
     'America/Los_Angeles', 'America/Phoenix', 'America/Anchorage', 'Pacific/Honolulu'
 ];
 
+const THEME_COLORS = [
+    { name: 'Blue', value: 'blue', bg: '#3182CE' },
+    { name: 'Green', value: 'green', bg: '#38A169' },
+    { name: 'Purple', value: 'purple', bg: '#805AD5' },
+    { name: 'Teal', value: 'teal', bg: '#319795' },
+    { name: 'Orange', value: 'orange', bg: '#DD6B20' },
+    { name: 'Red', value: 'red', bg: '#E53E3E' },
+    { name: 'Pink', value: 'pink', bg: '#D53F8C' },
+    { name: 'Cyan', value: 'cyan', bg: '#00B5D8' },
+];
+
 const steps = [
     { title: 'Business Info', description: 'Your laundry details' },
+    { title: 'Branding', description: 'Logo, colors & domain' },
     { title: 'Services', description: 'What you offer' },
     { title: 'Schedule', description: 'Operating hours' },
     { title: 'Payments', description: 'Stripe setup' },
@@ -38,7 +50,14 @@ const OnboardingPage = () => {
         ownerFirstName: '', ownerLastName: '', ownerPhone: '', ownerEmail: '',
     });
 
-    // Step 2: Services
+    // Step 2: Branding
+    const [themeColor, setThemeColor] = useState('blue');
+    const [logoBase64, setLogoBase64] = useState('');
+    const [logoPreview, setLogoPreview] = useState('');
+    const [customDomain, setCustomDomain] = useState('');
+    const [tagline, setTagline] = useState('');
+
+    // Step 3: Services
     const [services, setServices] = useState([
         { serviceName: 'Wash & Fold', price: '1.75', inputWeight: true, customerAccess: true },
     ]);
@@ -84,6 +103,10 @@ const OnboardingPage = () => {
         try {
             const payload = {
                 ...businessInfo,
+                themeColor,
+                logoBase64: logoBase64 || null,
+                customDomain,
+                tagline,
                 services: services.filter(s => s.serviceName.trim()),
                 deliveryTimeSlots: schedule.filter(s => s.enabled).map(s => ({
                     day: s.day, startTime: s.startTime, endTime: s.endTime
@@ -107,7 +130,7 @@ const OnboardingPage = () => {
 
             if (response.data.status === 'success') {
                 setResult(response.data);
-                setActiveStep(6); // Move past the last step to show results
+                setActiveStep(7); // Move past the last step to show results
                 toast({ title: 'Laundry created successfully!', status: 'success', duration: 5000 });
             } else {
                 toast({ title: 'Error', description: response.data.message, status: 'error', duration: 5000 });
@@ -122,10 +145,11 @@ const OnboardingPage = () => {
     const canProceed = () => {
         switch (activeStep) {
             case 0: return businessInfo.laundryName && businessInfo.ownerPhone && businessInfo.street;
-            case 1: return services.some(s => s.serviceName.trim());
-            case 2: return schedule.some(s => s.enabled);
-            case 3: return true; // Stripe optional at onboarding
-            case 4: return agreementSigned && signatureName.trim().length > 2; // Agreement must be signed
+            case 1: return true; // Branding is optional
+            case 2: return services.some(s => s.serviceName.trim());
+            case 3: return schedule.some(s => s.enabled);
+            case 4: return true; // Stripe optional at onboarding
+            case 5: return agreementSigned && signatureName.trim().length > 2;
             default: return true;
         }
     };
@@ -295,8 +319,112 @@ const OnboardingPage = () => {
                     </VStack>
                 )}
 
-                {/* Step 2: Services */}
+                {/* Step 2: Branding */}
                 {activeStep === 1 && (
+                    <VStack spacing={4} align="stretch">
+                        <Heading size="md">Branding & Customization</Heading>
+                        <Text fontSize="sm" color="gray.500">
+                            Make the platform yours. Upload your logo, pick your brand color, and set your custom domain.
+                        </Text>
+
+                        {/* Logo Upload */}
+                        <FormControl>
+                            <FormLabel fontWeight="bold">Business Logo</FormLabel>
+                            <Text fontSize="xs" color="gray.500" mb={2}>
+                                Upload your logo (PNG or JPG, max 2MB). If you skip this, a default laundry logo will be used.
+                            </Text>
+                            <Input
+                                type="file"
+                                accept="image/png,image/jpeg,image/jpg"
+                                p={1}
+                                onChange={(e) => {
+                                    const file = e.target.files[0];
+                                    if (!file) return;
+                                    if (file.size > 2 * 1024 * 1024) {
+                                        toast({ title: 'Logo too large', description: 'Max 2MB', status: 'error', duration: 3000 });
+                                        return;
+                                    }
+                                    const reader = new FileReader();
+                                    reader.onloadend = () => {
+                                        setLogoPreview(reader.result);
+                                        setLogoBase64(reader.result.split(',')[1]);
+                                    };
+                                    reader.readAsDataURL(file);
+                                }}
+                            />
+                            {logoPreview && (
+                                <Box mt={3} p={3} bg="gray.50" borderRadius="md" textAlign="center">
+                                    <img src={logoPreview} alt="Logo preview" style={{ maxHeight: '80px', margin: '0 auto' }} />
+                                    <Button size="xs" mt={2} variant="ghost" colorScheme="red" onClick={() => { setLogoPreview(''); setLogoBase64(''); }}>
+                                        Remove
+                                    </Button>
+                                </Box>
+                            )}
+                            {!logoPreview && (
+                                <Box mt={2} p={3} bg="gray.50" borderRadius="md" textAlign="center">
+                                    <Text fontSize="sm" color="gray.400">No logo uploaded — a default laundry icon will be used</Text>
+                                </Box>
+                            )}
+                        </FormControl>
+
+                        {/* Theme Color */}
+                        <FormControl>
+                            <FormLabel fontWeight="bold">Brand Color Theme</FormLabel>
+                            <Text fontSize="xs" color="gray.500" mb={2}>
+                                This color will be used on your customer-facing website and landing page.
+                            </Text>
+                            <SimpleGrid columns={{ base: 4, md: 8 }} spacing={3}>
+                                {THEME_COLORS.map(color => (
+                                    <Box
+                                        key={color.value}
+                                        w="100%" h="50px"
+                                        bg={color.bg}
+                                        borderRadius="md"
+                                        cursor="pointer"
+                                        border={themeColor === color.value ? '3px solid #1A202C' : '2px solid transparent'}
+                                        onClick={() => setThemeColor(color.value)}
+                                        display="flex" alignItems="center" justifyContent="center"
+                                        transition="all 0.2s"
+                                        _hover={{ transform: 'scale(1.05)' }}
+                                    >
+                                        <Text fontSize="xs" color="white" fontWeight="bold">{color.name}</Text>
+                                    </Box>
+                                ))}
+                            </SimpleGrid>
+                        </FormControl>
+
+                        {/* Tagline */}
+                        <FormControl>
+                            <FormLabel fontWeight="bold">Tagline / Slogan</FormLabel>
+                            <Input
+                                placeholder="e.g. Fresh clothes, delivered to your door"
+                                value={tagline}
+                                onChange={e => setTagline(e.target.value)}
+                                maxLength={100}
+                            />
+                            <Text fontSize="xs" color="gray.400" mt={1}>{tagline.length}/100 characters</Text>
+                        </FormControl>
+
+                        {/* Custom Domain */}
+                        <FormControl>
+                            <FormLabel fontWeight="bold">Custom Domain (optional)</FormLabel>
+                            <Text fontSize="xs" color="gray.500" mb={2}>
+                                If you have your own domain, enter it here. We'll configure it after setup. Otherwise your site will be available at our platform URL.
+                            </Text>
+                            <InputGroup>
+                                <InputLeftAddon>https://</InputLeftAddon>
+                                <Input
+                                    placeholder="www.mylaundry.com"
+                                    value={customDomain}
+                                    onChange={e => setCustomDomain(e.target.value)}
+                                />
+                            </InputGroup>
+                        </FormControl>
+                    </VStack>
+                )}
+
+                {/* Step 3: Services */}
+                {activeStep === 2 && (
                     <VStack spacing={4} align="stretch">
                         <HStack justify="space-between">
                             <Heading size="md">Services & Pricing</Heading>
@@ -342,8 +470,8 @@ const OnboardingPage = () => {
                     </VStack>
                 )}
 
-                {/* Step 3: Schedule */}
-                {activeStep === 2 && (
+                {/* Step 4: Schedule */}
+                {activeStep === 3 && (
                     <VStack spacing={4} align="stretch">
                         <Heading size="md">Operating Schedule</Heading>
                         <Text fontSize="sm" color="gray.500">Set which days and hours you're available for pickup and delivery.</Text>
@@ -376,8 +504,8 @@ const OnboardingPage = () => {
                     </VStack>
                 )}
 
-                {/* Step 4: Payments */}
-                {activeStep === 3 && (
+                {/* Step 5: Payments */}
+                {activeStep === 4 && (
                     <VStack spacing={4} align="stretch">
                         <Heading size="md">Payment Setup (Stripe)</Heading>
                         <Text fontSize="sm" color="gray.500">
@@ -402,8 +530,8 @@ const OnboardingPage = () => {
                     </VStack>
                 )}
 
-                {/* Step 5: Agreement */}
-                {activeStep === 4 && (
+                {/* Step 6: Agreement */}
+                {activeStep === 5 && (
                     <VStack spacing={4} align="stretch">
                         <Heading size="md">Service Agreement</Heading>
                         <Text fontSize="sm" color="gray.600">
@@ -483,8 +611,8 @@ const OnboardingPage = () => {
                     </VStack>
                 )}
 
-                {/* Step 6: Review */}
-                {activeStep === 5 && (
+                {/* Step 7: Review */}
+                {activeStep === 6 && (
                     <VStack spacing={4} align="stretch">
                         <Heading size="md">Review & Launch</Heading>
 
@@ -496,6 +624,10 @@ const OnboardingPage = () => {
                                     <Text fontWeight="bold">Timezone:</Text><Text>{businessInfo.timezone}</Text>
                                     <Text fontWeight="bold">Owner:</Text><Text>{businessInfo.ownerFirstName} {businessInfo.ownerLastName}</Text>
                                     <Text fontWeight="bold">Phone:</Text><Text>{businessInfo.ownerPhone}</Text>
+                                    <Text fontWeight="bold">Theme:</Text><Text><Badge colorScheme={themeColor}>{themeColor}</Badge></Text>
+                                    <Text fontWeight="bold">Logo:</Text><Text>{logoBase64 ? '✅ Uploaded' : '📦 Default'}</Text>
+                                    <Text fontWeight="bold">Domain:</Text><Text>{customDomain || 'Platform URL'}</Text>
+                                    <Text fontWeight="bold">Tagline:</Text><Text>{tagline || '—'}</Text>
                                     <Text fontWeight="bold">Services:</Text><Text>{services.filter(s => s.serviceName).length} configured</Text>
                                     <Text fontWeight="bold">Schedule:</Text><Text>{schedule.filter(s => s.enabled).length} days/week</Text>
                                     <Text fontWeight="bold">Stripe:</Text><Text>{stripePublicKey ? '✅ Connected' : '⏳ Skip for now'}</Text>
@@ -511,12 +643,12 @@ const OnboardingPage = () => {
                 )}
 
                 {/* Navigation */}
-                {activeStep < 6 && (
+                {activeStep < 7 && (
                     <HStack justify="space-between" pt={4}>
                         <Button variant="ghost" onClick={() => setActiveStep(Math.max(0, activeStep - 1))} isDisabled={activeStep === 0}>
                             Back
                         </Button>
-                        {activeStep < 5 && (
+                        {activeStep < 6 && (
                             <Button colorScheme="blue" onClick={() => setActiveStep(activeStep + 1)} isDisabled={!canProceed()}>
                                 Next
                             </Button>
