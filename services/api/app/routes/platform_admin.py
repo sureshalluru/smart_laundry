@@ -338,12 +338,28 @@ async def self_service_onboard(body: dict = Body(...)):
             cur = get_cursor(conn)
 
             # 1. Create laundry shop
-            # Build site_content JSONB for branding
+            # Build site_content JSONB for branding + location
+            full_address = f"{street}, {city}, {state} {zip_code}"
+            maps_query = f"{street}, {city}, {state} {zip_code}, {country}".replace(" ", "+")
             site_content = {
                 "themeColor": theme_color,
                 "tagline": tagline,
                 "heroTitle": f"Welcome to {laundry_name}",
                 "heroSubtitle": tagline or "Professional laundry service at your doorstep",
+                "headline": f"Fresh, Clean Laundry <span>Delivered</span>",
+                "subheadline": tagline or f"{laundry_name} — professional wash & fold with free pickup and delivery.",
+                "address": full_address,
+                "city": city,
+                "state": state,
+                "zip": zip_code,
+                "mapsQuery": maps_query,
+                "phone": contact_phone,
+                "email": contact_email,
+                "hours": [
+                    {"day": "Mon-Fri", "time": "8AM - 5PM"},
+                    {"day": "Sat", "time": "9AM - 5PM"},
+                ],
+                "trustBadges": ["Free Pickup & Delivery", "Open 24/7", "Modern Facility"],
             }
 
             cur.execute("""

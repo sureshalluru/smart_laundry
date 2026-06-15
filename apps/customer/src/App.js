@@ -41,7 +41,7 @@ function App() {
                         {/* Public site landing page — domain-aware redirect */}
                         <Route path="/" element={<DomainRedirect />} />
 
-                        <Route path="/invalid" element={<NoPage />} />
+                        <Route path="/invalid" element={<Navigate to="/" replace />} />
                         <Route path="/platform-admin" element={<PlatformAdminPage />} />
                         <Route path="/onboard" element={<OnboardingPage />} />
 
@@ -56,7 +56,7 @@ function App() {
                                             <LaundryHomePage />
                                         </CustomerAuthCheck>
                                     } />
-                                    <Route path="*" element={<NoPage />} />
+                                    <Route path="*" element={<Navigate to={`/${window.location.pathname.split('/')[1]}/site`} replace />} />
                                 </Routes>
                             </LaundryProvider>
                         } />
@@ -66,7 +66,7 @@ function App() {
                         <Route path="/BookDemo" element={<BookDemo />} />
                         <Route path="/GetStarted" element={<GetStarted />} />
                         <Route path="/slb" element={<LandingPage />} />
-                        <Route path="*" element={<NoPage />} />
+                        <Route path="*" element={<Navigate to="/" replace />} />
                     </Routes>
                 </BrowserRouter>
             </CustomerAuthProvider>

@@ -16,11 +16,14 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from app.config import settings
 
-# Suppress noisy access logs for polling endpoints (chat, etc.)
+# Suppress noisy access logs for polling endpoints and bot probes
 class SuppressPollingFilter(logging.Filter):
     def filter(self, record):
         msg = record.getMessage()
         if "/api/chat/messages" in msg:
+            return False
+        # Suppress bot scanner probes
+        if ".php" in msg or ".asp" in msg or "/wp-" in msg or "/.env" in msg:
             return False
         return True
 
@@ -85,6 +88,19 @@ app.include_router(chat.router, prefix="/api/chat", tags=["Chat"])
 app.include_router(platform_admin.router, prefix="/api/platform", tags=["Platform Admin"])
 app.include_router(dashboard.router, prefix="/api/dashboard", tags=["Dashboard"])
 app.include_router(engagement.router, prefix="/api/engagement", tags=["Customer Engagement"])
+
+
+# Block bot scanners probing for PHP/WordPress/exploit files
+@app.middleware("http")
+async def block_bot_scanners(request: Request, call_next):
+    from fastapi.responses import Response
+    path = request.url.path.lower()
+    # Block requests for PHP files, common exploit paths
+    blocked_extensions = ('.php', '.asp', '.aspx', '.jsp', '.cgi', '.env', '.git', '.sql')
+    blocked_paths = ('/wp-', '/wordpress', '/xmlrpc', '/.env', '/.git', '/admin.php', '/shell')
+    if any(path.endswith(ext) for ext in blocked_extensions) or any(bp in path for bp in blocked_paths):
+        return Response(status_code=404, content="Not Found")
+    return await call_next(request)
 
 
 @app.get("/health")
