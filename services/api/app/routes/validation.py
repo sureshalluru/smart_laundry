@@ -189,9 +189,10 @@ def _validate_address(cur, laundry_id, address):
     if not address:
         return {"status": "error", "message": "Missing address"}
 
-    # Extract zip code using regex (5-digit US zip)
-    zip_match = re.search(r'\b(\d{5})\b', address)
-    zip_code = zip_match.group(1) if zip_match else ""
+    # Extract zip code — use the LAST 5-digit number in the address
+    # (zip code is always at the end; street numbers also match \d{5} but come first)
+    zip_matches = re.findall(r'\b(\d{5})\b', address)
+    zip_code = zip_matches[-1] if zip_matches else ""
 
     if not zip_code:
         return {"status": "error", "message": "Could not determine zip code from address"}

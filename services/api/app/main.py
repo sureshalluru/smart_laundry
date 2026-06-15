@@ -8,12 +8,23 @@ Routes:
   /*          → Customer ordering React app
 """
 import os
+import logging
 from pathlib import Path
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from app.config import settings
+
+# Suppress noisy access logs for polling endpoints (chat, etc.)
+class SuppressPollingFilter(logging.Filter):
+    def filter(self, record):
+        msg = record.getMessage()
+        if "/api/chat/messages" in msg:
+            return False
+        return True
+
+logging.getLogger("uvicorn.access").addFilter(SuppressPollingFilter())
 from app.routes import (
     auth,
     orders_info,
