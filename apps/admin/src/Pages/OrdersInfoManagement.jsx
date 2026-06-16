@@ -1583,7 +1583,7 @@ const { open: openCancelUber, ModalUI: CancelUberModal } = useCancelUberHandoff(
         // Replace the adjustedStatusOptions and status change handler with:
         const isOnlineOrder = selectedOrderDetails?.orderId.startsWith("O-");
         const isProcessingCompleted = orderStatusMap[selectedOrderDetails?.orderId] === "ProcessingCompleted";
-        const isMenuDisabled = isInStoreOrder && isProcessingCompleted;
+        const isMenuDisabled = false; // Never disable — individual menu items handle blocking
 
         // Adjust status options dynamically
         let adjustedStatusOptions = [...statusOptions];
@@ -1810,18 +1810,28 @@ const { open: openCancelUber, ModalUI: CancelUberModal } = useCancelUberHandoff(
                                                         const baseStatus = initialStatus || selectedOrderDetails.orderStatus;
                                                         const currentIndex = adjustedStatusOptions.indexOf(baseStatus);
                                                         const isEnabled = index === currentIndex || index === currentIndex + 1;
-                                                        // Don't allow admin to set Delivered (driver only) or OrderPickedUp for online orders
+                                                        
+                                                        // Don't allow admin to set Delivered for online orders (driver only)
                                                         const isTerminalStatus = status === "Delivered" || (status === "OrderPickedUp" && selectedOrderDetails?.orderType === "Online");
-                                        // Block EnRouteToDelivery if payment is not cleared (except invoice orders)
-                                                        const isBlockedByPayment = status === "EnRouteToDelivery" 
-                                                            && selectedOrderDetails?.paymentStatus !== "Paid"
-                                                            && selectedOrderDetails?.paymentStatus !== "Invoice Sent";
+
+                                                        // Payment logic:
+                                                        // - Can't go past ProcessingCompleted unless paid (or invoice sent)
+                                                        // - Exception: In-store can go to OrderPickedUp (pay at counter)
+                                                        const isPaid = selectedOrderDetails?.paymentStatus === "Paid" || selectedOrderDetails?.paymentStatus === "Invoice Sent";
+                                                        const isInStoreOrder = selectedOrderDetails?.orderType === "InStore";
+                                                        const isPastProcessing = ["EnRouteToDelivery", "Delivered", "OrderPickedUp"].includes(status);
+                                                        const isBlockedByPayment = isPastProcessing && !isPaid 
+                                                            && !(isInStoreOrder && status === "OrderPickedUp");
+
+                                                        // For in-store orders: allow jumping from ProcessingCompleted to OrderPickedUp
+                                                        const isPickedUpFromProcessing = isInStoreOrder && status === "OrderPickedUp" && baseStatus === "ProcessingCompleted";
+                                                        const finalEnabled = isEnabled || isPickedUpFromProcessing;
 
                                                         return (
                                                             <MenuItem
                                                                 key={status}
-                                                                onClick={() => (isEnabled && !isTerminalStatus && !isBlockedByPayment) && handleStatusChange(status)}
-                                                                isDisabled={!isEnabled || isTerminalStatus || isBlockedByPayment}
+                                                                onClick={() => (finalEnabled && !isTerminalStatus && !isBlockedByPayment) && handleStatusChange(status)}
+                                                                isDisabled={!finalEnabled || isTerminalStatus || isBlockedByPayment}
                                                             >
                                                                 {status}{isBlockedByPayment ? ' (Payment Required)' : ''}
                                                             </MenuItem>
