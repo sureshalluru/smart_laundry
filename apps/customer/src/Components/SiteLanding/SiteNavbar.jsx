@@ -6,6 +6,7 @@ const navLinks = [
     { label: 'Services', href: '#services' },
     { label: 'How It Works', href: '#how-it-works' },
     { label: 'Pricing', href: '#pricing' },
+    { label: 'Saree Rolling', href: '/saree-rolling' },
     { label: 'Location', href: '#location' },
     { label: 'About', href: '#about' },
     { label: 'Admin', href: null, isAdmin: true },

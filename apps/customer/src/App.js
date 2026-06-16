@@ -18,6 +18,7 @@ import LandingPage from './Pages/LandingPage';
 import LaundryLandingWrapper from './Pages/LaundryLandingWrapper';
 import PlatformAdminPage from './Pages/PlatformAdminPage';
 import OnboardingPage from './Pages/OnboardingPage';
+import SareeRollingPage from './Pages/SareeRollingPage';
 import { Navigate } from 'react-router-dom';
 import theme from './theme';
 
@@ -44,6 +45,8 @@ function App() {
                         <Route path="/invalid" element={<Navigate to="/" replace />} />
                         <Route path="/platform-admin" element={<PlatformAdminPage />} />
                         <Route path="/onboard" element={<OnboardingPage />} />
+                        <Route path="/saree-rolling" element={<SareeRollingPage />} />
+                        <Route path="/:laundryId/saree-rolling" element={<SareeRollingPage />} />
 
                         <Route path="/:laundryId/*" element={
                             <LaundryProvider>
