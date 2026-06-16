@@ -348,6 +348,7 @@ async def self_service_onboard(body: dict = Body(...)):
                 "heroSubtitle": tagline or "Professional laundry service at your doorstep",
                 "headline": f"Fresh, Clean Laundry <span>Delivered</span>",
                 "subheadline": tagline or f"{laundry_name} — professional wash & fold with free pickup and delivery.",
+                "heroVideoUrl": "https://laundry-images-store-prod.s3.us-east-1.amazonaws.com/15380072_3840_2160_30fps.mp4",
                 "address": full_address,
                 "city": city,
                 "state": state,

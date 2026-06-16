@@ -61,7 +61,7 @@ export default function SiteHero({ config }) {
 
                     <Heading fontSize={{ base: '3xl', md: '5xl', lg: '6xl' }} fontWeight="800"
                         color={videoLoaded ? 'white' : 'gray.800'} lineHeight="shorter"
-                        textShadow={videoLoaded ? '0 2px 20px rgba(0,0,0,0.3)' : 'none'}
+                        textShadow={videoLoaded ? '0 2px 30px rgba(0,0,0,0.5), 0 4px 60px rgba(0,0,0,0.3)' : 'none'}
                         dangerouslySetInnerHTML={{
                             __html: (sc.headline || 'Fresh, Clean Laundry <span>Delivered</span>').replace(
                                 /<span>(.*?)<\/span>/g,
@@ -72,7 +72,9 @@ export default function SiteHero({ config }) {
                         }}
                     />
 
-                    <Text fontSize={{ base: 'md', md: 'lg' }} color={videoLoaded ? 'whiteAlpha.900' : 'gray.600'} maxW="550px" lineHeight="tall">
+                    <Text fontSize={{ base: 'md', md: 'lg' }} color={videoLoaded ? 'white' : 'gray.600'} maxW="550px" lineHeight="tall"
+                        fontWeight={videoLoaded ? '500' : '400'}
+                        textShadow={videoLoaded ? '0 1px 10px rgba(0,0,0,0.4)' : 'none'}>
                         {sc.subheadline || 'Professional wash & fold service with free pickup and delivery. Your clothes deserve the best care.'}
                     </Text>
 
@@ -91,11 +93,11 @@ export default function SiteHero({ config }) {
                     </HStack>
 
                     {/* Trust indicators */}
-                    <Flex pt={6} gap={{ base: 4, md: 8 }} flexWrap="wrap" justify="center" color={videoLoaded ? 'whiteAlpha.900' : 'gray.600'}>
+                    <Flex pt={6} gap={{ base: 4, md: 8 }} flexWrap="wrap" justify="center" color={videoLoaded ? 'white' : 'gray.600'}>
                         {(sc.trustBadges || ['Free Delivery', 'Open 24/7', 'Modern Facility']).map((badge, i) => (
                             <HStack key={i} spacing={2}>
                                 <Icon as={[FiTruck, FiClock, FiStar][i % 3]} color={videoLoaded ? `${themeColor}.300` : theme.accent} />
-                                <Text fontSize="sm" fontWeight="500">{badge}</Text>
+                                <Text fontSize="sm" fontWeight="600" textShadow={videoLoaded ? '0 1px 8px rgba(0,0,0,0.3)' : 'none'}>{badge}</Text>
                             </HStack>
                         ))}
                     </Flex>
