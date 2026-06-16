@@ -589,11 +589,12 @@ async def update_order_endpoint(
             if tip_type == "percentage":
                 pct = float(current_order["tip_percentage"] or 0)
                 tip_amount = round(sub_total * (pct / 100), 2)
+                tip_receiver = empId if empId else current_order.get("tip_receiver_id") or None
                 cur.execute("""
                     INSERT INTO orders.order_tips (order_id, tip_amount, tip_percentage, tip_type, tip_method, tip_receiver_id)
                     VALUES (%s, %s, %s, %s, %s, %s)
-                    ON CONFLICT (order_id) DO UPDATE SET tip_amount = EXCLUDED.tip_amount, tip_receiver_id = EXCLUDED.tip_receiver_id
-                """, (orderId, tip_amount, current_order["tip_percentage"], tip_type, current_order["tip_method"], empId))
+                    ON CONFLICT (order_id) DO UPDATE SET tip_amount = EXCLUDED.tip_amount, tip_receiver_id = COALESCE(EXCLUDED.tip_receiver_id, orders.order_tips.tip_receiver_id)
+                """, (orderId, tip_amount, current_order["tip_percentage"], tip_type, current_order["tip_method"], tip_receiver))
 
             grand_total = round(total_cost + tip_amount, 2)
 
