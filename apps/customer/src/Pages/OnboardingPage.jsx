@@ -229,11 +229,11 @@ const OnboardingPage = () => {
                 {/* Hero image — only on first step */}
                 {activeStep === 0 && (
                     <Box textAlign="center">
-                        <Box mx="auto" mb={2} maxW={{ base: '100%', md: '500px' }} borderRadius="xl" overflow="hidden" boxShadow="md">
+                        <Box mx="auto" mb={2} maxW={{ base: '100%', md: '700px' }} borderRadius="xl" overflow="hidden" boxShadow="md">
                             <img
                                 src="https://laundry-images-store-prod.s3.us-east-1.amazonaws.com/onboard-hero.png"
                                 alt="Smart Laundry Basket - All-in-One Laundromat Platform"
-                                style={{ width: '100%', height: 'auto', maxHeight: '200px', objectFit: 'cover', objectPosition: 'top' }}
+                                style={{ width: '100%', height: 'auto' }}
                             />
                         </Box>
                         <Heading size={{ base: 'sm', md: 'md' }} color="blue.700">Get Started in 2 Minutes</Heading>
