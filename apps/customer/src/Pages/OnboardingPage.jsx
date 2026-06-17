@@ -224,20 +224,30 @@ const OnboardingPage = () => {
     }
 
     return (
-        <Container maxW="container.lg" py={8}>
-            <VStack spacing={6} align="stretch">
-                <Box textAlign="center" mb={4}>
-                    <Heading size="lg" color="blue.700">Launch Your Laundry Business</Heading>
-                    <Text color="gray.600" mt={2}>Set up your online laundry platform in minutes</Text>
-                </Box>
+        <Container maxW="container.lg" py={{ base: 4, md: 8 }} px={{ base: 4, md: 6 }}>
+            <VStack spacing={{ base: 4, md: 6 }} align="stretch">
+                {/* Hero image — only on first step */}
+                {activeStep === 0 && (
+                    <Box textAlign="center">
+                        <Box mx="auto" mb={2} maxW={{ base: '100%', md: '500px' }} borderRadius="xl" overflow="hidden" boxShadow="md">
+                            <img
+                                src="https://laundry-images-store-prod.s3.us-east-1.amazonaws.com/onboard-hero.png"
+                                alt="Smart Laundry Basket - All-in-One Laundromat Platform"
+                                style={{ width: '100%', height: 'auto', maxHeight: '200px', objectFit: 'cover', objectPosition: 'top' }}
+                            />
+                        </Box>
+                        <Heading size={{ base: 'sm', md: 'md' }} color="blue.700">Get Started in 2 Minutes</Heading>
+                        <Text color="gray.600" mt={1} fontSize={{ base: 'xs', md: 'sm' }}>Free until $3K/month revenue. No contracts.</Text>
+                    </Box>
+                )}
 
-                <Stepper index={activeStep} colorScheme="blue" size="sm">
+                <Stepper index={activeStep} colorScheme="blue" size={{ base: 'xs', md: 'sm' }}>
                     {steps.map((step, index) => (
                         <Step key={index} onClick={() => index < activeStep && setActiveStep(index)}>
                             <StepIndicator>
                                 <StepStatus complete={<StepIcon />} incomplete={<StepNumber />} active={<StepNumber />} />
                             </StepIndicator>
-                            <Box flexShrink="0">
+                            <Box flexShrink="0" display={{ base: 'none', md: 'block' }}>
                                 <StepTitle>{step.title}</StepTitle>
                                 <StepDescription>{step.description}</StepDescription>
                             </Box>

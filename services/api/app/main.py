@@ -57,6 +57,13 @@ app = FastAPI(
     description="Unified backend + frontend for Smart Laundry platform",
 )
 
+
+# Start background scheduler on app startup
+@app.on_event("startup")
+def startup_event():
+    from app.scheduler import start_scheduler
+    start_scheduler()
+
 # CORS (still needed for local dev when React dev servers run separately)
 app.add_middleware(
     CORSMiddleware,
@@ -106,8 +113,11 @@ async def block_bot_scanners(request: Request, call_next):
 @app.get("/health")
 async def health_check():
     import os
+    from app.scheduler import scheduler
     return {
         "status": "healthy",
+        "scheduler_running": scheduler.running,
+        "scheduled_jobs": len(scheduler.get_jobs()) if scheduler.running else 0,
         "twilio_configured": bool(settings.twilio_account_sid and settings.twilio_auth_token),
         "email_configured": bool(settings.source_email),
         "twilio_sid_from_env": os.environ.get("TWILIO_ACCOUNT_SID", "NOT SET")[:10] + "..." if os.environ.get("TWILIO_ACCOUNT_SID") else "NOT SET",

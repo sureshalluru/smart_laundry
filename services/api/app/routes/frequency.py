@@ -120,6 +120,18 @@ async def process_frequencies():
                 # Generate order ID
                 order_id = f"O-{uuid.uuid4().hex[:8].upper()}"
 
+                # FIRST: Advance the future_pickup_date (prevents stuck subscriptions if order INSERT fails)
+                with get_db() as conn:
+                    cur = get_cursor(conn)
+                    cur.execute("""
+                        UPDATE orders.laundry_frequency
+                        SET future_pickup_date = %s,
+                            pickup_date = %s,
+                            updated_at = NOW()
+                        WHERE frequency_id = %s
+                    """, (next_future_pickup, future_pickup_date, freq_id))
+
+                # THEN: Create the order
                 with get_db() as conn:
                     cur = get_cursor(conn)
                     cur.execute("""
@@ -144,15 +156,6 @@ async def process_frequencies():
                         None, frequency,
                         pickup_service, dropoff_service,
                     ))
-
-                    # Advance the future_pickup_date on the subscription
-                    cur.execute("""
-                        UPDATE orders.laundry_frequency
-                        SET future_pickup_date = %s,
-                            pickup_date = %s,
-                            updated_at = NOW()
-                        WHERE frequency_id = %s
-                    """, (next_future_pickup, future_pickup_date, freq_id))
 
                 # Create $1 hold if payment info exists
                 if customer_payment_id:
