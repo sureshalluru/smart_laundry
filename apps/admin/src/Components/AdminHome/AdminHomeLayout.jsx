@@ -38,6 +38,7 @@ import {
     FaBox,
     FaSignOutAlt,
     FaComments,
+    FaCashRegister,
 } from 'react-icons/fa';
 import { Outlet, useNavigate, useParams } from 'react-router-dom';
 import { fetchLaundryInfo } from '../../Pages/LaundryInfoManagement';
@@ -440,6 +441,18 @@ const SidebarContent = ({
                         onClick={() => navigate(`/${laundryId}/admin/order-products`)} 
                     >
                         Instant Orders
+                    </Button>
+
+                    <Button as="a" href={`/${laundryId}/admin/pos`}
+                        leftIcon={<FaCashRegister />}
+                        variant="ghost"
+                        colorScheme="teal"
+                        justifyContent="flex-start"
+                        size="sm"
+                        maxWidth="100%"
+                        onClick={() => navigate(`/${laundryId}/admin/pos`)} 
+                    >
+                        Quick POS
                     </Button>
                     {/* Other Option */}
                     {/* <Button as="a" href={`/${laundryId}/admin/commercial-order-invoice`}

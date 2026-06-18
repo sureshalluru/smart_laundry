@@ -15,6 +15,7 @@ import LearnMore from "./Components/Landing/LearnMore";
 import BookDemo from "./Components/Landing/BookDemo";
 import GetStarted from "./Components/Landing/GetStarted";
 import LandingPage from './Pages/LandingPage';
+import ProductWebsite from './Pages/ProductWebsite';
 import LaundryLandingWrapper from './Pages/LaundryLandingWrapper';
 import PlatformAdminPage from './Pages/PlatformAdminPage';
 import OnboardingPage from './Pages/OnboardingPage';
@@ -68,7 +69,7 @@ function App() {
                         <Route path="/LearnMore" element={<LearnMore />} />
                         <Route path="/BookDemo" element={<BookDemo />} />
                         <Route path="/GetStarted" element={<GetStarted />} />
-                        <Route path="/slb" element={<LandingPage />} />
+                        <Route path="/slb" element={<ProductWebsite />} />
                         <Route path="*" element={<Navigate to="/" replace />} />
                     </Routes>
                 </BrowserRouter>
