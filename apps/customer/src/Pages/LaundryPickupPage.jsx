@@ -106,6 +106,7 @@ export default function LaundryPickupPage({laundryId,customerId,customerPaymentI
     const searchBoxRef = useRef(null);
     // State variables for laundry info
     const [laundryServices, setLaundryServices] = useState([]); // set the laundry services information
+    const [servicesLoaded, setServicesLoaded] = useState(false);
     const [deliveryTimeSlots, setDeliveryTimeSlots] = useState([]); // set the delivery time slots information
     const [deliveryTimeInterval, setDeliveryTimeInterval] = useState(0); // set the delivery time interval to generate the slots
     const [laundryFrequency, setLaundryFrequency] = useState([]); // set the laundry frequency
@@ -180,6 +181,7 @@ export default function LaundryPickupPage({laundryId,customerId,customerPaymentI
                             setActiveStep(1);
                         }
                         // If both exist, stay on step 0 (pricing choice page)
+                        setServicesLoaded(true);
 
                         // Initialize Stripe with the fetched public key
                         if (laundryData?.stripePublicKey){
@@ -688,8 +690,8 @@ export default function LaundryPickupPage({laundryId,customerId,customerPaymentI
                         </Stepper>
 
                         <Box bg="white" borderRadius="2xl" boxShadow="sm" border="1px solid" borderColor="gray.100" padding={[4,5,6]}>
-                            {/* Step 0: Pricing Choice */}
-                            {activeStep === 0 && (
+                            {/* Step 0: Pricing Choice — only show after services loaded */}
+                            {activeStep === 0 && servicesLoaded && (
                                 <PricingChoice
                                     pricingType={pricingType}
                                     setPricingType={setPricingType}
