@@ -64,8 +64,13 @@ def decode_token(token: str) -> dict:
 async def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security),
 ) -> dict:
-    """Validate Bearer token and return user claims."""
-    payload = decode_token(credentials.credentials)
+    """Validate Bearer token and return user claims. Also accepts platform admin key."""
+    token = credentials.credentials
+    # Allow platform admin key as a valid "token" for platform-level operations
+    from app.routes.platform_admin import PLATFORM_ADMIN_KEY
+    if token == PLATFORM_ADMIN_KEY:
+        return {"sub": "platform-admin", "type": "access", "role": "platform_admin"}
+    payload = decode_token(token)
     if payload.get("type") != "access":
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

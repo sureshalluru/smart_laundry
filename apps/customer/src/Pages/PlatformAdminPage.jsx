@@ -102,12 +102,11 @@ export default function PlatformAdminPage() {
         try {
             const res = await axios.get(`${API_URL}/api/chat/admin/conversations`, {
                 params: { laundryId: 'platform' },
-                headers: { Authorization: `Bearer ${localStorage.getItem('idToken') || 'platform'}` }
+                headers: { Authorization: `Bearer ${platformKey}` }
             });
             if (res.data?.conversations) {
                 const counts = {};
                 res.data.conversations.forEach(c => {
-                    // customerId is 'laundry-{id}', extract the laundry id
                     const lid = c.customerId?.replace('laundry-', '');
                     if (lid) counts[lid] = c.unreadCount || 0;
                 });
@@ -128,6 +127,8 @@ export default function PlatformAdminPage() {
         setChatLaundry(laundry);
         setChatOpen(true);
         fetchChatMessages(laundry.laundryId);
+        // Reset unread count locally
+        setUnreadCounts(prev => ({ ...prev, [laundry.laundryId]: 0 }));
         if (chatPollRef.current) clearInterval(chatPollRef.current);
         chatPollRef.current = setInterval(() => fetchChatMessages(laundry.laundryId), 5000);
     };
@@ -139,10 +140,18 @@ export default function PlatformAdminPage() {
 
     const fetchChatMessages = async (lid) => {
         try {
+            // First get the conversation to find conversationId
             const res = await axios.get(`${API_URL}/api/chat/messages`, {
                 params: { customerId: `laundry-${lid}`, laundryId: 'platform' }
             });
             if (res.data?.messages) setChatMessages(res.data.messages);
+            // If conversation exists, also call admin/messages to mark as read
+            if (res.data?.conversationId) {
+                await axios.get(`${API_URL}/api/chat/admin/messages`, {
+                    params: { conversationId: res.data.conversationId, laundryId: 'platform' },
+                    headers: { Authorization: `Bearer ${platformKey}` }
+                }).catch(() => {});
+            }
         } catch (err) { /* ok */ }
     };
 
@@ -175,7 +184,7 @@ export default function PlatformAdminPage() {
                     conversationId: convId,
                     message: chatInput.trim(),
                     senderName: 'Platform Support',
-                }, { headers: { Authorization: `Bearer ${localStorage.getItem('idToken') || 'platform'}` } });
+                }, { headers: { Authorization: `Bearer ${platformKey}` } });
             }
 
             setChatInput('');
