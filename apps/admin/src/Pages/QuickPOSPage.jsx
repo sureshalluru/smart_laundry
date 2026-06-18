@@ -31,9 +31,9 @@ export default function QuickPOSPage({ laundryId }) {
   const [customerId, setCustomerId] = useState('');
   const [phoneSuggestions, setPhoneSuggestions] = useState([]);
   const [bags, setBags] = useState(1);
-  const [tip, setTip] = useState(0);
-  const [customTip, setCustomTip] = useState('');
+  const [tip, setTip] = useState({ tipOption: 'noTip', tipType: 'noTip', tipPercentage: 0, tipAmount: '0.00', customTip: '' });
   const [paymentMethod, setPaymentMethod] = useState('');
+  const [needBy, setNeedBy] = useState('asap'); // 'asap' or date string
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [orderSuccess, setOrderSuccess] = useState(null);
   const [searchTimeout, setSearchTimeout] = useState(null);
@@ -95,7 +95,8 @@ export default function QuickPOSPage({ laundryId }) {
   const removeFromCart = (name) => setCart(prev => prev.filter(i => i.serviceName !== name));
 
   const subtotal = cart.reduce((s, i) => s + (i.price * (i.isWeight ? (parseFloat(i.inputWeight) || 0) : i.quantity)), 0);
-  const total = subtotal + tip;
+  const tipAmount = parseFloat(tip.tipAmount) || 0;
+  const total = subtotal + tipAmount;
 
   // Print
   const printTicket = (orderId) => {
@@ -117,7 +118,7 @@ export default function QuickPOSPage({ laundryId }) {
       <p><strong>Bags:</strong> ${bags}</p><div class="line"></div>
       <table>${items}</table><div class="line"></div>
       <p class="total">Subtotal: $${subtotal.toFixed(2)}</p>
-      ${tip>0?`<p class="total">Tip: $${tip.toFixed(2)}</p>`:''}
+      ${tipAmount>0?`<p class="total">Tip: $${tipAmount.toFixed(2)}</p>`:''}
       <p class="total">TOTAL: $${total.toFixed(2)}</p><div class="line"></div>
       <p class="center">Payment: ${paymentMethod}</p><p class="center">Thank you!</p>
     </body></html>`);
@@ -133,12 +134,25 @@ export default function QuickPOSPage({ laundryId }) {
     setIsSubmitting(true);
     try {
       const empId = getEmpId() || localStorage.getItem('empId') || '';
-      const isPayNow = paymentMethod === 'cash' || paymentMethod === 'terminal' || paymentMethod === 'card';
-      const tipMethod = paymentMethod === 'cash' ? 'Cash' : 'Card';
+      // Only Cash and Terminal are immediately paid. Card/PayLater/Invoice = create as Unpaid
+      const isCash = paymentMethod === 'cash';
+      const isPayNow = paymentMethod === 'cash' || paymentMethod === 'terminal';
+      const isTerminal = paymentMethod === 'terminal';
+      const tipMethod = isCash ? 'Cash' : 'Card';
+
+      // Resolve customerId if not already found
+      let resolvedCustId = customerId;
+      if (!resolvedCustId && customerPhone.length >= 10) {
+        try {
+          const checkRes = await axios.get(`${process.env.REACT_APP_AWS_API_URL}/api/customers/info`,
+            { params: { operation: 'checkPhoneNumber', phoneNumber: `+1${customerPhone}`, laundryId }, headers: { Authorization: `Bearer ${authToken}` } });
+          if (checkRes.data?.exists) resolvedCustId = checkRes.data.customerId;
+        } catch (e) { /* walk-in */ }
+      }
 
       const inStoreOrderPayload = {
         operation: 'inStorePlaceOrder',
-        customerId: customerId || '',
+        customerId: resolvedCustId || '',
         laundryId: laundryId,
         address: '',
         doorNumber: '',
@@ -152,21 +166,22 @@ export default function QuickPOSPage({ laundryId }) {
         })),
         pickupDate: new Date().toISOString().split('T')[0],
         pickupTimeInterval: '',
-        dropoffDate: '',
+        dropoffDate: needBy === 'asap' ? null : needBy,
         dropoffTimeInterval: '',
         coupon: '',
         subTotal: parseFloat(subtotal.toFixed(2)),
         totalCost: parseFloat(subtotal.toFixed(2)),
         grandTotal: parseFloat(total.toFixed(2)),
         tip: {
-          tipType: tip > 0 ? 'amount' : 'noTip',
-          tipPercentage: 0,
-          tipAmount: parseFloat(tip.toFixed(2)),
+          tipType: tip.tipType || 'noTip',
+          tipPercentage: tip.tipPercentage || 0,
+          tipAmount: parseFloat(tip.tipAmount) || 0,
           tipMethod: tipMethod,
           tipReceiverId: empId || '',
         },
         discountedPrice: 0,
         isPayNow: isPayNow,
+        isCash: isCash,
         laundryBags: bags,
         cardPaymentMethodId: '',
         isTerminalPayment: paymentMethod === 'terminal',
@@ -189,7 +204,7 @@ export default function QuickPOSPage({ laundryId }) {
 
   const resetPOS = () => {
     setCart([]); setCustomerPhone(''); setCustomerName(''); setCustomerId('');
-    setBags(1); setTip(0); setCustomTip(''); setPaymentMethod(''); setOrderSuccess(null); setPhoneSuggestions([]);
+    setBags(1); setTip({ tipOption: 'noTip', tipType: 'noTip', tipPercentage: 0, tipAmount: '0.00', customTip: '' }); setPaymentMethod(''); setNeedBy('asap'); setOrderSuccess(null); setPhoneSuggestions([]);
   };
 
   if (orderSuccess) {
@@ -314,19 +329,51 @@ export default function QuickPOSPage({ laundryId }) {
             <Text fontSize="sm">Subtotal</Text><Text fontSize="sm" fontWeight="bold">${subtotal.toFixed(2)}</Text>
           </HStack>
 
-          {/* Tip */}
+          {/* Need By */}
           <HStack spacing={1} mb={2}>
-            <Text fontSize="xs">Tip:</Text>
-            {[0, 2, 5, 10].map(amt => (
-              <Button key={amt} size="xs" h="26px" minW="35px"
-                variant={tip === amt && !customTip ? 'solid' : 'outline'}
-                colorScheme={tip === amt && !customTip ? 'blue' : 'whiteAlpha'}
-                onClick={() => { setTip(amt); setCustomTip(''); }}>
-                {amt === 0 ? '—' : `$${amt}`}
+            <Text fontSize="xs">Need by:</Text>
+            <Button size="xs" h="26px" variant={needBy === 'asap' ? 'solid' : 'outline'}
+              colorScheme={needBy === 'asap' ? 'green' : 'whiteAlpha'} onClick={() => setNeedBy('asap')}>ASAP</Button>
+            <Button size="xs" h="26px" variant={needBy === 'tomorrow' ? 'solid' : 'outline'}
+              colorScheme={needBy === 'tomorrow' ? 'blue' : 'whiteAlpha'}
+              onClick={() => { const d = new Date(); d.setDate(d.getDate()+1); setNeedBy(d.toISOString().split('T')[0]); }}>Tomorrow</Button>
+            <Input type="date" size="xs" h="26px" w="110px" bg="gray.700" borderColor={needBy !== 'asap' && needBy !== 'tomorrow' ? 'blue.300' : 'gray.600'}
+              value={needBy !== 'asap' && needBy !== 'tomorrow' ? needBy : ''}
+              onChange={(e) => setNeedBy(e.target.value || 'asap')} />
+          </HStack>
+
+          {/* Tip — matches AdminCreateOrder */}
+          <HStack spacing={1} mb={2} flexWrap="wrap">
+            <Text fontSize="xs" mr={1}>Tip:</Text>
+            {['5', '10', '15'].map(pct => (
+              <Button key={pct} size="xs" h="26px" minW="35px"
+                variant={tip.tipOption === pct ? 'solid' : 'outline'}
+                colorScheme={tip.tipOption === pct ? 'blue' : 'whiteAlpha'}
+                onClick={() => {
+                  const amt = ((subtotal * parseInt(pct)) / 100).toFixed(2);
+                  setTip({ tipOption: pct, tipType: 'percentage', tipPercentage: parseInt(pct), tipAmount: amt, customTip: '' });
+                }}>
+                {pct}%
               </Button>
             ))}
-            <Input placeholder="$" w="45px" size="xs" h="26px" bg="gray.700" value={customTip} textAlign="center"
-              onChange={(e) => { setCustomTip(e.target.value); setTip(parseFloat(e.target.value) || 0); }} type="number" />
+            <Button size="xs" h="26px" minW="45px"
+              variant={tip.tipOption === 'custom' ? 'solid' : 'outline'}
+              colorScheme={tip.tipOption === 'custom' ? 'orange' : 'whiteAlpha'}
+              onClick={() => setTip(prev => ({ ...prev, tipOption: 'custom', tipType: 'custom' }))}>
+              Custom
+            </Button>
+            <Button size="xs" h="26px" minW="40px"
+              variant={tip.tipOption === 'noTip' ? 'solid' : 'outline'}
+              colorScheme={tip.tipOption === 'noTip' ? 'gray' : 'whiteAlpha'}
+              onClick={() => setTip({ tipOption: 'noTip', tipType: 'noTip', tipPercentage: 0, tipAmount: '0.00', customTip: '' })}>
+              None
+            </Button>
+            {tip.tipOption === 'custom' && (
+              <Input placeholder="$" w="55px" size="xs" h="26px" bg="gray.700" value={tip.customTip} textAlign="center"
+                onChange={(e) => { const v = e.target.value.replace(/[^0-9.]/g, ''); setTip(prev => ({ ...prev, customTip: v, tipAmount: v || '0.00' })); }}
+                type="text" />
+            )}
+            {tipAmount > 0 && <Text fontSize="xs" color="green.300" ml={1}>${tipAmount.toFixed(2)}</Text>}
           </HStack>
 
           {/* Total */}

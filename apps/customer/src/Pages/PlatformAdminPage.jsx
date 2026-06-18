@@ -1,11 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
     Box, VStack, HStack, Heading, Text, Button, Input, FormControl, FormLabel,
     SimpleGrid, Badge, Divider, useToast, Flex, IconButton,
     Modal, ModalOverlay, ModalContent, ModalHeader, ModalBody, ModalFooter, ModalCloseButton,
     useDisclosure, Table, Thead, Tbody, Tr, Th, Td, Select, Spinner,
+    Drawer, DrawerOverlay, DrawerContent, DrawerHeader, DrawerBody, DrawerCloseButton,
 } from '@chakra-ui/react';
-import { FiPlus, FiRefreshCw, FiUsers, FiMonitor, FiKey } from 'react-icons/fi';
+import { FiPlus, FiRefreshCw, FiUsers, FiMonitor, FiKey, FiMessageCircle } from 'react-icons/fi';
 import axios from 'axios';
 
 const API_URL = process.env.REACT_APP_AWS_API_URL || '';
@@ -86,6 +87,107 @@ export default function PlatformAdminPage() {
         }
     };
 
+    // Support Chat State
+    const [chatOpen, setChatOpen] = useState(false);
+    const [chatLaundry, setChatLaundry] = useState(null);
+    const [chatMessages, setChatMessages] = useState([]);
+    const [chatInput, setChatInput] = useState('');
+    const [chatSending, setChatSending] = useState(false);
+    const [unreadCounts, setUnreadCounts] = useState({});
+    const chatEndRef = useRef(null);
+    const chatPollRef = useRef(null);
+
+    // Fetch unread counts for all tenants
+    const fetchUnreadCounts = async () => {
+        try {
+            const res = await axios.get(`${API_URL}/api/chat/admin/conversations`, {
+                params: { laundryId: 'platform' },
+                headers: { Authorization: `Bearer ${localStorage.getItem('idToken') || 'platform'}` }
+            });
+            if (res.data?.conversations) {
+                const counts = {};
+                res.data.conversations.forEach(c => {
+                    // customerId is 'laundry-{id}', extract the laundry id
+                    const lid = c.customerId?.replace('laundry-', '');
+                    if (lid) counts[lid] = c.unreadCount || 0;
+                });
+                setUnreadCounts(counts);
+            }
+        } catch (err) { /* ok */ }
+    };
+
+    useEffect(() => {
+        if (isAuthenticated) {
+            fetchUnreadCounts();
+            const interval = setInterval(fetchUnreadCounts, 15000);
+            return () => clearInterval(interval);
+        }
+    }, [isAuthenticated]);
+
+    const openChat = (laundry) => {
+        setChatLaundry(laundry);
+        setChatOpen(true);
+        fetchChatMessages(laundry.laundryId);
+        if (chatPollRef.current) clearInterval(chatPollRef.current);
+        chatPollRef.current = setInterval(() => fetchChatMessages(laundry.laundryId), 5000);
+    };
+
+    const closeChat = () => {
+        setChatOpen(false);
+        if (chatPollRef.current) clearInterval(chatPollRef.current);
+    };
+
+    const fetchChatMessages = async (lid) => {
+        try {
+            const res = await axios.get(`${API_URL}/api/chat/messages`, {
+                params: { customerId: `laundry-${lid}`, laundryId: 'platform' }
+            });
+            if (res.data?.messages) setChatMessages(res.data.messages);
+        } catch (err) { /* ok */ }
+    };
+
+    const sendChatMessage = async () => {
+        if (!chatInput.trim() || !chatLaundry) return;
+        setChatSending(true);
+        try {
+            const lid = chatLaundry.laundryId;
+            // Check if conversation exists
+            const msgRes = await axios.get(`${API_URL}/api/chat/messages`, {
+                params: { customerId: `laundry-${lid}`, laundryId: 'platform' }
+            });
+            let convId = msgRes.data?.conversationId;
+
+            if (!convId) {
+                // Create conversation by sending a dummy init as "customer" then immediately reply as admin
+                const initRes = await axios.post(`${API_URL}/api/chat/send`, {
+                    customerId: `laundry-${lid}`,
+                    laundryId: 'platform',
+                    message: '(Support conversation started)',
+                    customerName: chatLaundry.laundryName || `Laundry ${lid}`,
+                    customerPhone: '',
+                });
+                convId = initRes.data?.conversationId;
+            }
+
+            if (convId) {
+                // Send as admin
+                await axios.post(`${API_URL}/api/chat/admin/send`, {
+                    conversationId: convId,
+                    message: chatInput.trim(),
+                    senderName: 'Platform Support',
+                }, { headers: { Authorization: `Bearer ${localStorage.getItem('idToken') || 'platform'}` } });
+            }
+
+            setChatInput('');
+            setTimeout(() => fetchChatMessages(lid), 500);
+        } catch (err) { console.error(err); toast({ title: 'Send failed', status: 'error', duration: 2000 }); }
+        finally { setChatSending(false); }
+    };
+
+    useEffect(() => {
+        if (chatEndRef.current) chatEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }, [chatMessages]);
+
     if (!isAuthenticated) {
         return (
             <Box minH="100vh" bg="gray.900" display="flex" alignItems="center" justifyContent="center" p={4}>
@@ -151,6 +253,14 @@ export default function PlatformAdminPage() {
                                     </Badge>
                                     <Text>${l.bagPrice}/bag</Text>
                                 </HStack>
+                                <Button size="xs" leftIcon={<FiMessageCircle />} colorScheme="cyan" variant="outline" onClick={() => openChat(l)} w="100%" position="relative">
+                                    Chat with Owner
+                                    {unreadCounts[l.laundryId] > 0 && (
+                                        <Badge colorScheme="red" borderRadius="full" position="absolute" top="-6px" right="-6px" fontSize="xs" minW="18px" textAlign="center">
+                                            {unreadCounts[l.laundryId]}
+                                        </Badge>
+                                    )}
+                                </Button>
                             </VStack>
                         </Box>
                     ))}
@@ -243,6 +353,44 @@ export default function PlatformAdminPage() {
                     </ModalFooter>
                 </ModalContent>
             </Modal>
+
+            {/* Support Chat Drawer */}
+            <Drawer isOpen={chatOpen} onClose={closeChat} placement="right" size="md">
+                <DrawerOverlay />
+                <DrawerContent>
+                    <DrawerCloseButton />
+                    <DrawerHeader bg="cyan.500" color="white" fontSize="md">
+                        💬 Chat with {chatLaundry?.laundryName || 'Tenant'}
+                    </DrawerHeader>
+                    <DrawerBody display="flex" flexDirection="column" p={3}>
+                        <Box flex={1} overflowY="auto" bg="gray.50" borderRadius="md" p={3} mb={3}>
+                            {chatMessages.length === 0 ? (
+                                <Text color="gray.400" textAlign="center" py={10} fontSize="sm">No messages yet. Start the conversation.</Text>
+                            ) : (
+                                <VStack spacing={2} align="stretch">
+                                    {chatMessages.map(msg => (
+                                        <Flex key={msg.messageId} justify={msg.senderType === 'admin' ? 'flex-end' : 'flex-start'}>
+                                            <Box maxW="80%" bg={msg.senderType === 'admin' ? 'cyan.500' : 'white'}
+                                                color={msg.senderType === 'admin' ? 'white' : 'gray.800'}
+                                                px={3} py={2} borderRadius="lg" boxShadow="sm"
+                                                border={msg.senderType !== 'admin' ? '1px solid' : 'none'} borderColor="gray.200">
+                                                <Text fontSize="sm">{msg.message}</Text>
+                                                <Text fontSize="xs" opacity={0.7} mt={1}>{msg.senderName} • {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</Text>
+                                            </Box>
+                                        </Flex>
+                                    ))}
+                                    <div ref={chatEndRef} />
+                                </VStack>
+                            )}
+                        </Box>
+                        <HStack>
+                            <Input placeholder="Type a message..." value={chatInput} onChange={(e) => setChatInput(e.target.value)}
+                                onKeyPress={(e) => e.key === 'Enter' && sendChatMessage()} size="sm" />
+                            <Button colorScheme="cyan" size="sm" onClick={sendChatMessage} isLoading={chatSending} px={5}>Send</Button>
+                        </HStack>
+                    </DrawerBody>
+                </DrawerContent>
+            </Drawer>
         </Box>
     );
 }

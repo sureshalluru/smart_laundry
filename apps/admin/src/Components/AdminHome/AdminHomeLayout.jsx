@@ -43,6 +43,42 @@ import {
 import { Outlet, useNavigate, useParams } from 'react-router-dom';
 import { fetchLaundryInfo } from '../../Pages/LaundryInfoManagement';
 import { useAuth } from '../../Context/AuthContext';
+import axios from 'axios';
+
+// Unread badge for support chat
+const SupportUnreadBadge = ({ laundryId }) => {
+    const [unread, setUnread] = useState(0);
+    useEffect(() => {
+        const check = async () => {
+            try {
+                const res = await axios.get(`${process.env.REACT_APP_AWS_API_URL}/api/chat/messages`, {
+                    params: { customerId: `laundry-${laundryId}`, laundryId: 'platform' }
+                });
+                // Count messages from admin that haven't been "seen"
+                const msgs = res.data?.messages || [];
+                const adminMsgs = msgs.filter(m => m.senderType === 'admin');
+                // Simple heuristic: if there are admin messages and conversation has unread
+                if (adminMsgs.length > 0) {
+                    // Check unread_customer from conversation
+                    // For simplicity, we just show badge if last message is from admin
+                    const lastMsg = msgs[msgs.length - 1];
+                    if (lastMsg?.senderType === 'admin') setUnread(1);
+                    else setUnread(0);
+                }
+            } catch (e) { /* ok */ }
+        };
+        check();
+        const interval = setInterval(check, 30000);
+        return () => clearInterval(interval);
+    }, [laundryId]);
+    if (unread === 0) return null;
+    return (
+        <Box position="absolute" top="2px" right="8px" bg="red.500" color="white" borderRadius="full"
+            w="16px" h="16px" fontSize="xs" display="flex" alignItems="center" justifyContent="center">
+            {unread}
+        </Box>
+    );
+};
 
 const AdminLayout = ({ validateEmpCredentials, empPrefix }) => {
     const { laundryId } = useParams();
@@ -619,6 +655,17 @@ const SidebarContent = ({
                 onClick={() => navigate(`/${laundryId}/admin/engagement`)}
         >
             Engagement
+        </Button>
+        <Button as="a" href={`/${laundryId}/admin/support-chat`}
+                leftIcon={<FaClipboardList />}
+                variant="ghost"
+                colorScheme="cyan"
+                justifyContent="flex-start"
+                onClick={() => navigate(`/${laundryId}/admin/support-chat`)}
+                position="relative"
+        >
+            💬 Support
+            <SupportUnreadBadge laundryId={laundryId} />
         </Button>
         <Button
             leftIcon={<FaSignOutAlt />}

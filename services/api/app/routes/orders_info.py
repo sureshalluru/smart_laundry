@@ -287,10 +287,10 @@ async def instore_place_order(
         services = body.get("services", [])
         products = body.get("products", [])
         special_instructions = body.get("specialInstructions", "")
-        pickup_date = body.get("pickupDate")
-        pickup_time_interval = body.get("pickupTimeInterval")
-        dropoff_date = body.get("dropoffDate")
-        dropoff_time_interval = body.get("dropoffTimeInterval")
+        pickup_date = body.get("pickupDate") or None
+        pickup_time_interval = body.get("pickupTimeInterval") or None
+        dropoff_date = body.get("dropoffDate") or None
+        dropoff_time_interval = body.get("dropoffTimeInterval") or None
         coupon = body.get("coupon")
         total_cost = round(float(str(body.get("totalCost", 0) or 0)), 2)
         sub_total = round(float(str(body.get("subTotal", 0) or 0)), 2)
