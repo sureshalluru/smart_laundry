@@ -352,6 +352,20 @@ async def instore_place_order(
         if grand_total == 0:
             grand_total = round(total_cost + tip_amount, 2)
 
+        # Apply tax if configured
+        tax_amount = 0
+        try:
+            with get_db() as conn_tax:
+                cur_tax = get_cursor(conn_tax)
+                cur_tax.execute("SELECT tax_rate FROM shop.laundry_shops WHERE laundry_id = %s", (laundry_id,))
+                tax_row = cur_tax.fetchone()
+                tax_rate = float(tax_row["tax_rate"] or 0) if tax_row else 0
+            if tax_rate > 0:
+                tax_amount = round(total_cost * (tax_rate / 100), 2)
+                grand_total = round(total_cost + tip_amount + tax_amount, 2)
+        except Exception as tax_err:
+            logger.warning(f"Tax calculation error: {tax_err}")
+
         amount_to_collect = grand_total
 
         # Handle payment
@@ -397,12 +411,12 @@ async def instore_place_order(
                     order_type, order_status, status_category, payment_status,
                     pickup_date, pickup_time_interval, dropoff_date, dropoff_time_interval,
                     laundry_bags, special_instructions, coupon,
-                    sub_total, discounted_price, total_cost, grand_total,
+                    sub_total, discounted_price, total_cost, grand_total, tax_amount,
                     auto_generated, is_reviewed, cancel_reason,
                     created_at, updated_at
                 ) VALUES (
                     %s,%s,%s,'InStore',%s,'Active',%s,
-                    %s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,
+                    %s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,
                     FALSE,FALSE,'',NOW(),NOW()
                 )
             """, (
@@ -410,7 +424,7 @@ async def instore_place_order(
                 order_status, payment_status,
                 pickup_date, pickup_time_interval, dropoff_date, dropoff_time_interval,
                 laundry_bags, special_instructions, coupon,
-                sub_total, discounted_price, total_cost, grand_total,
+                sub_total, discounted_price, total_cost, grand_total, tax_amount,
             ))
 
             for svc in services:
@@ -443,7 +457,7 @@ async def instore_place_order(
                     VALUES (%s,%s,%s,%s)
                 """, (order_id, p.get("paymentIntentId"), p["amount"], p.get("paymentMethod")))
 
-        return {"status": "success", "orderId": order_id}
+        return {"status": "success", "orderId": order_id, "grandTotal": grand_total, "taxAmount": tax_amount}
 
     except Exception as e:
         logger.exception("instore_place_order error")
@@ -632,6 +646,15 @@ async def update_order_endpoint(
             set_clause = ", ".join(f"{k} = %s" for k in update_fields.keys())
             values = list(update_fields.values()) + [orderId]
             cur.execute(f"UPDATE orders.orders SET {set_clause} WHERE order_id = %s", values)
+
+            # Audit log for order updates
+            try:
+                from app.services.audit_service import log_action
+                log_action(laundryId, "update_order", "order", orderId, {
+                    "status": order_status,
+                    "fields_updated": list(update_fields.keys()),
+                }, performed_by=empId or "")
+            except Exception: pass
 
             # Notify customer when order is canceled via status change
             if order_status in ("OrderCanceled", "Cancelled"):

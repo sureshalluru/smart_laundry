@@ -263,6 +263,14 @@ async def update_products_services(
                     WHERE laundry_id = %s AND service_name = %s
                 """, (laundryId, svc_name))
 
+            # Audit log
+            from app.services.audit_service import log_action
+            log_action(laundryId, "update_services", "services", None, {
+                "added": [s.get("serviceName") for s in services_to_add],
+                "updated": [s.get("serviceName") for s in services_to_update],
+                "removed": services_to_remove,
+            }, performed_by=current_user.get("sub", ""))
+
             return {"statusCode": 200, "body": {"message": "Services updated successfully"}}
 
         elif operation == "updateProducts":

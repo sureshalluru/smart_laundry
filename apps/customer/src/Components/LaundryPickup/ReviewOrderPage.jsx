@@ -43,7 +43,8 @@ export default function ReviewOrderPage({
                                             pickupService,
                                             dropoffService,
                                             uberPickupFrequency,
-                                            uberDropoffFrequency
+                                            uberDropoffFrequency,
+                                            taxRate = 0
                                         }) {
 
     // Destructure properties from tip
@@ -384,6 +385,14 @@ export default function ReviewOrderPage({
             </VStack>
 
             <Divider my={[2,4]} />
+
+            {/* Tax display */}
+            {taxRate > 0 && (
+                <Flex justify="space-between" align="center" px={2} py={1}>
+                    <Text fontSize={['sm','md']} color="gray.600">Sales Tax ({taxRate}%)</Text>
+                    <Text fontSize={['sm','md']} color="gray.600">Calculated at checkout</Text>
+                </Flex>
+            )}
 
             {/* Place Order Button */}
             <Button

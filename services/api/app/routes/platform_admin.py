@@ -2,7 +2,7 @@
 Platform Admin routes — super-admin for onboarding laundries.
 Protected by platform admin secret key.
 """
-from fastapi import APIRouter, Body, Header, HTTPException
+from fastapi import APIRouter, Body, Header, HTTPException, Query
 from app.database import get_db, get_cursor
 import logging
 import uuid
@@ -175,6 +175,7 @@ async def update_laundry(laundry_id: str, body: dict = Body(...), x_platform_key
         if "state" in body: updates["state"] = body["state"]
         if "zipCode" in body: updates["zip_code"] = body["zipCode"]
         if "bagPrice" in body: updates["bag_price"] = float(body["bagPrice"])
+        if "taxRate" in body: updates["tax_rate"] = float(body["taxRate"])
         if "deviceRegistrationCode" in body: updates["device_registration_code"] = body["deviceRegistrationCode"]
         if "stripePublicKey" in body: updates["stripe_public_key"] = body["stripePublicKey"]
         if "stripePrivateKey" in body: updates["stripe_private_key"] = body["stripePrivateKey"]
@@ -508,3 +509,34 @@ async def self_service_onboard(body: dict = Body(...)):
     except Exception as e:
         logger.exception("Onboarding failed")
         return {"status": "error", "message": f"Onboarding failed: {str(e)}"}
+
+
+@router.get("/audit-log")
+async def get_audit_log(
+    laundryId: str = Query(None),
+    limit: int = Query(50),
+    x_platform_key: str = Header(None),
+):
+    """Get audit log entries. Platform admin only."""
+    verify_platform_admin(x_platform_key)
+
+    with get_db() as conn:
+        cur = get_cursor(conn)
+        if laundryId:
+            cur.execute("""
+                SELECT * FROM shop.audit_log WHERE laundry_id = %s ORDER BY created_at DESC LIMIT %s
+            """, (laundryId, limit))
+        else:
+            cur.execute("SELECT * FROM shop.audit_log ORDER BY created_at DESC LIMIT %s", (limit,))
+        logs = [{
+            "id": r["id"],
+            "laundryId": r["laundry_id"],
+            "action": r["action"],
+            "entityType": r["entity_type"],
+            "entityId": r["entity_id"],
+            "changes": r["changes"],
+            "performedBy": r["performed_by"],
+            "createdAt": str(r["created_at"]),
+        } for r in cur.fetchall()]
+
+    return {"status": "success", "logs": logs}

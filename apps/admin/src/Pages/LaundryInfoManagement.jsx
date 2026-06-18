@@ -362,6 +362,69 @@ const DeliveryScheduleSection = ({ laundryId }) => {
     );
 };
 
+/* ─── System Settings Section ───────────────────────────────────────────────── */
+const SystemSettingsSection = ({ laundryId }) => {
+    const toast = useToast();
+    const [taxRate, setTaxRate] = useState(0);
+    const [loading, setLoading] = useState(true);
+    const [saving, setSaving] = useState(false);
+    const authToken = localStorage.getItem('idToken');
+
+    useEffect(() => {
+        const fetchSettings = async () => {
+            try {
+                const res = await axios.get(`${process.env.REACT_APP_AWS_API_URL}/api/laundry/delivery-schedule`, {
+                    params: { laundryId },
+                    headers: { Authorization: `Bearer ${authToken}` }
+                });
+                const data = res.data?.body || res.data;
+                if (data.taxRate !== undefined) setTaxRate(data.taxRate);
+            } catch (err) { console.error(err); }
+            finally { setLoading(false); }
+        };
+        if (laundryId) fetchSettings();
+    }, [laundryId]);
+
+    const handleSave = async () => {
+        setSaving(true);
+        try {
+            await axios.put(`${process.env.REACT_APP_AWS_API_URL}/api/laundry/delivery-schedule`, {
+                laundryId, taxRate,
+            }, { headers: { Authorization: `Bearer ${authToken}` } });
+            toast({ title: 'Settings saved!', status: 'success', duration: 3000 });
+        } catch (err) {
+            toast({ title: 'Error saving', status: 'error', duration: 3000 });
+        } finally { setSaving(false); }
+    };
+
+    if (loading) return <Flex justify="center" p={8}><Spinner size="lg" /></Flex>;
+
+    return (
+        <Box p={4}>
+            <Text fontSize="xl" fontWeight="bold" mb={4}>System Settings</Text>
+
+            <Box mb={6} maxW="400px" p={4} bg="gray.50" borderRadius="md" border="1px solid" borderColor="gray.200">
+                <Text fontWeight="semibold" mb={2}>💰 Sales Tax</Text>
+                <Input
+                    type="number"
+                    step="0.125"
+                    min="0"
+                    max="20"
+                    value={taxRate}
+                    onChange={(e) => setTaxRate(parseFloat(e.target.value) || 0)}
+                    placeholder="e.g. 8.25"
+                    mb={2}
+                />
+                <Text fontSize="xs" color="gray.500">
+                    {taxRate > 0 ? `Tax of ${taxRate}% will be added to all orders (online & in-store)` : 'Set to 0 to disable tax. Enter your local sales tax rate (e.g. 8.25 for 8.25%).'}
+                </Text>
+            </Box>
+
+            <Button colorScheme="blue" onClick={handleSave} isLoading={saving}>Save Settings</Button>
+        </Box>
+    );
+};
+
 const LaundryInfoManagement = ({ validateEmpCredentials, type, empPrefix }) => {
     const { laundryId } = useParams();
     const [servicesData, setServicesData] = useState([]);
@@ -1439,6 +1502,11 @@ const LaundryInfoManagement = ({ validateEmpCredentials, type, empPrefix }) => {
             {/* Delivery Schedule */}
             {type === "deliverySchedule" && (
                 <DeliveryScheduleSection laundryId={laundryId} />
+            )}
+
+            {/* System Settings */}
+            {type === "systemSettings" && (
+                <SystemSettingsSection laundryId={laundryId} />
             )}
 
             {/* Table for Services */}

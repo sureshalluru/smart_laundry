@@ -153,7 +153,24 @@ export default function PaymentSelection({
     });
 
     const displayedTip = parseFloat(tip.tipAmount) || 0; // Ensure it's a number
-    const displayedGrandTotal = roundToTwo(displayedTotal + displayedTip);
+    const [taxRate, setTaxRate] = useState(0);
+    const displayedTax = roundToTwo(displayedTotal * (taxRate / 100));
+    const displayedGrandTotal = roundToTwo(displayedTotal + displayedTip + displayedTax);
+
+    // Fetch tax rate
+    useEffect(() => {
+        const fetchTax = async () => {
+            try {
+                const res = await fetch(`${process.env.REACT_APP_AWS_API_URL}/api/laundry/delivery-schedule?laundryId=${laundryId}`, {
+                    headers: { Authorization: `Bearer ${localStorage.getItem('idToken')}` }
+                });
+                const data = await res.json();
+                const rate = data?.body?.taxRate || data?.taxRate || 0;
+                setTaxRate(rate);
+            } catch (e) { /* no tax */ }
+        };
+        if (laundryId) fetchTax();
+    }, [laundryId]);
 
 
     const authToken = localStorage.getItem('idToken');
@@ -771,6 +788,13 @@ export default function PaymentSelection({
                                 <Text>Tip</Text>
                                 <Text>${roundToTwo(displayedTip)}</Text>
                             </Flex>
+
+                            {taxRate > 0 && (
+                                <Flex justifyContent="space-between" fontSize={textSize} color="gray.600">
+                                    <Text>Tax ({taxRate}%)</Text>
+                                    <Text>${roundToTwo(displayedTax)}</Text>
+                                </Flex>
+                            )}
 
                             <Divider/>
 

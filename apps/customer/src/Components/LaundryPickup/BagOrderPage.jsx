@@ -50,18 +50,24 @@ export default function BagOrderPage({
     setPickupService,
     dropoffService,
     setDropoffService,
+    laundryServices = [],
 }) {
     const [availablePickupSlots, setAvailablePickupSlots] = useState([]);
     const [availableDropoffSlots, setAvailableDropoffSlots] = useState([]);
-    const [bagSize, setBagSize] = useState('regular'); // 'regular' (13-gal $30) or 'large' ($45)
 
-    const pricePerBag = bagSize === 'large' ? 45 : bagPrice;
+    // Get per-piece services (non-weight-based)
+    const perPieceServices = laundryServices.filter(s => !s.inputWeight || s.inputWeight === false || s.inputWeight === 'false');
+    const [selectedServiceIdx, setSelectedServiceIdx] = useState(0);
+
+    // Get price from selected service
+    const selectedService = perPieceServices[selectedServiceIdx] || perPieceServices[0];
+    const pricePerBag = selectedService ? parseFloat(selectedService.price || bagPrice) : bagPrice;
     const totalCost = (laundryBags * pricePerBag).toFixed(2);
 
-    // Update parent's bagPrice when size changes
+    // Update parent's bagPrice when selection changes
     useEffect(() => {
-        if (setBagPrice) setBagPrice(pricePerBag);
-    }, [bagSize, pricePerBag, setBagPrice]);
+        if (setBagPrice && pricePerBag) setBagPrice(pricePerBag);
+    }, [selectedServiceIdx, pricePerBag, setBagPrice]);
 
     // Utility: get date in laundry timezone
     const getDateInTimeZone = useCallback((date, timeZone) => {
@@ -82,7 +88,9 @@ export default function BagOrderPage({
         );
         if (!daySlot) return [];
 
-        const interval = parseInt(deliveryTimeInterval) || 120;
+        // deliveryTimeInterval is in HOURS (1, 2, 3, 4) — convert to minutes
+        const intervalHours = parseInt(deliveryTimeInterval) || 2;
+        const interval = intervalHours <= 10 ? intervalHours * 60 : intervalHours; // If already in minutes (>10), use as-is
         const [startH, startM] = daySlot.startTime.split(':').map(Number);
         const [endH, endM] = daySlot.endTime.split(':').map(Number);
         const startMin = startH * 60 + (startM || 0);
@@ -108,12 +116,21 @@ export default function BagOrderPage({
             setPickupDate(tomorrow);
         }
         if (!dropoffDate && pickupDate) {
-            const drop = getDateInTimeZone(addDays(new Date(pickupDate + 'T12:00:00'), 2), tz);
-            setDropoffDate(drop);
+            // Find next day with available slots after pickup
+            let tryDate = addDays(new Date(pickupDate + 'T12:00:00'), 1);
+            for (let i = 0; i < 7; i++) {
+                const dateStr = getDateInTimeZone(tryDate, tz);
+                const slots = generateTimeSlots(dateStr);
+                if (slots.length > 0) {
+                    setDropoffDate(dateStr);
+                    break;
+                }
+                tryDate = addDays(tryDate, 1);
+            }
         }
         setPickupService('LaundryDriver');
         setDropoffService('LaundryDriver');
-    }, [laundryTimeZone]);
+    }, [laundryTimeZone, pickupDate, deliveryTimeSlots, generateTimeSlots]);
 
     // Generate slots when dates change
     useEffect(() => {
@@ -128,13 +145,19 @@ export default function BagOrderPage({
 
     useEffect(() => {
         if (dropoffDate) {
+            // Use same time slots as pickup (same operating hours every day)
             const slots = generateTimeSlots(dropoffDate);
-            setAvailableDropoffSlots(slots);
-            if (slots.length > 0 && !dropoffTime) {
-                setDropoffTime(slots[0]);
+            setAvailableDropoffSlots(slots.length > 0 ? slots : availablePickupSlots);
+            if (!dropoffTime) {
+                const finalSlots = slots.length > 0 ? slots : availablePickupSlots;
+                if (finalSlots.length > 0) setDropoffTime(finalSlots[0]);
             }
+        } else if (availablePickupSlots.length > 0) {
+            // Fallback: just use pickup slots
+            setAvailableDropoffSlots(availablePickupSlots);
+            if (!dropoffTime) setDropoffTime(availablePickupSlots[0]);
         }
-    }, [dropoffDate, generateTimeSlots]);
+    }, [dropoffDate, generateTimeSlots, availablePickupSlots]);
 
     // Validate step
     useEffect(() => {
@@ -185,41 +208,37 @@ export default function BagOrderPage({
                         </Badge>
                     </Flex>
 
-                    {/* Bag size selector */}
-                    <HStack spacing={3}>
-                        <Box
-                            as="button"
-                            flex="1"
-                            p={3}
-                            borderRadius="xl"
-                            border="2px solid"
-                            borderColor={bagSize === 'regular' ? 'blue.400' : 'gray.200'}
-                            bg={bagSize === 'regular' ? 'blue.50' : 'white'}
-                            textAlign="center"
-                            onClick={() => setBagSize('regular')}
-                            transition="all 0.2s"
-                        >
-                            <Text fontWeight="700" fontSize="sm" color="gray.800">13-Gallon Bag</Text>
-                            <Text fontSize="lg" fontWeight="800" color="blue.600">${bagPrice.toFixed(0)}</Text>
-                            <Text fontSize="xs" color="gray.500">Standard trash bag size</Text>
+                    {/* Service selector — shows actual services */}
+                    {perPieceServices.length > 1 ? (
+                        <VStack spacing={2}>
+                            {perPieceServices.map((svc, idx) => (
+                                <Box
+                                    key={svc.serviceName}
+                                    as="button"
+                                    w="100%"
+                                    p={3}
+                                    borderRadius="xl"
+                                    border="2px solid"
+                                    borderColor={selectedServiceIdx === idx ? 'blue.400' : 'gray.200'}
+                                    bg={selectedServiceIdx === idx ? 'blue.50' : 'white'}
+                                    textAlign="left"
+                                    onClick={() => setSelectedServiceIdx(idx)}
+                                    transition="all 0.2s"
+                                >
+                                    <Flex justify="space-between" align="center">
+                                        <Text fontWeight="700" fontSize="sm" color="gray.800">{svc.serviceName}</Text>
+                                        <Text fontSize="lg" fontWeight="800" color="blue.600">${parseFloat(svc.price).toFixed(0)}</Text>
+                                    </Flex>
+                                    {svc.description && <Text fontSize="xs" color="gray.500">{svc.description}</Text>}
+                                </Box>
+                            ))}
+                        </VStack>
+                    ) : perPieceServices.length === 1 ? (
+                        <Box p={3} borderRadius="xl" border="2px solid" borderColor="blue.400" bg="blue.50" textAlign="center">
+                            <Text fontWeight="700" fontSize="sm" color="gray.800">{perPieceServices[0].serviceName}</Text>
+                            <Text fontSize="xl" fontWeight="800" color="blue.600">${parseFloat(perPieceServices[0].price).toFixed(2)}</Text>
                         </Box>
-                        <Box
-                            as="button"
-                            flex="1"
-                            p={3}
-                            borderRadius="xl"
-                            border="2px solid"
-                            borderColor={bagSize === 'large' ? 'blue.400' : 'gray.200'}
-                            bg={bagSize === 'large' ? 'blue.50' : 'white'}
-                            textAlign="center"
-                            onClick={() => setBagSize('large')}
-                            transition="all 0.2s"
-                        >
-                            <Text fontWeight="700" fontSize="sm" color="gray.800">Larger Bag</Text>
-                            <Text fontSize="lg" fontWeight="800" color="blue.600">$45</Text>
-                            <Text fontSize="xs" color="gray.500">Bigger than 13-gallon</Text>
-                        </Box>
-                    </HStack>
+                    ) : null}
 
                     {/* Bag counter */}
                     <Flex

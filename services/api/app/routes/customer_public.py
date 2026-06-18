@@ -155,6 +155,20 @@ async def customer_place_order(
             except Exception as promo_err:
                 logger.warning(f"Promo application error: {promo_err}")
 
+        # Apply tax if configured for this laundry
+        tax_amount = 0
+        try:
+            with get_db() as conn_tax:
+                cur_tax = get_cursor(conn_tax)
+                cur_tax.execute("SELECT tax_rate FROM shop.laundry_shops WHERE laundry_id = %s", (laundry_id,))
+                tax_row = cur_tax.fetchone()
+                tax_rate = float(tax_row["tax_rate"] or 0) if tax_row else 0
+            if tax_rate > 0:
+                tax_amount = round(total_cost * (tax_rate / 100), 2)
+                grand_total = round(total_cost + tip_amount + tax_amount, 2)
+        except Exception as tax_err:
+            logger.warning(f"Tax calculation error: {tax_err}")
+
         order_id = f"O-{uuid.uuid4().hex[:8].upper()}"
 
         with get_db() as conn:
@@ -185,20 +199,20 @@ async def customer_place_order(
                     order_type, order_status, status_category, payment_status,
                     pickup_date, pickup_time_interval, dropoff_date, dropoff_time_interval,
                     laundry_bags, special_instructions, coupon, frequency,
-                    sub_total, discounted_price, total_cost, grand_total,
+                    sub_total, discounted_price, total_cost, grand_total, tax_amount,
                     pricing_type, pay_by_invoice, pickup_service, dropoff_service,
                     auto_generated, is_reviewed, cancel_reason,
                     created_at, updated_at
                 ) VALUES (
                     %s,%s,%s,%s,'Online','OrderSubmitted','Active','Unpaid',
-                    %s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,
+                    %s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,
                     %s,%s,%s,%s,FALSE,FALSE,'',NOW(),NOW()
                 )
             """, (
                 order_id, laundry_id, customer_id, address_id,
                 pickup_date, pickup_time_interval, dropoff_date, dropoff_time_interval,
                 laundry_bags, special_instructions, coupon, frequency,
-                sub_total, discounted_price, total_cost, grand_total,
+                sub_total, discounted_price, total_cost, grand_total, tax_amount,
                 pricing_type, pay_by_invoice, pickup_service, dropoff_service,
             ))
 

@@ -166,6 +166,21 @@ export default function LaundryPickupPage({laundryId,customerId,customerPaymentI
                             setBagPrice(parseFloat(response.data.bagPrice));
                         }
 
+                        // Auto-detect pricing type: skip choice page if only one type exists
+                        const svcs = response.data.laundryServices || [];
+                        const hasPerPound = svcs.some(s => s.inputWeight === true || s.inputWeight === 'true');
+                        const hasPerPiece = svcs.some(s => !s.inputWeight || s.inputWeight === false || s.inputWeight === 'false');
+                        if (!hasPerPound && hasPerPiece) {
+                            // Only per-piece/bag services — skip pricing choice, go to per_bag flow
+                            setPricingType('per_bag');
+                            setActiveStep(1);
+                        } else if (hasPerPound && !hasPerPiece) {
+                            // Only per-pound — skip pricing choice, go to per_pound flow
+                            setPricingType('per_pound');
+                            setActiveStep(1);
+                        }
+                        // If both exist, stay on step 0 (pricing choice page)
+
                         // Initialize Stripe with the fetched public key
                         if (laundryData?.stripePublicKey){
                             setStripePromise(loadStripe(laundryData?.stripePublicKey));
@@ -710,6 +725,7 @@ export default function LaundryPickupPage({laundryId,customerId,customerPaymentI
                                     setPickupService={setPickupService}
                                     dropoffService={dropoffService}
                                     setDropoffService={setDropoffService}
+                                    laundryServices={laundryServices}
                                 />
                             )}
 
@@ -822,6 +838,7 @@ export default function LaundryPickupPage({laundryId,customerId,customerPaymentI
                                     dropoffService={dropoffService}
                                     uberPickupFrequency={uberPickupFrequency}
                                     uberDropoffFrequency={uberDropoffFrequency}
+                                    taxRate={laundryData?.taxRate || 0}
                                 />
                             )}
                         </Box>
