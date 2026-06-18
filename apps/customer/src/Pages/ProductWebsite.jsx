@@ -160,6 +160,70 @@ const ProductWebsite = () => {
         </Container>
       </Box>
 
+      {/* Customization Section */}
+      <Box py={{ base: 16, md: 20 }} bg="white">
+        <Container maxW="1200px">
+          <Flex direction={{ base: 'column', lg: 'row' }} align="center" gap={10}>
+            <Box flex={1}>
+              <Badge colorScheme="orange" px={3} py={1} borderRadius="full" mb={4}>Fully Customizable</Badge>
+              <Heading fontSize={{ base: '2xl', md: '3xl' }} mb={4}>Your Brand. Your Rules. Your Way.</Heading>
+              <Text color="gray.600" fontSize="lg" mb={6}>
+                Every laundromat is different. That's why Smart Laundry Basket is built to adapt to YOUR business — not the other way around.
+              </Text>
+              <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
+                {[
+                  { title: 'Custom Branding', desc: 'Your logo, colors, and domain. Customers see YOUR brand, not ours.' },
+                  { title: 'Flexible Services', desc: 'Per-pound, per-bag, per-piece — set your own services and pricing.' },
+                  { title: 'Your Schedule', desc: 'Configure pickup/delivery days, hours, and time slots your way.' },
+                  { title: 'Payment Options', desc: 'Cash, card, terminal, invoicing, pay-later — enable what works for you.' },
+                  { title: 'Custom Promotions', desc: 'Create your own promo codes, frequency discounts, and holiday deals.' },
+                  { title: 'Multi-Location', desc: 'Run multiple shops from one account with separate branding for each.' },
+                ].map((item) => (
+                  <HStack key={item.title} align="flex-start" spacing={3}>
+                    <Icon as={FiCheck} color="green.500" mt={1} flexShrink={0} />
+                    <Box>
+                      <Text fontWeight="700" fontSize="sm">{item.title}</Text>
+                      <Text color="gray.500" fontSize="xs">{item.desc}</Text>
+                    </Box>
+                  </HStack>
+                ))}
+              </SimpleGrid>
+              <Text mt={6} fontSize="sm" color="gray.500" fontStyle="italic">
+                Need something specific? We build custom features for our partners. Book a demo to discuss.
+              </Text>
+            </Box>
+            <Box flex={1} maxW="450px" bg="gray.50" borderRadius="2xl" p={8} border="1px solid" borderColor="gray.200">
+              <VStack spacing={5} align="stretch">
+                <Box bg="white" p={4} borderRadius="lg" boxShadow="sm" border="1px solid" borderColor="orange.100">
+                  <HStack spacing={3}>
+                    <Box w="40px" h="40px" bg="orange.100" borderRadius="full" display="flex" alignItems="center" justifyContent="center">🎨</Box>
+                    <Box><Text fontWeight="bold" fontSize="sm">Theme & Colors</Text><Text fontSize="xs" color="gray.500">Choose from 8 brand colors or request custom</Text></Box>
+                  </HStack>
+                </Box>
+                <Box bg="white" p={4} borderRadius="lg" boxShadow="sm" border="1px solid" borderColor="blue.100">
+                  <HStack spacing={3}>
+                    <Box w="40px" h="40px" bg="blue.100" borderRadius="full" display="flex" alignItems="center" justifyContent="center">🌐</Box>
+                    <Box><Text fontWeight="bold" fontSize="sm">Custom Domain</Text><Text fontSize="xs" color="gray.500">www.yourlaundry.com → your branded portal</Text></Box>
+                  </HStack>
+                </Box>
+                <Box bg="white" p={4} borderRadius="lg" boxShadow="sm" border="1px solid" borderColor="green.100">
+                  <HStack spacing={3}>
+                    <Box w="40px" h="40px" bg="green.100" borderRadius="full" display="flex" alignItems="center" justifyContent="center">⚙️</Box>
+                    <Box><Text fontWeight="bold" fontSize="sm">Business Logic</Text><Text fontSize="xs" color="gray.500">Custom workflows, notifications, and integrations</Text></Box>
+                  </HStack>
+                </Box>
+                <Box bg="white" p={4} borderRadius="lg" boxShadow="sm" border="1px solid" borderColor="purple.100">
+                  <HStack spacing={3}>
+                    <Box w="40px" h="40px" bg="purple.100" borderRadius="full" display="flex" alignItems="center" justifyContent="center">🛠️</Box>
+                    <Box><Text fontWeight="bold" fontSize="sm">Custom Features</Text><Text fontSize="xs" color="gray.500">Need something unique? We'll build it for you.</Text></Box>
+                  </HStack>
+                </Box>
+              </VStack>
+            </Box>
+          </Flex>
+        </Container>
+      </Box>
+
       {/* How It Works */}
       <Box id="how-it-works" py={{ base: 16, md: 20 }}>
         <Container maxW="1000px">
