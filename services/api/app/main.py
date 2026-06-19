@@ -58,9 +58,11 @@ app = FastAPI(
 )
 
 
-# Start background scheduler on app startup
+# Start background scheduler and run migrations on app startup
 @app.on_event("startup")
 def startup_event():
+    from app.migrations import run_all as run_migrations
+    run_migrations()
     from app.scheduler import start_scheduler
     start_scheduler()
 
@@ -156,7 +158,7 @@ async def serve_customer_root(request: Request):
     """Serve customer React app for root URL."""
     index = CUSTOMER_BUILD / "index.html"
     if index.exists():
-        return FileResponse(index)
+        return FileResponse(index, headers={"Cache-Control": "no-cache, no-store, must-revalidate"})
     return {"error": "Customer app not built. Run: cd apps/customer && npm run build"}
 
 
@@ -193,13 +195,13 @@ async def serve_customer(request: Request, full_path: str):
     if "/admin" in f"/{full_path}" or "/driver" in f"/{full_path}" or full_path.startswith("admin"):
         index = ADMIN_BUILD / "index.html"
         if index.exists():
-            return FileResponse(index)
+            return FileResponse(index, headers={"Cache-Control": "no-cache, no-store, must-revalidate"})
         return {"error": "Admin app not built. Run: cd apps/admin && npm run build"}
 
     # Default: serve customer app
     index = CUSTOMER_BUILD / "index.html"
     if index.exists():
-        return FileResponse(index)
+        return FileResponse(index, headers={"Cache-Control": "no-cache, no-store, must-revalidate"})
 
     # Fallback to admin if customer isn't built
     index = ADMIN_BUILD / "index.html"

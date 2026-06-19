@@ -469,6 +469,11 @@ const LaundryInfoManagement = ({ validateEmpCredentials, type, empPrefix }) => {
     const [isEditButtonDisabled, setIsEditButtonDisabled] = useState(false);
     const authToken = localStorage.getItem('idToken');
 
+    // Service categories state
+    const [categories, setCategories] = useState([]);
+    const [newCategoryName, setNewCategoryName] = useState("");
+    const [isSavingCategory, setIsSavingCategory] = useState(false);
+
     // Function to open credential modal when clicking "Edit" or "Add"
     const handleEditLogoDomainClick = () => {
         if (!isEditButtonDisabled) {
@@ -670,7 +675,7 @@ const LaundryInfoManagement = ({ validateEmpCredentials, type, empPrefix }) => {
             fetchProducts(); 
             fetchLocations();
             fetchLaundryLogoAndDomain();
-
+            fetchCategories();
         }
     }, [laundryId]);
     
@@ -691,6 +696,80 @@ const LaundryInfoManagement = ({ validateEmpCredentials, type, empPrefix }) => {
             });
         } finally {
             setLoading(false); // Hide the loading spinner
+        }
+    };
+
+    const fetchCategories = async () => {
+        try {
+            const res = await axios.get(`${process.env.REACT_APP_AWS_API_URL}/api/admin/service-categories`, {
+                params: { laundryId },
+                headers: { Authorization: `Bearer ${authToken}` },
+            });
+            setCategories(res.data?.categories || []);
+        } catch (err) {
+            console.error("Error fetching categories:", err);
+        }
+    };
+
+    const handleAddCategory = async () => {
+        if (!newCategoryName.trim()) return;
+        setIsSavingCategory(true);
+        try {
+            const res = await axios.post(`${process.env.REACT_APP_AWS_API_URL}/api/admin/service-categories`, {
+                laundryId,
+                categoryName: newCategoryName.trim(),
+            }, { headers: { Authorization: `Bearer ${authToken}` } });
+            if (res.data?.status === "success") {
+                setCategories(prev => [...prev, res.data.category]);
+                setNewCategoryName("");
+                toast({ title: "Category added", status: "success", duration: 2000 });
+            } else {
+                toast({ title: res.data?.message || "Error", status: "error", duration: 3000 });
+            }
+        } catch (err) {
+            toast({ title: "Error adding category", status: "error", duration: 3000 });
+        } finally {
+            setIsSavingCategory(false);
+        }
+    };
+
+    const handleDeleteCategory = async (categoryId) => {
+        if (!window.confirm("Delete this category? Services in this category will become uncategorized.")) return;
+        try {
+            await axios.delete(`${process.env.REACT_APP_AWS_API_URL}/api/admin/service-categories`, {
+                params: { categoryId, laundryId },
+                headers: { Authorization: `Bearer ${authToken}` },
+            });
+            setCategories(prev => prev.filter(c => c.categoryId !== categoryId));
+            toast({ title: "Category deleted", status: "success", duration: 2000 });
+        } catch (err) {
+            toast({ title: "Error deleting category", status: "error", duration: 3000 });
+        }
+    };
+
+    const handleReorderCategory = async (index, direction) => {
+        const updated = [...categories];
+        const swapIdx = direction === "up" ? index - 1 : index + 1;
+        if (swapIdx < 0 || swapIdx >= updated.length) return;
+        // Swap display orders
+        const tempOrder = updated[index].displayOrder;
+        updated[index].displayOrder = updated[swapIdx].displayOrder;
+        updated[swapIdx].displayOrder = tempOrder;
+        // Swap positions
+        [updated[index], updated[swapIdx]] = [updated[swapIdx], updated[index]];
+        setCategories(updated);
+        // Persist both
+        try {
+            await Promise.all([
+                axios.put(`${process.env.REACT_APP_AWS_API_URL}/api/admin/service-categories`, {
+                    categoryId: updated[index].categoryId, laundryId, displayOrder: updated[index].displayOrder,
+                }, { headers: { Authorization: `Bearer ${authToken}` } }),
+                axios.put(`${process.env.REACT_APP_AWS_API_URL}/api/admin/service-categories`, {
+                    categoryId: updated[swapIdx].categoryId, laundryId, displayOrder: updated[swapIdx].displayOrder,
+                }, { headers: { Authorization: `Bearer ${authToken}` } }),
+            ]);
+        } catch (err) {
+            console.error("Error reordering:", err);
         }
     };
     
@@ -835,21 +914,23 @@ const LaundryInfoManagement = ({ validateEmpCredentials, type, empPrefix }) => {
             return;
         }
         const payload = {
-            servicesToAdd: (newServices || []).map(({ serviceName, price, description, customerAccess, inputWeight }) => ({
+            servicesToAdd: (newServices || []).map(({ serviceName, price, description, customerAccess, inputWeight, categoryId }) => ({
                 serviceName,
-                price: parseFloat(price) || 0, // Ensure valid price
-                description: description || "N/A", // Default description
-                customerAccess: customerAccess ?? false, // Default to false
-                inputWeight: inputWeight ?? false, // Default to false
+                price: parseFloat(price) || 0,
+                description: description || "N/A",
+                customerAccess: customerAccess ?? false,
+                inputWeight: inputWeight ?? false,
+                categoryId: categoryId || null,
             })),
             servicesToUpdate: (servicesData || [])
                 .filter((service) => service.isModified)
-                .map(({ serviceName, price, description, customerAccess, inputWeight }) => ({
+                .map(({ serviceName, price, description, customerAccess, inputWeight, categoryId }) => ({
                     serviceName,
                     price: parseFloat(price) || 0,
                     description: description || "N/A",
                     customerAccess: customerAccess ?? false,
                     inputWeight: inputWeight ?? false,
+                    categoryId: categoryId || null,
                 })),
             servicesToRemove: servicesToRemove || [],
         };
@@ -931,7 +1012,7 @@ const LaundryInfoManagement = ({ validateEmpCredentials, type, empPrefix }) => {
     const handleAddService = () => {
         setNewServices([
             ...newServices,
-            { serviceName: "", price: "", description: "", access: [], inputWeight: false },
+            { serviceName: "", price: "", description: "", access: [], inputWeight: false, categoryId: null },
         ]);
     };    
     
@@ -1512,11 +1593,59 @@ const LaundryInfoManagement = ({ validateEmpCredentials, type, empPrefix }) => {
             {/* Table for Services */}
             {type === "services" && (              
                 <>
+                    {/* Service Categories Management */}
+                    <Box mb={4} p={4} bg="gray.50" borderRadius="md" border="1px solid" borderColor="gray.200">
+                        <Text fontWeight="bold" mb={2}>ðŸ“‚ Service Categories</Text>
+                        <Text fontSize="xs" color="gray.500" mb={3}>
+                            Organize services into categories. Customers will see these as separate pricing cards.
+                        </Text>
+                        {categories.length > 0 && (
+                            <Table size="sm" variant="simple" mb={3}>
+                                <Thead>
+                                    <Tr>
+                                        <Th>Category Name</Th>
+                                        <Th>Order</Th>
+                                        <Th>Actions</Th>
+                                    </Tr>
+                                </Thead>
+                                <Tbody>
+                                    {categories.map((cat, idx) => (
+                                        <Tr key={cat.categoryId}>
+                                            <Td fontSize="sm" fontWeight="500">{cat.categoryName}</Td>
+                                            <Td fontSize="sm">{cat.displayOrder}</Td>
+                                            <Td>
+                                                <Flex gap={1}>
+                                                    <Button size="xs" variant="ghost" isDisabled={idx === 0} onClick={() => handleReorderCategory(idx, "up")}>â†‘</Button>
+                                                    <Button size="xs" variant="ghost" isDisabled={idx === categories.length - 1} onClick={() => handleReorderCategory(idx, "down")}>â†“</Button>
+                                                    <IconButton icon={<DeleteIcon />} size="xs" colorScheme="red" variant="ghost" onClick={() => handleDeleteCategory(cat.categoryId)} aria-label="Delete" />
+                                                </Flex>
+                                            </Td>
+                                        </Tr>
+                                    ))}
+                                </Tbody>
+                            </Table>
+                        )}
+                        <Flex gap={2} align="center">
+                            <Input
+                                size="sm"
+                                placeholder="New category name (e.g. Per Pound, Dry Cleaning)"
+                                value={newCategoryName}
+                                onChange={(e) => setNewCategoryName(e.target.value)}
+                                maxW="300px"
+                                onKeyPress={(e) => e.key === "Enter" && handleAddCategory()}
+                            />
+                            <Button size="sm" colorScheme="teal" onClick={handleAddCategory} isLoading={isSavingCategory}>
+                                Add
+                            </Button>
+                        </Flex>
+                    </Box>
+
                     <Table variant="simple" size="sm" colorScheme="blue" border="1px solid" borderColor="gray.200">
                         <Thead bg="#EBF8FF">
                             <Tr>
                                 <Th fontWeight="bold" fontSize="md">Service Name</Th>
                                 <Th fontWeight="bold" fontSize="md" isNumeric>Price</Th>
+                                <Th fontWeight="bold" fontSize="md">Category</Th>
                                 <Th fontWeight="bold" fontSize="md">Customer Access</Th>
                                 <Th fontWeight="bold" fontSize="md">Description</Th>
                                 <Th fontWeight="bold" fontSize="md">Input Weight</Th>
@@ -1544,6 +1673,18 @@ const LaundryInfoManagement = ({ validateEmpCredentials, type, empPrefix }) => {
             value={service.price || ""}
             onChange={(e) => handleNewServiceChange(index, "price", e.target.value)}
           />
+        </Td>
+        <Td>
+          <select
+            value={service.categoryId || ""}
+            onChange={(e) => handleNewServiceChange(index, "categoryId", e.target.value ? parseInt(e.target.value) : null)}
+            style={{ padding: "0.25rem", fontSize: "0.875rem", width: "100%" }}
+          >
+            <option value="">â€” None â€”</option>
+            {categories.map(cat => (
+              <option key={cat.categoryId} value={cat.categoryId}>{cat.categoryName}</option>
+            ))}
+          </select>
         </Td>
         <Td>
           <select
@@ -1601,6 +1742,22 @@ const LaundryInfoManagement = ({ validateEmpCredentials, type, empPrefix }) => {
           />
         ) : (
           `$${service.price || "0.00"}`
+        )}
+      </Td>
+      <Td fontSize="sm">
+        {isServiceEditMode ? (
+          <select
+            value={service.categoryId || ""}
+            onChange={(e) => handleEditService(index, "categoryId", e.target.value ? parseInt(e.target.value) : null)}
+            style={{ padding: "0.25rem", fontSize: "0.875rem", width: "100%" }}
+          >
+            <option value="">— None —</option>
+            {categories.map(cat => (
+              <option key={cat.categoryId} value={cat.categoryId}>{cat.categoryName}</option>
+            ))}
+          </select>
+        ) : (
+          categories.find(c => c.categoryId === service.categoryId)?.categoryName || "—"
         )}
       </Td>
       <Td fontSize="sm">

@@ -38,6 +38,7 @@ export default function BagReviewOrderPage({
     setTip,
     pickupService,
     dropoffService,
+    taxRate = 0,
 }) {
     const totalCost = (laundryBags * bagPrice).toFixed(2);
     const { tipOption, customTip } = tip;
@@ -237,6 +238,12 @@ export default function BagReviewOrderPage({
                     <Text fontWeight="600" color="gray.700">Subtotal</Text>
                     <Text color="gray.700">${totalCost}</Text>
                 </Flex>
+                {taxRate > 0 && (
+                    <Flex justify="space-between" align="center" mt={1}>
+                        <Text fontSize="sm" color="gray.500">Sales Tax ({taxRate}%)</Text>
+                        <Text fontSize="sm" color="gray.500">${(parseFloat(totalCost) * taxRate / 100).toFixed(2)}</Text>
+                    </Flex>
+                )}
                 {tipAmount > 0 && (
                     <Flex justify="space-between" align="center" mt={1}>
                         <Text fontSize="sm" color="gray.500">Tip</Text>
@@ -246,7 +253,7 @@ export default function BagReviewOrderPage({
                 <Divider my={2} borderColor="blue.200" />
                 <Flex justify="space-between" align="center">
                     <Text fontWeight="bold" fontSize="lg" color="gray.800">Total</Text>
-                    <Text fontWeight="bold" fontSize="lg" color="blue.600">${grandTotal}</Text>
+                    <Text fontWeight="bold" fontSize="lg" color="blue.600">${(parseFloat(totalCost) + (taxRate > 0 ? parseFloat(totalCost) * taxRate / 100 : 0) + tipAmount).toFixed(2)}</Text>
                 </Flex>
             </Box>
 
@@ -262,7 +269,7 @@ export default function BagReviewOrderPage({
                 loadingText="Placing Order..."
                 boxShadow="lg"
             >
-                Place Order — ${grandTotal}
+                Place Order — ${(parseFloat(totalCost) + (taxRate > 0 ? parseFloat(totalCost) * taxRate / 100 : 0) + tipAmount).toFixed(2)}
             </Button>
         </VStack>
     );

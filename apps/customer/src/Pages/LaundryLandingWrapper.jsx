@@ -38,6 +38,7 @@ export default function LaundryLandingWrapper() {
                         laundryAddress: infoRes.data.laundryAddress,
                         laundryTimeZone: infoRes.data.laundryTimeZone,
                         services: infoRes.data.laundryServices || [],
+                        serviceCategories: infoRes.data.serviceCategories || [],
                         deliveryTimeSlots: infoRes.data.deliveryTimeSlots || [],
                         bagPrice: infoRes.data.bagPrice || 30,
                         siteContent: infoRes.data.siteContent || {},

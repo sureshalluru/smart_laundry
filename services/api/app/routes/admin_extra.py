@@ -243,18 +243,20 @@ async def update_products_services(
 
             for svc in services_to_add:
                 cur.execute("""
-                    INSERT INTO shop.laundry_services (laundry_id, service_name, price, description, input_weight, customer_access, is_active)
-                    VALUES (%s, %s, %s, %s, %s, %s, TRUE)
+                    INSERT INTO shop.laundry_services (laundry_id, service_name, price, description, input_weight, customer_access, is_active, category_id)
+                    VALUES (%s, %s, %s, %s, %s, %s, TRUE, %s)
                 """, (laundryId, svc.get("serviceName"), float(svc.get("price", 0)),
-                      svc.get("description", ""), svc.get("inputWeight", True), svc.get("customerAccess", True)))
+                      svc.get("description", ""), svc.get("inputWeight", True), svc.get("customerAccess", True),
+                      svc.get("categoryId") or None))
 
             for svc in services_to_update:
                 cur.execute("""
                     UPDATE shop.laundry_services
-                    SET price = %s, description = %s, input_weight = %s, customer_access = %s
+                    SET price = %s, description = %s, input_weight = %s, customer_access = %s, category_id = %s
                     WHERE laundry_id = %s AND service_name = %s
                 """, (float(svc.get("price", 0)), svc.get("description", ""),
                       svc.get("inputWeight", True), svc.get("customerAccess", True),
+                      svc.get("categoryId") or None,
                       laundryId, svc.get("serviceName")))
 
             for svc_name in services_to_remove:
@@ -967,3 +969,132 @@ async def get_zip_interest(
         } for r in cur.fetchall()]
 
     return {"statusCode": 200, "body": {"status": "success", "data": data}}
+
+
+# ── Service Categories CRUD ───────────────────────────────────────────────────
+
+@router.get("/service-categories")
+async def get_service_categories(
+    laundryId: str = Query(...),
+    current_user: dict = Depends(get_current_user),
+):
+    """List all active service categories for a laundry."""
+    with get_db() as conn:
+        cur = get_cursor(conn)
+        cur.execute("""
+            SELECT category_id, category_name, display_order
+            FROM shop.service_categories
+            WHERE laundry_id = %s AND is_active = TRUE
+            ORDER BY display_order, category_id
+        """, (laundryId,))
+        categories = [{
+            "categoryId": r["category_id"],
+            "categoryName": r["category_name"],
+            "displayOrder": r["display_order"],
+        } for r in cur.fetchall()]
+    return {"status": "success", "categories": categories}
+
+
+@router.post("/service-categories")
+async def create_service_category(
+    body: dict = Body({}),
+    current_user: dict = Depends(get_current_user),
+):
+    """Create a new service category."""
+    laundry_id = body.get("laundryId")
+    category_name = body.get("categoryName", "").strip()
+    display_order = body.get("displayOrder")
+
+    if not laundry_id or not category_name:
+        return {"status": "error", "message": "laundryId and categoryName are required"}
+
+    with get_db() as conn:
+        cur = get_cursor(conn)
+
+        # Auto-assign display_order if not provided
+        if display_order is None:
+            cur.execute("""
+                SELECT COALESCE(MAX(display_order), 0) + 1 as next_order
+                FROM shop.service_categories
+                WHERE laundry_id = %s AND is_active = TRUE
+            """, (laundry_id,))
+            display_order = cur.fetchone()["next_order"]
+
+        try:
+            cur.execute("""
+                INSERT INTO shop.service_categories (laundry_id, category_name, display_order)
+                VALUES (%s, %s, %s)
+                RETURNING category_id
+            """, (laundry_id, category_name, display_order))
+            row = cur.fetchone()
+            return {
+                "status": "success",
+                "category": {
+                    "categoryId": row["category_id"],
+                    "categoryName": category_name,
+                    "displayOrder": display_order,
+                }
+            }
+        except Exception as e:
+            if "unique" in str(e).lower():
+                return {"status": "error", "message": f"Category '{category_name}' already exists"}
+            raise
+
+
+@router.put("/service-categories")
+async def update_service_category(
+    body: dict = Body({}),
+    current_user: dict = Depends(get_current_user),
+):
+    """Update a service category's name or display order."""
+    category_id = body.get("categoryId")
+    laundry_id = body.get("laundryId")
+    category_name = body.get("categoryName", "").strip()
+    display_order = body.get("displayOrder")
+
+    if not category_id or not laundry_id:
+        return {"status": "error", "message": "categoryId and laundryId are required"}
+
+    with get_db() as conn:
+        cur = get_cursor(conn)
+        sets = []
+        params = []
+        if category_name:
+            sets.append("category_name = %s")
+            params.append(category_name)
+        if display_order is not None:
+            sets.append("display_order = %s")
+            params.append(display_order)
+
+        if not sets:
+            return {"status": "error", "message": "Nothing to update"}
+
+        params.extend([category_id, laundry_id])
+        cur.execute(f"""
+            UPDATE shop.service_categories
+            SET {', '.join(sets)}
+            WHERE category_id = %s AND laundry_id = %s
+        """, params)
+
+        if cur.rowcount == 0:
+            return {"status": "error", "message": "Category not found"}
+
+    return {"status": "success", "message": "Category updated"}
+
+
+@router.delete("/service-categories")
+async def delete_service_category(
+    categoryId: int = Query(...),
+    laundryId: str = Query(...),
+    current_user: dict = Depends(get_current_user),
+):
+    """Delete a service category. Services with this category will become uncategorized (FK ON DELETE SET NULL)."""
+    with get_db() as conn:
+        cur = get_cursor(conn)
+        cur.execute("""
+            DELETE FROM shop.service_categories
+            WHERE category_id = %s AND laundry_id = %s
+        """, (categoryId, laundryId))
+        if cur.rowcount == 0:
+            return {"status": "error", "message": "Category not found"}
+    return {"status": "success", "message": "Category deleted"}

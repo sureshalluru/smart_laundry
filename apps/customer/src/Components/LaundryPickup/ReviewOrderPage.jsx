@@ -386,13 +386,57 @@ export default function ReviewOrderPage({
 
             <Divider my={[2,4]} />
 
-            {/* Tax display */}
-            {taxRate > 0 && (
-                <Flex justify="space-between" align="center" px={2} py={1}>
-                    <Text fontSize={['sm','md']} color="gray.600">Sales Tax ({taxRate}%)</Text>
-                    <Text fontSize={['sm','md']} color="gray.600">Calculated at checkout</Text>
-                </Flex>
-            )}
+            {/* ─── Order Total Summary ─── */}
+            <Box w="100%" bg="gray.50" borderRadius="md" p={4} border="1px solid" borderColor="gray.200">
+                <Text fontSize="md" fontWeight="bold" mb={3} color="gray.800">Order Summary</Text>
+                {(() => {
+                    const subtotal = services.reduce((sum, s) => {
+                        // Recalculate from basePrice * count to ensure accuracy
+                        const price = parseFloat(s.basePrice || s.cost / (parseFloat(s.count) || 1) || 0);
+                        const count = parseFloat(s.count || 0);
+                        return sum + (price * count);
+                    }, 0);
+                    const tipAmount = tip.tipType === 'percentage'
+                        ? (subtotal * tip.tipPercentage / 100)
+                        : parseFloat(tip.tipAmount || 0);
+                    const taxAmount = taxRate > 0 ? (subtotal * taxRate / 100) : 0;
+                    const grandTotal = subtotal + taxAmount + tipAmount;
+
+                    return (
+                        <VStack spacing={2} align="stretch">
+                            <Flex justify="space-between">
+                                <Text fontSize="sm" color="gray.600">Subtotal</Text>
+                                <Text fontSize="sm" fontWeight="600">${subtotal.toFixed(2)}</Text>
+                            </Flex>
+                            {taxRate > 0 && (
+                                <Flex justify="space-between">
+                                    <Text fontSize="sm" color="gray.600">Sales Tax ({taxRate}%)</Text>
+                                    <Text fontSize="sm" fontWeight="600">${taxAmount.toFixed(2)}</Text>
+                                </Flex>
+                            )}
+                            {tipAmount > 0 && (
+                                <Flex justify="space-between">
+                                    <Text fontSize="sm" color="gray.600">Tip {tip.tipType === 'percentage' ? `(${tip.tipPercentage}%)` : ''}</Text>
+                                    <Text fontSize="sm" fontWeight="600">${tipAmount.toFixed(2)}</Text>
+                                </Flex>
+                            )}
+                            <Divider />
+                            <Flex justify="space-between">
+                                <Text fontSize="md" fontWeight="bold" color="gray.800">Estimated Total</Text>
+                                <Text fontSize="md" fontWeight="bold" color="green.600">${grandTotal.toFixed(2)}</Text>
+                            </Flex>
+                            {services.some(s => {
+                                const svc = s.service;
+                                return true; // per-pound services show weight estimate note
+                            }) && (
+                                <Text fontSize="xs" color="gray.500" mt={1}>
+                                    * Final total may vary based on actual weight measured at the laundry.
+                                </Text>
+                            )}
+                        </VStack>
+                    );
+                })()}
+            </Box>
 
             {/* Place Order Button */}
             <Button

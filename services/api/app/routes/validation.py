@@ -110,7 +110,7 @@ def _get_laundry_info(cur, laundry_id, is_customer=None):
 
     # Services
     cur.execute("""
-        SELECT service_name, price, description, input_weight, customer_access
+        SELECT service_name, price, description, input_weight, customer_access, category_id
         FROM shop.laundry_services
         WHERE laundry_id = %s AND is_active = TRUE ORDER BY service_id
     """, (laundry_id,))
@@ -120,9 +120,23 @@ def _get_laundry_info(cur, laundry_id, is_customer=None):
         "description": r["description"] or "",
         "inputWeight": r["input_weight"],
         "customerAccess": r["customer_access"],
+        "categoryId": r["category_id"],
     } for r in cur.fetchall()]
 
     laundry_services = [s for s in all_services if s["customerAccess"]] if is_customer else all_services
+
+    # Service categories
+    cur.execute("""
+        SELECT category_id, category_name, display_order
+        FROM shop.service_categories
+        WHERE laundry_id = %s AND is_active = TRUE
+        ORDER BY display_order, category_id
+    """, (laundry_id,))
+    service_categories = [{
+        "categoryId": r["category_id"],
+        "categoryName": r["category_name"],
+        "displayOrder": r["display_order"],
+    } for r in cur.fetchall()]
 
     # Delivery time slots
     cur.execute("""
@@ -173,6 +187,7 @@ def _get_laundry_info(cur, laundry_id, is_customer=None):
         "deliveryTimeInterval": str(shop["delivery_time_interval"] or ""),
         "laundryAddress": addr,
         "laundryServices": laundry_services,
+        "serviceCategories": service_categories,
         "deliveryTimeSlots": delivery_time_slots,
         "inStorePickupTimeSlots": instore_slots,
         "frequencyInterval": frequency_interval,

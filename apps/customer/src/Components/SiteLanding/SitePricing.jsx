@@ -11,7 +11,113 @@ export default function SitePricing({ config }) {
     const sc = config?.siteContent || {};
     const themeColor = sc.themeColor || 'blue';
     const services = config?.services || config?.laundryServices || [];
+    const serviceCategories = config?.serviceCategories || [];
 
+    // If categories exist, group services by category
+    if (serviceCategories.length > 0) {
+        // Build one card per category that has customer-visible services
+        const pricingCards = [];
+        const sortedCategories = [...serviceCategories].sort((a, b) => a.displayOrder - b.displayOrder);
+
+        for (const cat of sortedCategories) {
+            const catServices = services.filter(s => s.categoryId === cat.categoryId);
+            if (catServices.length === 0) continue;
+
+            const cheapest = catServices.reduce((min, s) => Math.min(min, parseFloat(s.price || 0)), Infinity);
+            const hasWeight = catServices.some(s => s.inputWeight === true || s.inputWeight === 'true');
+            const unit = hasWeight ? '/lb' : (catServices.length > 1 ? ' starting' : '');
+
+            pricingCards.push({
+                title: cat.categoryName,
+                categoryId: cat.categoryId,
+                price: `${cheapest % 1 === 0 ? cheapest : cheapest.toFixed(2)}`,
+                unit,
+                icon: hasWeight ? FaWeight : FaShoppingBag,
+                popular: pricingCards.length === 0,
+                description: catServices.length === 1
+                    ? catServices[0].description || `${cat.categoryName} service`
+                    : `${catServices.length} services available`,
+                features: catServices.slice(0, 5).map(s => {
+                    const p = parseFloat(s.price);
+                    const suffix = (s.inputWeight === true || s.inputWeight === 'true') ? '/lb' : '';
+                    return `${s.serviceName} — $${p % 1 === 0 ? p : p.toFixed(2)}${suffix}`;
+                }),
+                cta: 'Get Started',
+            });
+        }
+
+        if (pricingCards.length === 0) {
+            // Categories exist but none have services — fall through to legacy
+        } else {
+            return (
+                <Box id="pricing" py={{ base: 16, md: 20 }} bg="white">
+                    <Container maxW="1200px">
+                        <VStack spacing={4} textAlign="center" mb={12}>
+                            <Text fontSize="sm" fontWeight="600" color={`${themeColor}.500`} textTransform="uppercase" letterSpacing="wide">
+                                Pricing
+                            </Text>
+                            <Heading fontSize={{ base: '2xl', md: '4xl' }} color="gray.800">
+                                Simple, transparent pricing
+                            </Heading>
+                            <Text fontSize={{ base: 'md', md: 'lg' }} color="gray.500" maxW="500px">
+                                No hidden fees, no contracts. Choose what works for you.
+                            </Text>
+                        </VStack>
+
+                        <SimpleGrid columns={{ base: 1, md: Math.min(pricingCards.length, 3) }} spacing={6} maxW={pricingCards.length === 1 ? '450px' : '1000px'} mx="auto">
+                            {pricingCards.map((plan, idx) => (
+                                <Box key={plan.title} bg={idx === 0 ? `${themeColor}.50` : 'white'}
+                                    border="2px solid" borderColor={idx === 0 ? `${themeColor}.300` : 'gray.200'}
+                                    borderRadius="2xl" p={{ base: 6, md: 8 }} position="relative"
+                                    transition="all 0.3s" _hover={{ boxShadow: 'xl', transform: 'translateY(-4px)' }}>
+                                    {idx === 0 && pricingCards.length > 1 && (
+                                        <Badge position="absolute" top={-3} left="50%" transform="translateX(-50%)"
+                                            colorScheme={themeColor} borderRadius="full" px={4} py={1} fontSize="xs" fontWeight="700">
+                                            Most Popular
+                                        </Badge>
+                                    )}
+                                    <VStack spacing={5} align="stretch">
+                                        <HStack spacing={3}>
+                                            <Box bg={idx === 0 ? `${themeColor}.100` : 'gray.100'} borderRadius="lg" p={2}>
+                                                <Icon as={plan.icon} boxSize={5} color={idx === 0 ? `${themeColor}.500` : 'gray.500'} />
+                                            </Box>
+                                            <Text fontSize="lg" fontWeight="700" color="gray.800">{plan.title}</Text>
+                                        </HStack>
+                                        <HStack align="baseline" spacing={1}>
+                                            <Text fontSize="4xl" fontWeight="800" color="gray.800">${plan.price}</Text>
+                                            <Text fontSize="md" color="gray.500" fontWeight="500">{plan.unit}</Text>
+                                        </HStack>
+                                        <Text fontSize="sm" color="gray.500">{plan.description}</Text>
+                                        <List spacing={3}>
+                                            {plan.features.map((feature) => (
+                                                <ListItem key={feature} fontSize="sm" color="gray.600" display="flex" alignItems="center">
+                                                    <ListIcon as={FiCheck} color="green.400" boxSize={4} />
+                                                    {feature}
+                                                </ListItem>
+                                            ))}
+                                        </List>
+                                        <Button as="a" href={`/${laundryId}`} colorScheme={idx === 0 ? themeColor : 'gray'}
+                                            variant={idx === 0 ? 'solid' : 'outline'} size="lg" borderRadius="full" mt={2}>
+                                            {plan.cta}
+                                        </Button>
+                                    </VStack>
+                                </Box>
+                            ))}
+                        </SimpleGrid>
+
+                        <Box mt={10} bg="gray.50" borderRadius="2xl" p={{ base: 5, md: 6 }} textAlign="center" maxW="600px" mx="auto">
+                            <Text fontWeight="600" color="gray.700" mb={1}>Prefer to do it yourself?</Text>
+                            <Text fontSize="sm" color="gray.500">
+                                {sc.selfServiceNote || 'Visit our self-service laundromat with modern washers and dryers.'}
+                            </Text>
+                        </Box>
+                    </Container>
+                </Box>
+            );
+        }
+    }
+
+    // ─── Fallback: Legacy per-pound / per-piece logic ────────────────────────
     // Determine what pricing types exist from actual services
     const perPoundServices = services.filter(s => s.inputWeight === true || s.inputWeight === 'true');
     const perPieceServices = services.filter(s => !s.inputWeight || s.inputWeight === false || s.inputWeight === 'false');

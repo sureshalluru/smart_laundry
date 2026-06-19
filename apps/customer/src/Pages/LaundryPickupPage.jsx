@@ -17,6 +17,7 @@ import ServicePage from '../Components/LaundryPickup/ServicePage';
 import PaymentPage from '../Components/LaundryPickup/PaymentPage';
 import ReviewOrderPage from '../Components/LaundryPickup/ReviewOrderPage';
 import PricingChoice from '../Components/LaundryPickup/PricingChoice';
+import CategorySelection from '../Components/LaundryPickup/CategorySelection';
 import BagOrderPage from '../Components/LaundryPickup/BagOrderPage';
 import BagReviewOrderPage from '../Components/LaundryPickup/BagReviewOrderPage';
 import {useNavigate} from "react-router-dom";
@@ -106,6 +107,8 @@ export default function LaundryPickupPage({laundryId,customerId,customerPaymentI
     const searchBoxRef = useRef(null);
     // State variables for laundry info
     const [laundryServices, setLaundryServices] = useState([]); // set the laundry services information
+    const [serviceCategories, setServiceCategories] = useState([]); // service categories from API
+    const [selectedCategory, setSelectedCategory] = useState(null); // selected category for order flow
     const [servicesLoaded, setServicesLoaded] = useState(false);
     const [deliveryTimeSlots, setDeliveryTimeSlots] = useState([]); // set the delivery time slots information
     const [deliveryTimeInterval, setDeliveryTimeInterval] = useState(0); // set the delivery time interval to generate the slots
@@ -167,20 +170,40 @@ export default function LaundryPickupPage({laundryId,customerId,customerPaymentI
                             setBagPrice(parseFloat(response.data.bagPrice));
                         }
 
-                        // Auto-detect pricing type: skip choice page if only one type exists
+                        // Store service categories
+                        const cats = response.data.serviceCategories || [];
+                        setServiceCategories(cats);
+
+                        // Auto-detect pricing type based on categories or legacy input_weight
                         const svcs = response.data.laundryServices || [];
-                        const hasPerPound = svcs.some(s => s.inputWeight === true || s.inputWeight === 'true');
-                        const hasPerPiece = svcs.some(s => !s.inputWeight || s.inputWeight === false || s.inputWeight === 'false');
-                        if (!hasPerPound && hasPerPiece) {
-                            // Only per-piece/bag services — skip pricing choice, go to per_bag flow
-                            setPricingType('per_bag');
-                            setActiveStep(1);
-                        } else if (hasPerPound && !hasPerPiece) {
-                            // Only per-pound — skip pricing choice, go to per_pound flow
-                            setPricingType('per_pound');
-                            setActiveStep(1);
+
+                        if (cats.length > 0) {
+                            // Category-based routing
+                            const activeCats = cats.filter(cat =>
+                                svcs.some(s => s.categoryId === cat.categoryId)
+                            );
+                            if (activeCats.length === 1) {
+                                // Single category — skip selection, determine type from services
+                                setSelectedCategory(activeCats[0]);
+                                const catSvcs = svcs.filter(s => s.categoryId === activeCats[0].categoryId);
+                                const catHasWeight = catSvcs.some(s => s.inputWeight === true || s.inputWeight === 'true');
+                                setPricingType(catHasWeight ? 'per_pound' : 'per_bag');
+                                setActiveStep(1);
+                            }
+                            // Multiple categories → stay on step 0 (category selection)
+                        } else if (cats.length === 0) {
+                            // Legacy: no categories, use input_weight auto-detect
+                            const hasPerPound = svcs.some(s => s.inputWeight === true || s.inputWeight === 'true');
+                            const hasPerPiece = svcs.some(s => !s.inputWeight || s.inputWeight === false || s.inputWeight === 'false');
+                            if (!hasPerPound && hasPerPiece) {
+                                setPricingType('per_bag');
+                                setActiveStep(1);
+                            } else if (hasPerPound && !hasPerPiece) {
+                                setPricingType('per_pound');
+                                setActiveStep(1);
+                            }
+                            // If both exist, stay on step 0 (pricing choice page)
                         }
-                        // If both exist, stay on step 0 (pricing choice page)
                         setServicesLoaded(true);
 
                         // Initialize Stripe with the fetched public key
@@ -257,6 +280,23 @@ export default function LaundryPickupPage({laundryId,customerId,customerPaymentI
     const handlePricingChoice = (type) => {
         setPricingType(type);
         setActiveStep(1);
+    };
+
+    // Handle category selection (when categories exist)
+    const handleCategorySelect = (category) => {
+        setSelectedCategory(category);
+        const catSvcs = laundryServices.filter(s => s.categoryId === category.categoryId);
+        const catHasWeight = catSvcs.some(s => s.inputWeight === true || s.inputWeight === 'true');
+        setPricingType(catHasWeight ? 'per_pound' : 'per_bag');
+        setActiveStep(1);
+    };
+
+    // Get filtered services for selected category (or all if no categories)
+    const getFilteredServices = () => {
+        if (selectedCategory) {
+            return laundryServices.filter(s => s.categoryId === selectedCategory.categoryId);
+        }
+        return laundryServices;
     };
 
     // Order placement function
@@ -690,8 +730,16 @@ export default function LaundryPickupPage({laundryId,customerId,customerPaymentI
                         </Stepper>
 
                         <Box bg="white" borderRadius="2xl" boxShadow="sm" border="1px solid" borderColor="gray.100" padding={[4,5,6]}>
-                            {/* Step 0: Pricing Choice — only show after services loaded */}
-                            {activeStep === 0 && servicesLoaded && (
+                            {/* Step 0: Pricing Choice or Category Selection — only show after services loaded */}
+                            {activeStep === 0 && servicesLoaded && serviceCategories.length > 0 && (
+                                <CategorySelection
+                                    categories={serviceCategories}
+                                    services={laundryServices}
+                                    onSelect={handleCategorySelect}
+                                    themeColor={laundryData?.themeColor || 'blue'}
+                                />
+                            )}
+                            {activeStep === 0 && servicesLoaded && serviceCategories.length === 0 && (
                                 <PricingChoice
                                     pricingType={pricingType}
                                     setPricingType={setPricingType}
@@ -727,7 +775,8 @@ export default function LaundryPickupPage({laundryId,customerId,customerPaymentI
                                     setPickupService={setPickupService}
                                     dropoffService={dropoffService}
                                     setDropoffService={setDropoffService}
-                                    laundryServices={laundryServices}
+                                    laundryServices={getFilteredServices()}
+                                    categoryName={selectedCategory?.categoryName || ''}
                                 />
                             )}
 
@@ -752,7 +801,7 @@ export default function LaundryPickupPage({laundryId,customerId,customerPaymentI
                                     setSpecialInstructions={setSpecialInstructions}
                                     setSaveSpecialInstructions={setSaveSpecialInstructions}
                                     laundryId={laundryId}
-                                    laundryServices={laundryServices}
+                                    laundryServices={getFilteredServices()}
                                     deliveryTimeSlots={deliveryTimeSlots}
                                     deliveryTimeInterval={deliveryTimeInterval}
                                     laundryFrequency={laundryFrequency}
@@ -816,6 +865,7 @@ export default function LaundryPickupPage({laundryId,customerId,customerPaymentI
                                     setTip={setTip}
                                     pickupService={pickupService}
                                     dropoffService={dropoffService}
+                                    taxRate={laundryData?.taxRate || 0}
                                 />
                             )}
 

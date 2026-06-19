@@ -197,7 +197,7 @@ async def get_laundry_products_info(
 
         elif operation == 'viewServices':
             cur.execute("""
-                SELECT service_id, service_name, description, price, input_weight, customer_access
+                SELECT service_id, service_name, description, price, input_weight, customer_access, category_id
                 FROM shop.laundry_services WHERE laundry_id = %s AND is_active = TRUE ORDER BY service_id
             """, (laundryId,))
             services = [serialize_row(r) for r in cur.fetchall()]

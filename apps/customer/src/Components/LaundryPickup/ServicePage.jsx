@@ -395,88 +395,29 @@ const canDoInstantPickup = uberExists && isWithinHours();
         dropoffTime,
     ]);
 
-    // Function to render the Input Box based on the weight and count
-    const renderServiceInput = (service, index) => {
-        const selectedService = laundryServices.find(
-            (item) => item.serviceName === service.service
-        );
-        if (selectedService) {
-            if (selectedService.inputWeight === true) {
-                return (
-                    <>
-                        <FormLabel>Approx Weight (lbs)</FormLabel>
-                        <NumberInput
-                            placeholder="Enter weight in lbs"
-                            value={service.count}
-                            min={1}
-                            max={50}
-                            step={1}
-                            onChange={(weightValue) =>
-                                handleServiceChange(index, 'count', true, selectedService.price, weightValue)
-                            }
-                        >
-                            <NumberInputField type="numeric"/>
-                        </NumberInput>
-                    </>
-                );
-            } else {
-                return (
-                    <>
-                        <FormLabel>Count</FormLabel>
-                        <NumberInput max={50} min={1} step={1} value={service.count} precision={0}
-                                     onChange={(valueNumber) => {
-                                         handleServiceChange(index, 'count', false, selectedService.price, valueNumber);
-                                     }}
-                        >
-                            <NumberInputField type="numeric"/>
-                            <NumberInputStepper>
-                                <NumberIncrementStepper/>
-                                <NumberDecrementStepper
-                                />
-                            </NumberInputStepper>
-                        </NumberInput>
-
-                    </>
-                );
-            }
-        }
-        return null;
-    };
 
     // Handle service changes
     const handleServiceChange = (index, field, inputWeight, price, value) => {
         const newServices = [...services];
-        // Reset the count and cost when a new service is selected or overridden
         if (field === 'service') {
-            newServices[index]['count'] = ''; // Reset count/weight
-            newServices[index]['cost'] = ''; // Reset cost
+            newServices[index]['count'] = '';
+            newServices[index]['cost'] = '';
             newServices[index]['basePrice'] = String(price);
-
         } else if (field === 'count') {
-            // Update cost based on the updated count or weight
             newServices[index]['cost'] = String((parseFloat(price) * parseFloat(value)).toFixed(2));
         }
-
-        // Update the specific field with the provided value
         newServices[index][field] = value;
         setServices(newServices);
     };
 
-
-    const handleAddService = () => {
-        setServices([...services, {service: '', count: '', cost: '', basePrice: ''}]);
-    };
-
     const handleRemoveService = (index) => {
         const newServices = services.filter((_, i) => i !== index);
-        setServices(newServices);
+        setServices(newServices.length > 0 ? newServices : [{service: '', count: '', cost: '', basePrice: ''}]);
     };
 
-    useEffect(() => {
+useEffect(() => {
   if (pickupDate && deliveryTimeSlots.length > 0) {
     const availablePickupTimeSlots = getAvailableTimeSlots(pickupDate);
-
-    // ✅ Don't override instant time slot
     if (pickupMode !== "instant") {
       if (!pickupTime || !availablePickupTimeSlots.includes(pickupTime)) {
         if (availablePickupTimeSlots.length > 0) {
@@ -486,28 +427,15 @@ const canDoInstantPickup = uberExists && isWithinHours();
         }
       }
     }
-
     const minDropoffDate = getDateInTimeZone(addDays(new Date(`${pickupDate}T00:00:00`), 1), laundryTimeZone);
     if (!dropoffDate || new Date(dropoffDate) < new Date(minDropoffDate)) {
       setDropoffDate(minDropoffDate);
     }
   }
-}, [
-  pickupDate,
-  deliveryTimeSlots,
-  getAvailableTimeSlots,
-  setPickupTime,
-  pickupTime,
-  dropoffDate,
-  setDropoffDate,
-  laundryTimeZone,
-  pickupMode, // <-- add this too
-]);
-
+}, [pickupDate, deliveryTimeSlots, getAvailableTimeSlots, setPickupTime, pickupTime, dropoffDate, setDropoffDate, laundryTimeZone, pickupMode]);
 
 useEffect(() => {
   if (pickupMode === "scheduled") {
-    // Only set default if not already set (avoid overriding user's selection)
     if (!pickupService) setPickupService("LaundryDriver");
     if (!dropoffService) setDropoffService("LaundryDriver");
   }
@@ -522,561 +450,267 @@ useEffect(() => {
             pickupTime &&
             dropoffDate &&
             dropoffTime;
-
         setIsServiceStepValid(isFormValid);
     }, [services, pickupDate, pickupTime, dropoffDate, dropoffTime, setIsServiceStepValid]);
 
-    // Calculate the minimum date
     const today = new Date();
     const todayDate = getDateInTimeZone(addDays(today, 1), laundryTimeZone);
-const pickupModeRef = useRef(pickupMode);
+    const pickupModeRef = useRef(pickupMode);
+    useEffect(() => { pickupModeRef.current = pickupMode; }, [pickupMode]);
 
-useEffect(() => {
-  pickupModeRef.current = pickupMode;
-}, [pickupMode]);
+    const fetchUberEstimate = async ({ type }) => {
+        const pickupAddress = address;
+        const dropoffAddress = laundryAddress;
+        const payload = {
+            uberEnv: uberEnv,
+            pickup_address: type === "pickup" ? pickupAddress : dropoffAddress,
+            dropoff_address: type === "pickup" ? dropoffAddress : pickupAddress,
+            pickup_phone: "+15125551234",
+            dropoff_phone: "+15125551234",
+            delivery_date: pickupDate,
+            time_interval: pickupTime
+        };
+        try {
+            const response = await fetch(
+                `${process.env.REACT_APP_AWS_API_URL}/api/uber/uberQuoteEstimate?operation=get-uber-quote&laundryId=${laundryId}`,
+                { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }
+            );
+            const result = await response.json();
+            let parsedBody = result;
+            if (typeof result.body === "string") {
+                try { parsedBody = JSON.parse(result.body); } catch (e) {}
+            }
+            if (parsedBody.estimatedFeeCents) {
+                const estimate = parsedBody.estimatedFeeCents / 100;
+                if (type === "pickup") setPickupEstimate(estimate);
+                else setDropoffEstimate(estimate);
+            }
+        } catch (error) {
+            console.error("[Uber ERROR] Fetch failed:", error);
+        }
+    };
 
-
-const fetchUberEstimate = async ({ type }) => {
-//   console.log("[Uber DEBUG] Estimation triggered for:", type);
-//   console.log("[Uber DEBUG] Pickup date/time:", pickupDate, pickupTime);
-//   console.log("[Uber DEBUG] Laundry address:", laundryAddress);
-
-  const idToken = localStorage.getItem("idToken");
-  
-  const pickupAddress = address; // customer address
-  const dropoffAddress = laundryAddress; // laundry address
-
-  const payload = {
-    uberEnv: uberEnv,
-    pickup_address: type === "pickup" ? pickupAddress : dropoffAddress,
-    dropoff_address: type === "pickup" ? dropoffAddress : pickupAddress,
-    pickup_phone: "+15125551234",
-    dropoff_phone: "+15125551234",
-    delivery_date: pickupDate,
-    time_interval: pickupTime
-  };
-
-//   console.log("[Uber DEBUG] Final payload:", payload);
-  const authToken = localStorage.getItem('idToken');
-  try {
-    const response = await fetch(
-      `${process.env.REACT_APP_AWS_API_URL}/api/uber/uberQuoteEstimate?operation=get-uber-quote&laundryId=${laundryId}`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        //   'x-api-key': userAuthToken
-        },
-        body: JSON.stringify(payload)
-      }
-    );
-    // console.log("[Uber DEBUG] API response:", response);
-    // const result = await response.json();
-
-    const result = await response.json();
-    // console.log("[Uber DEBUG] API result:", result);
-
-let parsedBody = result;
-if (typeof result.body === "string") {
-  try {
-    parsedBody = JSON.parse(result.body);
-  } catch (e) {
-    console.error("🚨 Failed to parse result.body:", result.body);
-  }
-}
-
-// console.log("[Uber DEBUG] Parsed estimate result:", parsedBody);
-
-if (parsedBody.estimatedFeeCents) {
-  const estimate = parsedBody.estimatedFeeCents / 100;
-  if (type === "pickup") setPickupEstimate(estimate);
-  else setDropoffEstimate(estimate);
-} else {
-  console.warn("🚫 No estimatedFeeCents in response:", parsedBody);
-  if (parsedBody.error) {
-    console.error("Uber quote error:", parsedBody.error);
-  }
-}
-  } catch (error) {
-    console.error("[Uber ERROR] Fetch failed:", error);
-  }
-};
-
-useEffect(() => {
-  if (pickupService === "Uber" && pickupDate && pickupTime) {
-    fetchUberEstimate({ type: "pickup" });
-  }
-}, [pickupService, pickupDate, pickupTime]);
-
-useEffect(() => {
-  if (dropoffService === "Uber" && dropoffDate && dropoffTime) {
-    fetchUberEstimate({ type: "dropoff" });
-  }
-}, [dropoffService, dropoffDate, dropoffTime]);
-
-useEffect(() => {
-  if (
-    pickupMode === "instant" &&
-    pickupService === "Uber" &&
-    pickupDate &&
-    pickupTime
-  ) {
-    fetchUberEstimate({ type: "pickup" });
-  }
-}, [pickupMode, pickupService, pickupDate, pickupTime]);
-
-useEffect(() => {
-  if (pickupMode === "scheduled") {
-    // ❌ This won't reset if pickupService is already set to "Uber" from instant mode
-    if (!pickupService) setPickupService("LaundryDriver");
-    if (!dropoffService) setDropoffService("LaundryDriver");
-  }
-}, [pickupMode, pickupService, dropoffService, setPickupService, setDropoffService]);
+    useEffect(() => { if (pickupService === "Uber" && pickupDate && pickupTime) fetchUberEstimate({ type: "pickup" }); }, [pickupService, pickupDate, pickupTime]);
+    useEffect(() => { if (dropoffService === "Uber" && dropoffDate && dropoffTime) fetchUberEstimate({ type: "dropoff" }); }, [dropoffService, dropoffDate, dropoffTime]);
+    useEffect(() => { if (pickupMode === "instant" && pickupService === "Uber" && pickupDate && pickupTime) fetchUberEstimate({ type: "pickup" }); }, [pickupMode, pickupService, pickupDate, pickupTime]);
 
     return (
         <Stack spacing={4} width="100%">
-            {services.map((service, index) => {
-                const selectedService = laundryServices.find(
-                    (item) => item.serviceName === service.service
-                );
-                const priceLabel = selectedService
-                    ? selectedService.inputWeight
-                        ? `$${selectedService.price}/lb`
-                        : `$${selectedService.price}/piece`
-                    : '';
+            {/* ─── Service Selection Cards ─── */}
+            <Box>
+                <Text fontSize="md" fontWeight="bold" mb={3} color="gray.800">Select Services</Text>
+                <VStack spacing={2} align="stretch">
+                    {laundryServices.map((svc) => {
+                        const existingIdx = services.findIndex(s => s.service === svc.serviceName);
+                        const inCart = existingIdx >= 0;
+                        const currentCount = inCart ? parseFloat(services[existingIdx].count) || 0 : 0;
+                        const isWeight = svc.inputWeight === true || svc.inputWeight === 'true';
+                        const unit = isWeight ? '/lb' : '/piece';
 
-                return (
-                    <VStack key={index} spacing={2} align="stretch">
-                        <FormControl id={`service-${index}`} isRequired>
-                            <FormLabel>Service</FormLabel>
-                            <Flex direction="row" align="center" wrap="nowrap" overflow="hidden">
-                                <Box flex="1" minWidth="0" mr={2}>
-                                    <Menu>
-                                        <MenuButton
-                                            as={Button}
-                                            rightIcon={<ChevronDownIcon/>}
-                                            // Ensuring the button text truncates instead of overflowing:
-                                            overflow="hidden"
-                                            fontSize={['md', 'lg']}
-                                            textOverflow="ellipsis"
-                                            whiteSpace="nowrap"
-                                            maxW="100%"
-                                        >
-                                            {service.service || "Select a service"}
-                                        </MenuButton>
-                                        <MenuList zIndex={9999}>
-                                            {laundryServices
-                                                .map((option, i) => (
-                                                    <MenuItem
-                                                        key={i}
-                                                        onClick={() =>
-                                                            handleServiceChange(
-                                                                index,
-                                                                'service',
-                                                                option.inputWeight,
-                                                                option.price,
-                                                                option.serviceName
-                                                            )
-                                                        }
-                                                        isDisabled={services.some((s) => s.service === option.serviceName)}
-                                                    >
-                                                        <Box display="flex" justifyContent="space-between" width="100%">
-                                                            <Text noOfLines={1}>{option.serviceName}</Text>
-                                                            <Text color="gray.500" ml={2}>
-                                                                {option.inputWeight ? `$${option.price}/lb` : `$${option.price}/piece`}
-                                                            </Text>
-                                                        </Box>
-                                                    </MenuItem>
-                                                ))}
-                                        </MenuList>
-                                    </Menu>
-                                </Box>
+                        return (
+                            <Box key={svc.serviceName} p={3} borderRadius="xl" border="2px solid"
+                                borderColor={inCart ? 'blue.400' : 'gray.200'} bg={inCart ? 'blue.50' : 'white'} transition="all 0.2s">
+                                <Flex justify="space-between" align="center">
+                                    <Box flex="1">
+                                        <Text fontWeight="700" fontSize="sm" color="gray.800">{svc.serviceName}</Text>
+                                        {svc.description && <Text fontSize="xs" color="gray.500">{svc.description}</Text>}
+                                        <Text fontSize="md" fontWeight="800" color="blue.600">${svc.price}{unit}</Text>
+                                    </Box>
+                                    <HStack spacing={2}>
+                                        {inCart && (
+                                            <IconButton icon={<DeleteIcon />} aria-label="Remove" size="sm" borderRadius="full"
+                                                colorScheme="red" variant="ghost" onClick={() => handleRemoveService(existingIdx)} />
+                                        )}
+                                        {inCart && isWeight && (
+                                            <NumberInput size="sm" maxW="80px" min={1} max={100} value={currentCount}
+                                                onChange={(val) => handleServiceChange(existingIdx, 'count', true, svc.price, val)}>
+                                                <NumberInputField fontSize="sm" textAlign="center" />
+                                            </NumberInput>
+                                        )}
+                                        {inCart && !isWeight && (
+                                            <HStack spacing={1}>
+                                                <IconButton icon={<span style={{fontSize:'14px'}}>−</span>} aria-label="Decrease" size="xs"
+                                                    borderRadius="full" colorScheme="blue" variant="outline"
+                                                    onClick={() => { const nv = Math.max(1, currentCount - 1); handleServiceChange(existingIdx, 'count', false, svc.price, String(nv)); }} />
+                                                <Text fontWeight="bold" fontSize="sm" minW="20px" textAlign="center">{currentCount}</Text>
+                                                <IconButton icon={<span style={{fontSize:'14px'}}>+</span>} aria-label="Increase" size="xs"
+                                                    borderRadius="full" colorScheme="blue" variant="outline"
+                                                    onClick={() => handleServiceChange(existingIdx, 'count', false, svc.price, String(currentCount + 1))} />
+                                            </HStack>
+                                        )}
+                                        {!inCart && (
+                                            <Button size="sm" colorScheme="blue" borderRadius="full"
+                                                onClick={() => {
+                                                    const defaultCount = isWeight ? 10 : 1;
+                                                    const newEntry = { service: svc.serviceName, count: defaultCount, cost: String((parseFloat(svc.price) * defaultCount).toFixed(2)), basePrice: String(svc.price) };
+                                                    if (services.length === 1 && !services[0].service) { setServices([newEntry]); }
+                                                    else { setServices([...services, newEntry]); }
+                                                }}>
+                                                Add
+                                            </Button>
+                                        )}
+                                    </HStack>
+                                </Flex>
+                                {inCart && <Text fontSize="xs" color="gray.500" mt={1} textAlign="right">Subtotal: ${services[existingIdx].cost}</Text>}
+                            </Box>
+                        );
+                    })}
+                </VStack>
+            </Box>
 
-                                {priceLabel && (
-                                    <Text
-                                        whiteSpace="nowrap"
-                                        flexShrink={0}
-                                        mr={2}
-                                    >
-                                        {priceLabel}
-                                    </Text>
+            {/* ─── Pickup Type ─── */}
+            <Box border="1px" borderColor="gray.200" borderRadius="md" p={3} shadow="sm" width="100%">
+                <Text fontSize={["xs", "md", "lg"]} fontWeight="semibold" mb={2}>Pickup Type</Text>
+                <RadioGroup value={pickupMode} onChange={setPickupMode} colorScheme="blue">
+                    <Stack direction={{ base: "column", md: "row" }} spacing={6}>
+                        {uberExists && (
+                            <Radio value="instant" isDisabled={!canDoInstantPickup}>
+                                Instant Pickup – Powered by Uber
+                                {pickupMode === "instant" && pickupEstimate && (
+                                    <Text fontSize="sm" color="blue.600" mt={1}>Estimated Uber Pickup Fee: ${pickupEstimate.toFixed(2)}</Text>
                                 )}
+                            </Radio>
+                        )}
+                        <Radio value="scheduled">Scheduled Pickup</Radio>
+                    </Stack>
+                </RadioGroup>
+            </Box>
 
-                                <IconButton
-                                    ml="auto"
-                                    colorScheme="red"
-                                    aria-label="Remove Service"
-                                    icon={<DeleteIcon/>}
-                                    fontSize={['md', 'lg']}
-                                    onClick={() => handleRemoveService(index)}
-                                    flexShrink={0}
-                                />
-                            </Flex>
-
-                        </FormControl>
-
-                        <FormControl id={`value-${index}`} isRequired>
-                            {renderServiceInput(service, index)}
-                        </FormControl>
-                    </VStack>
-                );
-            })}
-
-            <Flex direction="row" align="center" wrap="nowrap">
-                <IconButton
-                    colorScheme="green"
-                    aria-label="Add Service"
-                    icon={<AddIcon/>}
-                    onClick={handleAddService}
-                    mr={2}
-                    fontSize={['md', 'lg']}
-                />
-                <Text fontSize={['md', 'lg']}>Add New Service</Text>
-            </Flex>
-
-            <Stack direction={{base: 'column', md: 'row'}} spacing={4} width="100%">
-                <Box
-  border="1px"
-  borderColor="gray.200"
-  borderRadius="md"
-  p={3}
-  shadow="sm"
-  mb={4}
-  width="100%"
->
-  <Text fontSize={["xs", "md", "lg"]} fontWeight="semibold" mb={2}>
-    Pickup Type
-  </Text>
-
-  <RadioGroup
-    value={pickupMode}
-    onChange={setPickupMode}
-    colorScheme="blue"
-  >
-    <Stack direction={{ base: "column", md: "row" }} spacing={6}>
-      {uberExists && (
-        <Radio value="instant" isDisabled={!canDoInstantPickup} > 
-            Instant Pickup – Powered by Uber<br />
-            {pickupMode === "instant" && pickupEstimate && (
-                <Text fontSize="sm" color="blue.600" mt={1}>
-                    Estimated Uber Pickup Fee: ${pickupEstimate.toFixed(2)}
-                </Text>
+            {/* ─── Pickup Date/Time (scheduled mode) ─── */}
+            {pickupMode === "scheduled" && (
+                <Stack direction={{ base: 'column', md: 'row' }} spacing={4} width="100%">
+                    <FormControl id="pickupDate" isRequired width="100%">
+                        <FormLabel fontSize={['md', 'lg']}>Pickup Date</FormLabel>
+                        <Input type="date" min={todayDate} value={pickupDate} onChange={(e) => setPickupDate(e.target.value || todayDate)} />
+                    </FormControl>
+                    <FormControl id="pickupTime" isRequired width="100%">
+                        <FormLabel fontSize={['md', 'lg']}>Pickup Time</FormLabel>
+                        <Select value={pickupTime} placeholder="Select Pickup Time Slot" onChange={(e) => setPickupTime(e.target.value)}>
+                            {getAvailableTimeSlots(pickupDate).map((timeSlot, index) => (
+                                <option key={index} value={timeSlot}>{timeSlot}</option>
+                            ))}
+                        </Select>
+                    </FormControl>
+                </Stack>
             )}
 
-        </Radio>
-        )}
-
-      <Radio value="scheduled">Scheduled Pickup</Radio>
-    </Stack>
-  </RadioGroup>
-</Box>
-
-
-{pickupMode === "scheduled" && (
-  <Stack direction={{ base: 'column', md: 'row' }} spacing={4} width="100%">
-    <FormControl id="pickupDate" isRequired width="100%">
-      <FormLabel fontSize={['md', 'lg']}>Pickup Date</FormLabel>
-      <Input
-        type="date"
-        min={todayDate}
-        value={pickupDate}
-        onChange={(e) => {
-          const newDate = e.target.value;
-          setPickupDate(newDate || todayDate);
-        }}
-      />
-    </FormControl>
-
-    <FormControl id="pickupTime" isRequired width="100%">
-      <FormLabel fontSize={['md', 'lg']}>Pickup Time</FormLabel>
-      <Select
-        value={pickupTime}
-        placeholder="Select Pickup Time Slot"
-        onChange={(e) => setPickupTime(e.target.value)}
-      >
-        {getAvailableTimeSlots(pickupDate).map((timeSlot, index) => (
-          <option key={index} value={timeSlot}>
-            {timeSlot}
-          </option>
-        ))}
-      </Select>
-    </FormControl>
-  </Stack>
-)}
-
-      
-            </Stack>
+            {/* ─── Pickup Service Choice ─── */}
             {pickupMode === "scheduled" && (
-            <Box
-                border="1px"
-                borderColor="gray.200"
-                borderRadius="md"
-                p={3}
-                shadow="sm"
-                mb={4}                 /* space below the radio row */
-                width="100%"
-            >
-                <Text fontSize={["xs","md","lg"]} fontWeight="semibold" mb={2}>
-                Choose Pickup Service
-                </Text>
+                <Box border="1px" borderColor="gray.200" borderRadius="md" p={3} shadow="sm" width="100%">
+                    <Text fontSize={["xs","md","lg"]} fontWeight="semibold" mb={2}>Choose Pickup Service</Text>
+                    <RadioGroup onChange={setPickupService} value={pickupService || "LaundryDriver"} colorScheme="blue">
+                        <HStack spacing={6}>
+                            {uberExists && <Radio value="Uber">Uber</Radio>}
+                            <Radio value="LaundryDriver">Laundry&nbsp;Driver</Radio>
+                        </HStack>
+                    </RadioGroup>
+                    {pickupService === "Uber" && pickupEstimate && <Text fontSize="sm" color="blue.600" mt={1}>🚕 Estimated Uber Pickup Fee: ${pickupEstimate.toFixed(2)}</Text>}
+                    {pickupService === "LaundryDriver" && <Text fontSize="sm" color="green.600" mt={1}>✅ Free Pickup Service</Text>}
+                </Box>
+            )}
 
-                <RadioGroup
-                onChange={setPickupService}
-                value={pickupService || "LaundryDriver"}
-                colorScheme="blue"
-                >
-                <HStack spacing={6}>
-                    {uberExists && <Radio value="Uber">Uber</Radio>}
-                    <Radio value="LaundryDriver">Laundry&nbsp;Driver</Radio>
-                </HStack>
-                </RadioGroup>
-                {/* {pickupService === "Uber" && (
-                    <Text fontSize={["sm", "md"]} mt={3} color="blue.600" fontStyle="italic">
-                        Uber charges will be added to your order upon driver allocation.
-                    </Text>
-                )} */}
-                {pickupService === "Uber" && pickupEstimate && (
-  <Text fontSize="sm" color="blue.600" mt={1}>
-    🚕 Estimated Uber Pickup Fee: ${pickupEstimate.toFixed(2)}
-  </Text>
-)}
-{pickupService === "LaundryDriver" && (
-  <Text fontSize="sm" color="green.600" mt={1}>
-    ✅ Free Pickup Service
-  </Text>
-)}
-
-
-{/* {dropoffService === "Uber" && dropoffEstimate && (
-  <Text fontSize="sm" color="blue.600" mt={1}>
-    🚕 Estimated Uber Dropoff Fee: ${dropoffEstimate.toFixed(2)}
-  </Text>
-)} */}
-
-            </Box>)}
-
-
+            {/* ─── Dropoff Date/Time ─── */}
             <Stack direction={{base: 'column', md: 'row'}} spacing={4} width="100%">
                 <FormControl id="dropoffDate" isRequired width="100%">
                     <FormLabel fontSize={['md', 'lg']}>Drop-off Date</FormLabel>
-                    <Input
-                        type="date"
-                        min={getDateInTimeZone(addDays(new Date(`${pickupDate}T00:00:00`), 1), laundryTimeZone)}
-                        value={dropoffDate}
-                        onChange={(e) => {
-                            const newDate = e.target.value;
-                            // Calculate minimum allowed dropoff date based on current pickupDate
-                            const minDropoff = getDateInTimeZone(
-                                addDays(new Date(`${pickupDate}T00:00:00`),
-                                    1,
-                                    laundryTimeZone
-                                ));
-                            // Reset to minDropoff if cleared
-                            setDropoffDate(newDate || minDropoff);
-                        }}
-                    />
-
+                    <Input type="date" min={getDateInTimeZone(addDays(new Date(`${pickupDate}T00:00:00`), 1), laundryTimeZone)}
+                        value={dropoffDate} onChange={(e) => setDropoffDate(e.target.value || getDateInTimeZone(addDays(new Date(`${pickupDate}T00:00:00`), 1), laundryTimeZone))} />
                 </FormControl>
                 <FormControl id="dropoffTime" isRequired width="100%">
                     <FormLabel fontSize={['md', 'lg']}>Drop-off Time</FormLabel>
-                    <Select
-                        value={dropoffTime}
-                        placeholder="Select Drop-off Time Slot"
-                        onChange={(e) => setDropoffTime(e.target.value)}
-                    >
+                    <Select value={dropoffTime} placeholder="Select Drop-off Time Slot" onChange={(e) => setDropoffTime(e.target.value)}>
                         {getAvailableTimeSlots(dropoffDate).map((timeSlot, index) => (
-                            <option key={index} value={timeSlot}>
-                                {timeSlot}
-                            </option>
+                            <option key={index} value={timeSlot}>{timeSlot}</option>
                         ))}
                     </Select>
                 </FormControl>
             </Stack>
-            <Box
-                border="1px"
-                borderColor="gray.200"
-                borderRadius="md"
-                p={3}
-                shadow="sm"
-                mb={4}                 /* space below the radio row */
-                width="100%"
-            >
-                <Text fontSize={["xs","md","lg"]} fontWeight="semibold" mb={2}>
-                Choose dropoff Service
-                </Text>
 
-                <RadioGroup
-                onChange={setDropoffService}
-                value={dropoffService || "LaundryDriver"}
-                colorScheme="blue"
-                >
-                <HStack spacing={6}>
-                    {uberExists && <Radio value="Uber">Uber</Radio>}
-                    <Radio value="LaundryDriver">Laundry&nbsp;Driver</Radio>
-                </HStack>
+            {/* ─── Dropoff Service Choice ─── */}
+            <Box border="1px" borderColor="gray.200" borderRadius="md" p={3} shadow="sm" width="100%">
+                <Text fontSize={["xs","md","lg"]} fontWeight="semibold" mb={2}>Choose Dropoff Service</Text>
+                <RadioGroup onChange={setDropoffService} value={dropoffService || "LaundryDriver"} colorScheme="blue">
+                    <HStack spacing={6}>
+                        {uberExists && <Radio value="Uber">Uber</Radio>}
+                        <Radio value="LaundryDriver">Laundry&nbsp;Driver</Radio>
+                    </HStack>
                 </RadioGroup>
-                {dropoffService === "Uber" && dropoffEstimate && (
-                    <Text fontSize="sm" color="blue.600" mt={1}>
-                        🚕 Estimated Uber Dropoff Fee: ${dropoffEstimate.toFixed(2)}
-                    </Text>
-                )}
-                {dropoffService === "LaundryDriver" && (
-                    <Text fontSize="sm" color="green.600" mt={1}>
-                        ✅ Free Dropoff Service
-                    </Text>
-                )}
-
+                {dropoffService === "Uber" && dropoffEstimate && <Text fontSize="sm" color="blue.600" mt={1}>🚕 Estimated Uber Dropoff Fee: ${dropoffEstimate.toFixed(2)}</Text>}
+                {dropoffService === "LaundryDriver" && <Text fontSize="sm" color="green.600" mt={1}>✅ Free Dropoff Service</Text>}
             </Box>
 
-
+            {/* ─── Laundry Bags ─── */}
             <FormControl id="laundryBags" isRequired width="100%">
                 <FormLabel fontSize={['md', 'lg']}>Laundry Bags</FormLabel>
-                <NumberInput placeholder="Enter the laundry Bags" max={50} min={1} step={1} value={laundryBags}
-                             precision={0}
-                             onChange={(bags) => setLaundryBags(Number(bags))}
-                >
-                    <NumberInputField type="numeric"/>
-                    <NumberInputStepper>
-                        <NumberIncrementStepper/>
-                        <NumberDecrementStepper
-                        />
-                    </NumberInputStepper>
+                <NumberInput placeholder="Enter the laundry Bags" max={50} min={1} step={1} value={laundryBags} precision={0} onChange={(bags) => setLaundryBags(Number(bags))}>
+                    <NumberInputField type="numeric" />
+                    <NumberInputStepper><NumberIncrementStepper /><NumberDecrementStepper /></NumberInputStepper>
                 </NumberInput>
             </FormControl>
+
+            {/* ─── Special Instructions ─── */}
             <FormControl id="specialInstructions">
                 <FormLabel fontSize={['md', 'lg']}>Special Instructions</FormLabel>
-                <Textarea
-                    placeholder="Specify any preferences like detergent type, folding style, or stain treatment."
+                <Textarea placeholder="Specify any preferences like detergent type, folding style, or stain treatment."
                     value={specialInstructions}
                     onChange={(e) => {
                         const newVal = e.target.value;
                         setSpecialInstructions(newVal);
-                        // If the new value is non-empty and different from the initial value, mark as changed.
-                        if (newVal !== initialSpecialInstructionsRef.current && newVal.trim() !== "") {
-                            setSaveSpecialInstructions(true);
-                        } else {
-                            setSaveSpecialInstructions(false);
-                        }
-                    }}
-                />
+                        if (newVal !== initialSpecialInstructionsRef.current && newVal.trim() !== "") { setSaveSpecialInstructions(true); }
+                        else { setSaveSpecialInstructions(false); }
+                    }} />
             </FormControl>
 
+            {/* ─── Frequency ─── */}
             <FormControl id="frequency">
                 <FormLabel fontSize={['md', 'lg']}>Frequency</FormLabel>
-                <Select
-                    placeholder="Select frequency"
-                    value={frequency}
-                    onChange={(e) => setFrequency(e.target.value)}
-                >
-                    {laundryFrequency.map((option, i) => (
-                        <option key={i} value={option}>
-                            {option}
-                        </option>
-                    ))}
+                <Select placeholder="Select frequency" value={frequency} onChange={(e) => setFrequency(e.target.value)}>
+                    {laundryFrequency.map((option, i) => (<option key={i} value={option}>{option}</option>))}
                 </Select>
             </FormControl>
 
+            {/* ─── Promo Code ─── */}
             {!frequency && (
                 <FormControl id="promoCode">
                     <FormLabel fontSize={['md', 'lg']}>Promotion</FormLabel>
                     <Flex direction="row" align="center" wrap="nowrap">
-                        <Input
-                            placeholder="Enter promo code"
-                            value={localPromoCode}
-                            onChange={onPromoChange}
-                            isDisabled={isPromoValid}
-                            flex="1"
-                            mr={2}
-                            minWidth={0} // Allows shrinking if needed
-                        />
-
-                        <Button
-                            ml={2}
-                            onClick={isPromoValid ? handleEditPromo : handleValidatePromo}
-                            isLoading={isPromoValidating}
-                            colorScheme={isPromoValid ? "yellow" : "blue"}
-                            flexShrink={0}
-                            size={['md', 'lg']}
-                        >
+                        <Input placeholder="Enter promo code" value={localPromoCode} onChange={onPromoChange} isDisabled={isPromoValid} flex="1" mr={2} minWidth={0} />
+                        <Button ml={2} onClick={isPromoValid ? handleEditPromo : handleValidatePromo} isLoading={isPromoValidating}
+                            colorScheme={isPromoValid ? "yellow" : "blue"} flexShrink={0} size={['md', 'lg']}>
                             {isPromoValid ? "Edit" : "Validate"}
                         </Button>
                     </Flex>
                 </FormControl>
-
             )}
 
+            {/* ─── Frequency Uber Options ─── */}
             {frequency && (
-            <Box
-                border="1px"
-                borderColor="gray.200"
-                borderRadius="md"
-                p={3}
-                shadow="sm"
-                mb={4}
-                width="100%"
-            >
-                <Text fontSize={["xs","md","lg"]} fontWeight="semibold" mb={2}>
-                Frequency Order Uber Options
-                </Text>
-
-                <FormControl mb={2}>
-                <FormLabel fontSize={['md', 'lg']}>Do you want Uber for Pickup Service?</FormLabel>
-                <RadioGroup
-                    onChange={(value) => setUberPickupFrequency(value === "yes")}
-                    value={uberPickupFrequency ? "yes" : "no"}
-                    colorScheme="blue"
-                >
-                    <HStack spacing={6}>
-                    <Radio value="yes">Yes</Radio>
-                    <Radio value="no">No</Radio>
-                    </HStack>
-                </RadioGroup>
-                {uberPickupFrequency && (
-                    <Text mt={1} fontSize="sm" color="gray.600">
-                    Charges will apply based on the pickup date and time of frequency order.
-                    </Text>
-                )}
-                </FormControl>
-
-                <FormControl>
-                <FormLabel fontSize={['md', 'lg']}>Do you want Uber for Dropoff Service?</FormLabel>
-                <RadioGroup
-                    onChange={(value) => setUberDropoffFrequency(value === "yes")}
-                    value={uberDropoffFrequency ? "yes" : "no"}
-                    colorScheme="blue"
-                >
-                    <HStack spacing={6}>
-                    <Radio value="yes">Yes</Radio>
-                    <Radio value="no">No</Radio>
-                    </HStack>
-                </RadioGroup>
-                {uberDropoffFrequency && (
-                    <Text mt={1} fontSize="sm" color="gray.600">
-                    Charges will apply based on the pickup date and time of frequency order.
-                    </Text>
-                )}
-                </FormControl>
-            </Box>
+                <Box border="1px" borderColor="gray.200" borderRadius="md" p={3} shadow="sm" mb={4} width="100%">
+                    <Text fontSize={["xs","md","lg"]} fontWeight="semibold" mb={2}>Frequency Order Uber Options</Text>
+                    <FormControl mb={2}>
+                        <FormLabel fontSize={['md', 'lg']}>Do you want Uber for Pickup Service?</FormLabel>
+                        <RadioGroup onChange={(value) => setUberPickupFrequency(value === "yes")} value={uberPickupFrequency ? "yes" : "no"} colorScheme="blue">
+                            <HStack spacing={6}><Radio value="yes">Yes</Radio><Radio value="no">No</Radio></HStack>
+                        </RadioGroup>
+                        {uberPickupFrequency && <Text mt={1} fontSize="sm" color="gray.600">Charges will apply based on the pickup date and time of frequency order.</Text>}
+                    </FormControl>
+                    <FormControl>
+                        <FormLabel fontSize={['md', 'lg']}>Do you want Uber for Dropoff Service?</FormLabel>
+                        <RadioGroup onChange={(value) => setUberDropoffFrequency(value === "yes")} value={uberDropoffFrequency ? "yes" : "no"} colorScheme="blue">
+                            <HStack spacing={6}><Radio value="yes">Yes</Radio><Radio value="no">No</Radio></HStack>
+                        </RadioGroup>
+                        {uberDropoffFrequency && <Text mt={1} fontSize="sm" color="gray.600">Charges will apply based on the pickup date and time of frequency order.</Text>}
+                    </FormControl>
+                </Box>
             )}
 
             {promoDescriptionMessage && (
-                <Box
-                    mt={2}
-                    p={3}
-                    borderRadius="md"
-                    borderWidth="1px"
-                    borderColor="blue.300"
-                    bg="blue.50"
-                    color="blue.700"
-                    fontSize={['sm', 'md']}
-                >
+                <Box mt={2} p={3} borderRadius="md" borderWidth="1px" borderColor="blue.300" bg="blue.50" color="blue.700" fontSize={['sm', 'md']}>
                     {promoDescriptionMessage}
                 </Box>
             )}
 
-
-            <Button colorScheme="blue" onClick={onValidatePromoNextStep} isDisabled={!isServiceStepValid} width="100%"
-                    size={['md', 'lg']}>
+            <Button colorScheme="blue" onClick={onValidatePromoNextStep} isDisabled={!isServiceStepValid} width="100%" size={['md', 'lg']}>
                 Next: Payment
             </Button>
         </Stack>
