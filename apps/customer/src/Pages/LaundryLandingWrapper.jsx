@@ -45,6 +45,36 @@ export default function LaundryLandingWrapper() {
                     });
                     // Set browser title dynamically
                     document.title = `${infoRes.data.laundryName} - Free Pickup and Delivery`;
+                    // Set dynamic favicon from laundry logo
+                    if (infoRes.data.laundryLogo) {
+                        const link = document.querySelector("link[rel~='icon']") || document.createElement('link');
+                        link.rel = 'icon';
+                        const logo = infoRes.data.laundryLogo;
+                        if (logo.startsWith('http')) { link.href = logo; }
+                        else if (logo.startsWith('data:')) { link.href = logo; }
+                        else { link.href = `data:image/png;base64,${logo}`; }
+                        document.head.appendChild(link);
+                    } else {
+                        // Generate letter favicon from laundry name
+                        const name = infoRes.data.laundryName || 'L';
+                        const initials = name.split(' ').map(w => w[0]).join('').substring(0, 2).toUpperCase();
+                        const sc = infoRes.data.siteContent || {};
+                        const colors = { blue: '#3182CE', green: '#38A169', purple: '#805AD5', teal: '#319795', orange: '#DD6B20', red: '#E53E3E', pink: '#D53F8C', cyan: '#00B5D8' };
+                        const bgColor = colors[sc.themeColor] || colors.blue;
+                        const canvas = document.createElement('canvas');
+                        canvas.width = 64; canvas.height = 64;
+                        const ctx = canvas.getContext('2d');
+                        ctx.fillStyle = bgColor;
+                        ctx.beginPath(); ctx.arc(32, 32, 32, 0, Math.PI * 2); ctx.fill();
+                        ctx.fillStyle = '#FFFFFF';
+                        ctx.font = `bold ${initials.length > 1 ? '24' : '32'}px -apple-system, sans-serif`;
+                        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+                        ctx.fillText(initials, 32, 34);
+                        const link = document.querySelector("link[rel~='icon']") || document.createElement('link');
+                        link.rel = 'icon';
+                        link.href = canvas.toDataURL('image/png');
+                        document.head.appendChild(link);
+                    }
                 } else {
                     navigate('/invalid');
                 }

@@ -75,7 +75,7 @@ def _check_laundry_id(cur, laundry_id):
     """Verify laundry exists — exact port from Lambda."""
     cur.execute("""
         SELECT laundry_name, stripe_public_key, stripe_terminal_id,
-               laundry_timezone, user_domain, bag_price, tax_rate, site_content
+               laundry_timezone, user_domain, bag_price, tax_rate, site_content, laundry_logo
         FROM shop.laundry_shops WHERE laundry_id = %s
     """, (laundry_id,))
     row = cur.fetchone()
@@ -93,6 +93,7 @@ def _check_laundry_id(cur, laundry_id):
         "bagPrice": float(row["bag_price"]) if row.get("bag_price") else 30.00,
         "taxRate": float(row["tax_rate"]) if row.get("tax_rate") else 0,
         "themeColor": site_content.get("themeColor", "blue"),
+        "laundryLogo": row["laundry_logo"] or "",
     }
 
 
@@ -101,7 +102,7 @@ def _get_laundry_info(cur, laundry_id, is_customer=None):
     cur.execute("""
         SELECT laundry_name, laundry_timezone, stripe_public_key, stripe_terminal_id,
                delivery_time_interval, user_domain,
-               street, city, state, zip_code, country, serviceable_zip_codes, bag_price, tax_rate, site_content
+               street, city, state, zip_code, country, serviceable_zip_codes, bag_price, tax_rate, site_content, laundry_logo
         FROM shop.laundry_shops WHERE laundry_id = %s
     """, (laundry_id,))
     shop = cur.fetchone()
@@ -197,6 +198,7 @@ def _get_laundry_info(cur, laundry_id, is_customer=None):
         "bagPrice": float(shop["bag_price"]) if shop.get("bag_price") else 30.00,
         "taxRate": float(shop["tax_rate"]) if shop.get("tax_rate") else 0,
         "siteContent": shop.get("site_content") or {},
+        "laundryLogo": shop.get("laundry_logo") or "",
     }
 
 
