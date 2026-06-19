@@ -29,6 +29,7 @@ function DomainRedirect() {
     let laundryId = '1'; // default
     if (host.includes('spinandshine')) laundryId = '2';
     else if (host.includes('roundrock')) laundryId = '1';
+    else if (host.includes('clean-rite') || host.includes('cleanrite')) laundryId = '11';
     // Add more domains here as you onboard laundries
     return <Navigate to={`/${laundryId}/site`} replace />;
 }

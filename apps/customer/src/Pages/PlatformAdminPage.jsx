@@ -244,10 +244,25 @@ export default function PlatformAdminPage() {
                                     <Badge colorScheme="blue" fontSize="xs">ID: {l.laundryId}</Badge>
                                 </Flex>
                                 <Text fontSize="xs" color="gray.500">{l.address}</Text>
+                                {l.ownerName && (
+                                    <HStack fontSize="xs" color="gray.600" spacing={3}>
+                                        <Text fontWeight="600">👤 {l.ownerName}</Text>
+                                        {l.ownerEmail && <Text>{l.ownerEmail}</Text>}
+                                        {l.ownerPhone && <Text>{l.ownerPhone}</Text>}
+                                    </HStack>
+                                )}
                                 <Divider />
                                 <HStack justify="space-between" fontSize="xs" color="gray.600">
                                     <HStack><FiUsers /><Text>{l.employeeCount} employees</Text></HStack>
                                     <Text>{l.activeOrders} active orders</Text>
+                                </HStack>
+                                <HStack justify="space-between" fontSize="xs">
+                                    <Text fontWeight="600" color={l.monthlyRevenue >= 3000 ? 'green.600' : 'gray.600'}>
+                                        💰 This Month: ${(l.monthlyRevenue || 0).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                                    </Text>
+                                    {l.monthlyRevenue >= 3000 && (
+                                        <Badge colorScheme="green" fontSize="xs">Billable</Badge>
+                                    )}
                                 </HStack>
                                 <HStack justify="space-between" fontSize="xs">
                                     <HStack><FiKey /><Text color="orange.500">Code: {l.deviceRegistrationCode}</Text></HStack>
@@ -371,8 +386,8 @@ export default function PlatformAdminPage() {
                     <DrawerHeader bg="cyan.500" color="white" fontSize="md">
                         💬 Chat with {chatLaundry?.laundryName || 'Tenant'}
                     </DrawerHeader>
-                    <DrawerBody display="flex" flexDirection="column" p={3}>
-                        <Box flex={1} overflowY="auto" bg="gray.50" borderRadius="md" p={3} mb={3}>
+                    <DrawerBody display="flex" flexDirection="column" p={3} h="100%" overflow="hidden">
+                        <Box flex={1} overflowY="auto" bg="gray.50" borderRadius="md" p={3} mb={3} minH="0">
                             {chatMessages.length === 0 ? (
                                 <Text color="gray.400" textAlign="center" py={10} fontSize="sm">No messages yet. Start the conversation.</Text>
                             ) : (
@@ -392,7 +407,7 @@ export default function PlatformAdminPage() {
                                 </VStack>
                             )}
                         </Box>
-                        <HStack>
+                        <HStack flexShrink={0} pt={2} borderTop="1px solid" borderColor="gray.200">
                             <Input placeholder="Type a message..." value={chatInput} onChange={(e) => setChatInput(e.target.value)}
                                 onKeyPress={(e) => e.key === 'Enter' && sendChatMessage()} size="sm" />
                             <Button colorScheme="cyan" size="sm" onClick={sendChatMessage} isLoading={chatSending} px={5}>Send</Button>

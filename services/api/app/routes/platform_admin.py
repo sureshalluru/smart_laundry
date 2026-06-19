@@ -47,6 +47,24 @@ async def list_laundries(x_platform_key: str = Header(None)):
             cur.execute("SELECT COUNT(*) as cnt FROM orders.orders WHERE laundry_id = %s AND status_category = 'Active'", (r["laundry_id"],))
             order_count = cur.fetchone()["cnt"]
 
+            # Monthly revenue (current month)
+            cur.execute("""
+                SELECT COALESCE(SUM(grand_total), 0) as revenue
+                FROM orders.orders
+                WHERE laundry_id = %s AND created_at >= date_trunc('month', CURRENT_DATE)
+                  AND order_status != 'OrderCanceled'
+            """, (r["laundry_id"],))
+            monthly_revenue = float(cur.fetchone()["revenue"])
+
+            # Owner contact info (first Admin or Manager employee)
+            cur.execute("""
+                SELECT email, phone, first_name, last_name
+                FROM shop.employees
+                WHERE laundry_id = %s AND role IN ('Admin', 'Manager') AND is_active = TRUE
+                ORDER BY created_at ASC LIMIT 1
+            """, (r["laundry_id"],))
+            owner = cur.fetchone()
+
             laundries.append({
                 "laundryId": r["laundry_id"],
                 "laundryName": r["laundry_name"],
@@ -59,6 +77,10 @@ async def list_laundries(x_platform_key: str = Header(None)):
                 "hasTerminal": bool(r["stripe_terminal_id"]),
                 "employeeCount": emp_count,
                 "activeOrders": order_count,
+                "monthlyRevenue": monthly_revenue,
+                "ownerName": f"{owner['first_name']} {owner['last_name']}".strip() if owner else "",
+                "ownerEmail": owner["email"] if owner else "",
+                "ownerPhone": owner["phone"] if owner else "",
                 "createdAt": str(r["created_at"]) if r["created_at"] else None,
             })
 
