@@ -366,6 +366,7 @@ const DeliveryScheduleSection = ({ laundryId }) => {
 const SystemSettingsSection = ({ laundryId }) => {
     const toast = useToast();
     const [taxRate, setTaxRate] = useState(0);
+    const [subscriptionDiscount, setSubscriptionDiscount] = useState(0);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const authToken = localStorage.getItem('idToken');
@@ -379,6 +380,7 @@ const SystemSettingsSection = ({ laundryId }) => {
                 });
                 const data = res.data?.body || res.data;
                 if (data.taxRate !== undefined) setTaxRate(data.taxRate);
+                if (data.subscriptionDiscount !== undefined) setSubscriptionDiscount(data.subscriptionDiscount);
             } catch (err) { console.error(err); }
             finally { setLoading(false); }
         };
@@ -389,7 +391,7 @@ const SystemSettingsSection = ({ laundryId }) => {
         setSaving(true);
         try {
             await axios.put(`${process.env.REACT_APP_AWS_API_URL}/api/laundry/delivery-schedule`, {
-                laundryId, taxRate,
+                laundryId, taxRate, subscriptionDiscount,
             }, { headers: { Authorization: `Bearer ${authToken}` } });
             toast({ title: 'Settings saved!', status: 'success', duration: 3000 });
         } catch (err) {
@@ -417,6 +419,25 @@ const SystemSettingsSection = ({ laundryId }) => {
                 />
                 <Text fontSize="xs" color="gray.500">
                     {taxRate > 0 ? `Tax of ${taxRate}% will be added to all orders (online & in-store)` : 'Set to 0 to disable tax. Enter your local sales tax rate (e.g. 8.25 for 8.25%).'}
+                </Text>
+            </Box>
+
+            <Box mb={6} maxW="400px" p={4} bg="gray.50" borderRadius="md" border="1px solid" borderColor="gray.200">
+                <Text fontWeight="semibold" mb={2}>ðŸ“¦ Subscribe & Save Discount</Text>
+                <Input
+                    type="number"
+                    step="1"
+                    min="0"
+                    max="50"
+                    value={subscriptionDiscount}
+                    onChange={(e) => setSubscriptionDiscount(parseFloat(e.target.value) || 0)}
+                    placeholder="e.g. 10"
+                    mb={2}
+                />
+                <Text fontSize="xs" color="gray.500">
+                    {subscriptionDiscount > 0
+                        ? `Customers who subscribe to weekly per-bag service get ${subscriptionDiscount}% off each order.`
+                        : 'Set to 0 to disable. Customers choosing weekly subscription on per-bag orders get this % discount.'}
                 </Text>
             </Box>
 
@@ -1751,13 +1772,13 @@ const LaundryInfoManagement = ({ validateEmpCredentials, type, empPrefix }) => {
             onChange={(e) => handleEditService(index, "categoryId", e.target.value ? parseInt(e.target.value) : null)}
             style={{ padding: "0.25rem", fontSize: "0.875rem", width: "100%" }}
           >
-            <option value="">— None —</option>
+            <option value="">ï¿½ None ï¿½</option>
             {categories.map(cat => (
               <option key={cat.categoryId} value={cat.categoryId}>{cat.categoryName}</option>
             ))}
           </select>
         ) : (
-          categories.find(c => c.categoryId === service.categoryId)?.categoryName || "—"
+          categories.find(c => c.categoryId === service.categoryId)?.categoryName || "ï¿½"
         )}
       </Td>
       <Td fontSize="sm">

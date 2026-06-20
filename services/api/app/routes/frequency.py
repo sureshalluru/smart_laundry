@@ -132,6 +132,29 @@ async def process_frequencies():
                     """, (next_future_pickup, future_pickup_date, freq_id))
 
                 # THEN: Create the order
+                # For auto-charge per-bag subscriptions, calculate the discounted total
+                auto_charge = sub.get("auto_charge", False)
+                order_sub_total = 0
+                order_discounted = 0
+                order_total = 0
+                order_grand_total = 0
+                order_pricing_type = 'per_pound'
+
+                if auto_charge:
+                    # Look up bag price and subscription discount for this laundry
+                    with get_db() as conn:
+                        cur = get_cursor(conn)
+                        cur.execute("SELECT bag_price, subscription_discount FROM shop.laundry_shops WHERE laundry_id = %s", (laundry_id,))
+                        shop_info = cur.fetchone()
+                    if shop_info:
+                        bag_price = float(shop_info.get("bag_price") or 30)
+                        sub_discount = float(shop_info.get("subscription_discount") or 0)
+                        order_sub_total = bag_price  # 1 bag per recurring order
+                        order_discounted = round(order_sub_total * sub_discount / 100, 2) if sub_discount > 0 else 0
+                        order_total = round(order_sub_total - order_discounted, 2)
+                        order_grand_total = order_total
+                        order_pricing_type = 'per_bag'
+
                 with get_db() as conn:
                     cur = get_cursor(conn)
                     cur.execute("""
@@ -146,19 +169,50 @@ async def process_frequencies():
                             created_at, updated_at
                         ) VALUES (
                             %s,%s,%s,%s,'Online','OrderSubmitted','Active','Unpaid',
-                            %s,%s,%s,%s,1,'',%s,%s,0,0,0,0,
-                            'per_pound',%s,%s,TRUE,FALSE,'',NOW(),NOW()
+                            %s,%s,%s,%s,1,'',%s,%s,%s,%s,%s,%s,
+                            %s,%s,%s,TRUE,FALSE,'',NOW(),NOW()
                         )
                     """, (
                         order_id, laundry_id, customer_id, address_id,
                         future_pickup_date, pickup_time_interval,
                         dropoff_date, dropoff_time_interval,
                         None, frequency,
-                        pickup_service, dropoff_service,
+                        order_sub_total, order_discounted, order_total, order_grand_total,
+                        order_pricing_type, pickup_service, dropoff_service,
                     ))
 
                 # Create $1 hold if payment info exists
-                if customer_payment_id:
+                auto_charge = sub.get("auto_charge", False)
+                if auto_charge and customer_payment_id:
+                    # Auto-charge: charge the full subscription amount immediately
+                    try:
+                        from app.services.payment_service import charge_saved_card
+                        # For auto-charge subscriptions, we charge a base amount
+                        # The actual amount will be adjusted when order is weighed
+                        charge_result = charge_saved_card(
+                            customer_payment_id=customer_payment_id,
+                            amount=0,  # Will be charged when order is processed with actual weight
+                            description=f"Subscription order {order_id} - will be charged on completion",
+                            laundry_id=laundry_id,
+                        )
+                        # Mark order as auto-charge subscription
+                        with get_db() as conn:
+                            cur = get_cursor(conn)
+                            cur.execute("""
+                                UPDATE orders.orders SET payment_status = 'AutoCharge'
+                                WHERE order_id = %s
+                            """, (order_id,))
+                        logger.info(f"Auto-charge subscription order {order_id} marked for auto-charge on completion")
+                    except Exception as charge_err:
+                        logger.warning(f"Auto-charge setup failed for order {order_id}: {charge_err}")
+                        # Still create order but mark payment as pending
+                        with get_db() as conn:
+                            cur = get_cursor(conn)
+                            cur.execute("""
+                                UPDATE orders.orders SET payment_status = 'PaymentFailed'
+                                WHERE order_id = %s
+                            """, (order_id,))
+                elif customer_payment_id:
                     try:
                         from app.services.payment_service import create_hold
                         hold_result = create_hold(

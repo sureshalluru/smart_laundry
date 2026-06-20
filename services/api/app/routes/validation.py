@@ -75,7 +75,7 @@ def _check_laundry_id(cur, laundry_id):
     """Verify laundry exists — exact port from Lambda."""
     cur.execute("""
         SELECT laundry_name, stripe_public_key, stripe_terminal_id,
-               laundry_timezone, user_domain, bag_price, tax_rate, site_content, laundry_logo
+               laundry_timezone, user_domain, bag_price, tax_rate, site_content, laundry_logo, subscription_discount
         FROM shop.laundry_shops WHERE laundry_id = %s
     """, (laundry_id,))
     row = cur.fetchone()
@@ -94,6 +94,7 @@ def _check_laundry_id(cur, laundry_id):
         "taxRate": float(row["tax_rate"]) if row.get("tax_rate") else 0,
         "themeColor": site_content.get("themeColor", "blue"),
         "laundryLogo": row["laundry_logo"] or "",
+        "subscriptionDiscount": float(row.get("subscription_discount") or 0),
     }
 
 
@@ -102,7 +103,7 @@ def _get_laundry_info(cur, laundry_id, is_customer=None):
     cur.execute("""
         SELECT laundry_name, laundry_timezone, stripe_public_key, stripe_terminal_id,
                delivery_time_interval, user_domain,
-               street, city, state, zip_code, country, serviceable_zip_codes, bag_price, tax_rate, site_content, laundry_logo
+               street, city, state, zip_code, country, serviceable_zip_codes, bag_price, tax_rate, site_content, laundry_logo, subscription_discount
         FROM shop.laundry_shops WHERE laundry_id = %s
     """, (laundry_id,))
     shop = cur.fetchone()
@@ -154,8 +155,14 @@ def _get_laundry_info(cur, laundry_id, is_customer=None):
     instore_slots = [{"day": r["day"], "startTime": str(r["start_time"]), "endTime": str(r["end_time"])} for r in cur.fetchall()]
 
     # Frequency intervals
-    cur.execute("SELECT interval FROM shop.frequency_intervals WHERE laundry_id = %s", (laundry_id,))
-    frequency_interval = [r["interval"] for r in cur.fetchall()]
+    cur.execute("SELECT interval, auto_charge_enabled, subscription_discount FROM shop.frequency_intervals WHERE laundry_id = %s", (laundry_id,))
+    freq_rows = cur.fetchall()
+    frequency_interval = [r["interval"] for r in freq_rows]
+    frequency_details = [{
+        "interval": r["interval"],
+        "autoChargeEnabled": r.get("auto_charge_enabled", False) or False,
+        "subscriptionDiscount": float(r.get("subscription_discount") or 0),
+    } for r in freq_rows]
 
     # Uber credentials
     cur.execute("SELECT env FROM shop.laundry_uber_credentials WHERE laundry_id = %s ORDER BY env DESC LIMIT 1", (laundry_id,))
@@ -192,6 +199,7 @@ def _get_laundry_info(cur, laundry_id, is_customer=None):
         "deliveryTimeSlots": delivery_time_slots,
         "inStorePickupTimeSlots": instore_slots,
         "frequencyInterval": frequency_interval,
+        "frequencyDetails": frequency_details,
         "frequencyPromotions": frequency_promotions,
         "uberEnv": uber_row["env"] if uber_row else "",
         "uberCredentialsExist": bool(uber_row),
@@ -199,6 +207,7 @@ def _get_laundry_info(cur, laundry_id, is_customer=None):
         "taxRate": float(shop["tax_rate"]) if shop.get("tax_rate") else 0,
         "siteContent": shop.get("site_content") or {},
         "laundryLogo": shop.get("laundry_logo") or "",
+        "subscriptionDiscount": float(shop.get("subscription_discount") or 0),
     }
 
 

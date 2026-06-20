@@ -345,7 +345,8 @@ export default function LaundryPickupPage({laundryId,customerId,customerPaymentI
                 pickupTimeInterval: pickupTime,
                 dropoffDate: dropoffDateUTC,
                 dropoffTimeInterval: dropoffTime,
-                frequency: null,
+                frequency: frequency || null,
+                autoCharge: !!frequency,
                 laundryBags: laundryBags,
                 bagPrice: bagPrice,
                 totalCost: bagTotal,
@@ -777,6 +778,10 @@ export default function LaundryPickupPage({laundryId,customerId,customerPaymentI
                                     setDropoffService={setDropoffService}
                                     laundryServices={getFilteredServices()}
                                     categoryName={selectedCategory?.categoryName || ''}
+                                    subscriptionDiscount={laundryData?.subscriptionDiscount || 0}
+                                    frequency={frequency}
+                                    setFrequency={setFrequency}
+                                    laundryFrequency={laundryFrequency}
                                 />
                             )}
 
@@ -866,6 +871,8 @@ export default function LaundryPickupPage({laundryId,customerId,customerPaymentI
                                     pickupService={pickupService}
                                     dropoffService={dropoffService}
                                     taxRate={laundryData?.taxRate || 0}
+                                    subscriptionDiscount={laundryData?.subscriptionDiscount || 0}
+                                    frequency={frequency}
                                 />
                             )}
 

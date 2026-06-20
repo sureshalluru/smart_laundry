@@ -52,6 +52,10 @@ export default function BagOrderPage({
     setDropoffService,
     laundryServices = [],
     categoryName = '',
+    subscriptionDiscount = 0,
+    frequency,
+    setFrequency,
+    laundryFrequency = [],
 }) {
     const [availablePickupSlots, setAvailablePickupSlots] = useState([]);
     const [availableDropoffSlots, setAvailableDropoffSlots] = useState([]);
@@ -283,6 +287,52 @@ export default function BagOrderPage({
                     )}
                 </VStack>
             </Box>
+
+            {/* Subscribe & Save section — only show if discount configured */}
+            {subscriptionDiscount > 0 && laundryFrequency.length > 0 && (
+                <Box bg="white" borderRadius="2xl" p={{ base: 5, md: 6 }} boxShadow="sm" border="1px solid" borderColor={frequency ? "green.300" : "gray.100"}>
+                    <VStack spacing={3} align="stretch">
+                        <Flex justify="space-between" align="center">
+                            <HStack spacing={2}>
+                                <Text fontSize="lg">📦</Text>
+                                <VStack align="flex-start" spacing={0}>
+                                    <Text fontWeight="700" fontSize="sm" color="gray.800">Subscribe & Save {subscriptionDiscount}%</Text>
+                                    <Text fontSize="xs" color="gray.500">Auto-charge weekly, save on every order</Text>
+                                </VStack>
+                            </HStack>
+                            {frequency && (
+                                <Badge colorScheme="green" borderRadius="full" px={3} py={1} fontSize="xs">Active</Badge>
+                            )}
+                        </Flex>
+                        <HStack spacing={2}>
+                            {laundryFrequency.map((opt) => (
+                                <Button
+                                    key={opt}
+                                    size="sm"
+                                    borderRadius="full"
+                                    variant={frequency === opt ? 'solid' : 'outline'}
+                                    colorScheme={frequency === opt ? 'green' : 'gray'}
+                                    onClick={() => setFrequency(frequency === opt ? null : opt)}
+                                >
+                                    {opt}
+                                </Button>
+                            ))}
+                            {frequency && (
+                                <Button size="sm" variant="ghost" colorScheme="red" onClick={() => setFrequency(null)}>
+                                    Cancel
+                                </Button>
+                            )}
+                        </HStack>
+                        {frequency && (
+                            <Box bg="green.50" borderRadius="md" p={2}>
+                                <Text fontSize="xs" color="green.700">
+                                    ✅ You'll save {subscriptionDiscount}% on every {frequency.toLowerCase()} order. Card charged automatically when order is processed.
+                                </Text>
+                            </Box>
+                        )}
+                    </VStack>
+                </Box>
+            )}
 
             {/* Schedule section */}
             <Box bg="white" borderRadius="2xl" p={{ base: 5, md: 6 }} boxShadow="sm" border="1px solid" borderColor="gray.100">

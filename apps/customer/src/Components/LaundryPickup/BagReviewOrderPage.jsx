@@ -39,8 +39,12 @@ export default function BagReviewOrderPage({
     pickupService,
     dropoffService,
     taxRate = 0,
+    subscriptionDiscount = 0,
+    frequency = null,
 }) {
-    const totalCost = (laundryBags * bagPrice).toFixed(2);
+    const subtotalRaw = laundryBags * bagPrice;
+    const discountAmount = (frequency && subscriptionDiscount > 0) ? (subtotalRaw * subscriptionDiscount / 100) : 0;
+    const totalCost = (subtotalRaw - discountAmount).toFixed(2);
     const { tipOption, customTip } = tip;
 
     // Tip handlers (same logic as original)
@@ -236,8 +240,14 @@ export default function BagReviewOrderPage({
             >
                 <Flex justify="space-between" align="center">
                     <Text fontWeight="600" color="gray.700">Subtotal</Text>
-                    <Text color="gray.700">${totalCost}</Text>
+                    <Text color="gray.700">${subtotalRaw.toFixed(2)}</Text>
                 </Flex>
+                {discountAmount > 0 && (
+                    <Flex justify="space-between" align="center" mt={1}>
+                        <Text fontSize="sm" color="green.600" fontWeight="600">Subscribe & Save ({subscriptionDiscount}%)</Text>
+                        <Text fontSize="sm" color="green.600" fontWeight="600">-${discountAmount.toFixed(2)}</Text>
+                    </Flex>
+                )}
                 {taxRate > 0 && (
                     <Flex justify="space-between" align="center" mt={1}>
                         <Text fontSize="sm" color="gray.500">Sales Tax ({taxRate}%)</Text>

@@ -2,11 +2,10 @@ import React from 'react';
 import { Box, Flex, HStack, Button, Text, Icon, IconButton, VStack, Collapse, useDisclosure, Image } from '@chakra-ui/react';
 import { FiMenu, FiX, FiMapPin } from 'react-icons/fi';
 
-const navLinks = [
+const baseNavLinks = [
     { label: 'Services', href: '#services' },
     { label: 'How It Works', href: '#how-it-works' },
     { label: 'Pricing', href: '#pricing' },
-    { label: 'Saree Rolling', href: '/saree-rolling' },
     { label: 'Location', href: '#location' },
     { label: 'About', href: '#about' },
     { label: 'Admin', href: null, isAdmin: true },
@@ -18,6 +17,15 @@ export default function SiteNavbar({ config }) {
     const laundryId = config?.laundryId || '1';
     const laundryName = config?.laundryName || 'Laundry';
     const themeColor = sc.themeColor || 'blue';
+
+    // Build nav links dynamically — only show Saree Rolling if tenant has it
+    const services = config?.services || [];
+    const serviceCategories = config?.serviceCategories || [];
+    const hasSaree = services.some(s => s.serviceName?.toLowerCase().includes('saree')) ||
+                     serviceCategories.some(c => c.categoryName?.toLowerCase().includes('saree'));
+    const navLinks = hasSaree
+        ? [...baseNavLinks.slice(0, 3), { label: 'Saree Rolling', href: `/${laundryId}/saree-rolling` }, ...baseNavLinks.slice(3)]
+        : baseNavLinks;
 
     return (
         <Box as="nav" position="sticky" top="0" zIndex="1000" bg="white" borderBottom="1px solid" borderColor="gray.100" boxShadow="sm">

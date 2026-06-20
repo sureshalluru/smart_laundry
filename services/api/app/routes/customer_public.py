@@ -252,25 +252,27 @@ async def customer_place_order(
                 # Create new frequency subscription
                 import uuid as uuid_mod
                 freq_id = str(uuid_mod.uuid4())
+                auto_charge = body.get("autoCharge", False)
                 cur.execute("""
                     INSERT INTO orders.laundry_frequency (
                         frequency_id, customer_id, laundry_id, address_id, frequency,
                         frequency_created_date, frequency_start_date,
                         pickup_date, pickup_time_interval,
                         dropoff_time_interval, future_pickup_date,
-                        is_active
+                        is_active, auto_charge
                     ) VALUES (
                         %s, %s, %s, %s, %s,
                         NOW(), %s,
                         %s, %s,
                         %s, %s,
-                        TRUE
+                        TRUE, %s
                     )
                 """, (
                     freq_id, customer_id, laundry_id, address_id, frequency,
                     pickup_date,
                     pickup_date, pickup_time_interval,
                     dropoff_time_interval, future_pickup,
+                    auto_charge,
                 ))
 
         # Create $1 hold on customer's card to verify payment method (skip for invoice orders)

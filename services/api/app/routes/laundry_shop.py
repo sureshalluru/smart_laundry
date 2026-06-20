@@ -147,6 +147,7 @@ async def update_delivery_schedule(
     slots = body.get("deliveryTimeSlots", [])
     delivery_time_interval = body.get("deliveryTimeInterval")
     tax_rate = body.get("taxRate")
+    subscription_discount = body.get("subscriptionDiscount")
 
     if not laundry_id:
         return {"statusCode": 400, "body": {"status": "error", "message": "Missing laundryId"}}
@@ -165,6 +166,12 @@ async def update_delivery_schedule(
             cur.execute("""
                 UPDATE shop.laundry_shops SET tax_rate = %s WHERE laundry_id = %s
             """, (float(tax_rate), laundry_id))
+
+        # Update subscription discount if provided
+        if subscription_discount is not None:
+            cur.execute("""
+                UPDATE shop.laundry_shops SET subscription_discount = %s WHERE laundry_id = %s
+            """, (float(subscription_discount), laundry_id))
 
         # Replace all delivery time slots
         cur.execute("DELETE FROM shop.delivery_time_slots WHERE laundry_id = %s", (laundry_id,))
@@ -190,7 +197,7 @@ async def get_delivery_schedule(
     with get_db() as conn:
         cur = get_cursor(conn)
 
-        cur.execute("SELECT delivery_time_interval, tax_rate FROM shop.laundry_shops WHERE laundry_id = %s", (laundryId,))
+        cur.execute("SELECT delivery_time_interval, tax_rate, subscription_discount FROM shop.laundry_shops WHERE laundry_id = %s", (laundryId,))
         shop = cur.fetchone()
 
         cur.execute("""
@@ -205,6 +212,7 @@ async def get_delivery_schedule(
             "status": "success",
             "deliveryTimeInterval": shop["delivery_time_interval"] if shop else 2,
             "taxRate": float(shop["tax_rate"]) if shop and shop.get("tax_rate") else 0,
+            "subscriptionDiscount": float(shop["subscription_discount"]) if shop and shop.get("subscription_discount") else 0,
             "deliveryTimeSlots": slots,
         }
     }
