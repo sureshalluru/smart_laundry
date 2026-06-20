@@ -2,9 +2,9 @@ import React, { useState, useEffect } from 'react';
 import {
     Box, SimpleGrid, VStack, HStack, Text, Heading, Flex, Badge, Spinner,
     Table, Thead, Tbody, Tr, Th, Td, Stat, StatLabel, StatNumber, StatHelpText,
-    StatArrow, Progress, Divider, Select, Input, Button,
+    StatArrow, Progress, Divider, Select, Input, Button, useToast,
 } from '@chakra-ui/react';
-import { FiDollarSign, FiShoppingBag, FiUsers, FiTrendingUp } from 'react-icons/fi';
+import { FiDollarSign, FiShoppingBag, FiUsers, FiTrendingUp, FiDownload } from 'react-icons/fi';
 import axios from 'axios';
 
 export default function DashboardPage({ laundryId }) {
@@ -16,6 +16,84 @@ export default function DashboardPage({ laundryId }) {
     const [loading, setLoading] = useState(true);
     const authToken = localStorage.getItem('idToken');
     const headers = { Authorization: `Bearer ${authToken}` };
+
+    // Export loading states
+    const [exportingCustomers, setExportingCustomers] = useState(false);
+    const [exportingOrders, setExportingOrders] = useState(false);
+    const [exportingReports, setExportingReports] = useState(false);
+    const toast = useToast();
+
+    const downloadCSV = (blob, filename) => {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    };
+
+    const handleExportCustomers = async () => {
+        setExportingCustomers(true);
+        try {
+            const res = await axios.get(
+                `${process.env.REACT_APP_AWS_API_URL}/api/admin/export/customers`,
+                { params: { laundryId }, headers, responseType: 'blob' }
+            );
+            downloadCSV(new Blob([res.data], { type: 'text/csv' }), `customers_${laundryId}.csv`);
+            toast({ title: 'Customers CSV downloaded', status: 'success', duration: 2000 });
+        } catch (err) {
+            console.error('Export customers error:', err);
+            toast({ title: 'Export failed', description: 'Could not export customers.', status: 'error', duration: 3000 });
+        } finally {
+            setExportingCustomers(false);
+        }
+    };
+
+    const handleExportOrders = async () => {
+        setExportingOrders(true);
+        try {
+            const params = { laundryId };
+            if (startDate && endDate) {
+                params.startDate = startDate;
+                params.endDate = endDate;
+            }
+            const res = await axios.get(
+                `${process.env.REACT_APP_AWS_API_URL}/api/admin/export/orders`,
+                { params, headers, responseType: 'blob' }
+            );
+            downloadCSV(new Blob([res.data], { type: 'text/csv' }), `orders_${laundryId}.csv`);
+            toast({ title: 'Orders CSV downloaded', status: 'success', duration: 2000 });
+        } catch (err) {
+            console.error('Export orders error:', err);
+            toast({ title: 'Export failed', description: 'Could not export orders.', status: 'error', duration: 3000 });
+        } finally {
+            setExportingOrders(false);
+        }
+    };
+
+    const handleExportReports = async () => {
+        setExportingReports(true);
+        try {
+            const params = { laundryId };
+            if (startDate && endDate) {
+                params.startDate = startDate;
+                params.endDate = endDate;
+            }
+            const res = await axios.get(
+                `${process.env.REACT_APP_AWS_API_URL}/api/admin/export/reports`,
+                { params, headers, responseType: 'blob' }
+            );
+            downloadCSV(new Blob([res.data], { type: 'text/csv' }), `report_${laundryId}.csv`);
+            toast({ title: 'Report CSV downloaded', status: 'success', duration: 2000 });
+        } catch (err) {
+            console.error('Export report error:', err);
+            toast({ title: 'Export failed', description: 'Could not export report.', status: 'error', duration: 3000 });
+        } finally {
+            setExportingReports(false);
+        }
+    };
 
     // Filters
     const [period, setPeriod] = useState('30'); // days
@@ -95,6 +173,43 @@ export default function DashboardPage({ laundryId }) {
                         </HStack>
                     )}
                 </HStack>
+            </Flex>
+
+            {/* Export Buttons */}
+            <Flex mb={4} gap={3} flexWrap="wrap">
+                <Button
+                    size="sm"
+                    leftIcon={<FiDownload />}
+                    colorScheme="teal"
+                    variant="outline"
+                    onClick={handleExportCustomers}
+                    isLoading={exportingCustomers}
+                    loadingText="Exporting..."
+                >
+                    Export Customers
+                </Button>
+                <Button
+                    size="sm"
+                    leftIcon={<FiDownload />}
+                    colorScheme="blue"
+                    variant="outline"
+                    onClick={handleExportOrders}
+                    isLoading={exportingOrders}
+                    loadingText="Exporting..."
+                >
+                    Export Orders
+                </Button>
+                <Button
+                    size="sm"
+                    leftIcon={<FiDownload />}
+                    colorScheme="purple"
+                    variant="outline"
+                    onClick={handleExportReports}
+                    isLoading={exportingReports}
+                    loadingText="Exporting..."
+                >
+                    Export Report
+                </Button>
             </Flex>
 
             {/* KPI Cards */}
