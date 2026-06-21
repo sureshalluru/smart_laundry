@@ -59,6 +59,7 @@ from app.routes import (
     dashboard,
     engagement,
     export,
+    item_tracking,
 )
 
 app = FastAPI(
@@ -108,6 +109,8 @@ app.include_router(platform_admin.router, prefix="/api/platform", tags=["Platfor
 app.include_router(dashboard.router, prefix="/api/dashboard", tags=["Dashboard"])
 app.include_router(engagement.router, prefix="/api/engagement", tags=["Customer Engagement"])
 app.include_router(export.router, prefix="/api/admin", tags=["Export"])
+app.include_router(item_tracking.router, prefix="/api/admin", tags=["Item Tracking"])
+app.include_router(item_tracking.track_router, prefix="/api", tags=["Item Tracking Mobile"])
 
 
 # Block bot scanners probing for PHP/WordPress/exploit files

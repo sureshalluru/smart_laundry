@@ -79,6 +79,7 @@ import {
 import PaymentModal from '../Components/AdminHome/adminPaymentModal';
 import {fetchShopDetails} from "./AdminHomePage";
 import OrderActionsDrawer from "./OrderActionsDrawer";
+import ItemTrackingPanel from "../Components/ItemTracking/ItemTrackingPanel";
 import {fetchLaundryProducts, fetchLaundryInfo} from './LaundryInfoManagement';
 import {Elements} from "@stripe/react-stripe-js";
 import {loadStripe} from "@stripe/stripe-js";
@@ -2389,6 +2390,14 @@ const { open: openCancelUber, ModalUI: CancelUberModal } = useCancelUberHandoff(
                                         </Box>
                                     </Flex>
                                 </Box>
+
+                                {/* Item Tracking — QR code for employee phone upload */}
+                                <ItemTrackingPanel
+                                    orderId={selectedOrderDetails?.orderId}
+                                    laundryId={laundryId}
+                                    orderStatus={orderStatusMap[selectedOrderDetails?.orderId] || selectedOrderDetails?.orderStatus}
+                                    employeeId={getEmpId() || 'EMP'}
+                                />
 
                                 {/* Pickup & Delivery */}
                                 <Box>

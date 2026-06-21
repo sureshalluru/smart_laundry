@@ -34,6 +34,10 @@ services:
         value: "us-east-1"
       - key: SOURCE_EMAIL
         sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: BREVO_API_KEY
+        sync: false
 
   # Cron job: Process recurring orders daily at 6 AM CT (11:00 UTC)
   - type: cron

@@ -1,0 +1,76 @@
+"""
+SMS formatting for item tracking notifications.
+Formats intake and completion SMS messages with itemized counts.
+"""
+import logging
+from typing import Optional
+
+logger = logging.getLogger(__name__)
+
+# SMS segment limit
+SINGLE_SEGMENT_LIMIT = 160
+
+
+def format_intake_sms(
+    shop_name: str,
+    order_id: str,
+    items: list[dict],
+) -> str:
+    """
+    Format the intake confirmation SMS message.
+
+    Args:
+        shop_name: Name of the laundry shop
+        order_id: Order identifier
+        items: List of dicts with 'category' and 'count'
+
+    Returns:
+        Formatted SMS message string
+    """
+    items_str = ", ".join(
+        f"{item['count']} {item['category']}" for item in items if item.get("count", 0) > 0
+    )
+
+    message = f"{shop_name} received your laundry ({order_id}): {items_str}"
+    return message
+
+
+def format_completion_sms(
+    shop_name: str,
+    items: list[dict],
+    has_discrepancies: bool = False,
+) -> str:
+    """
+    Format the fold completion SMS message.
+
+    Args:
+        shop_name: Name of the laundry shop
+        items: List of dicts with 'category' and 'count'
+        has_discrepancies: Whether any discrepancies were acknowledged
+
+    Returns:
+        Formatted SMS message string
+    """
+    items_str = ", ".join(
+        f"{item['count']} {item['category']}" for item in items if item.get("count", 0) > 0
+    )
+
+    message = f"Your laundry is ready! {shop_name} folded: {items_str}"
+
+    if has_discrepancies:
+        message += " Note: item difference noted — please contact us with questions."
+
+    return message
+
+
+def is_multi_part(message: str) -> bool:
+    """
+    Check if a message exceeds the single SMS segment limit.
+
+    Args:
+        message: The SMS message text
+
+    Returns:
+        True if the message needs multi-part delivery
+    """
+    return len(message) > SINGLE_SEGMENT_LIMIT

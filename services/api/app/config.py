@@ -46,6 +46,10 @@ class Settings(BaseSettings):
     # S3
     s3_logo_bucket: str = "laundrylogos"
     s3_review_bucket: str = "laundry-review-images"
+    s3_tracking_bucket: str = "laundry-item-tracking"
+
+    # Anthropic (Claude Vision for item tracking)
+    anthropic_api_key: str = ""
 
     # CORS
     cors_origins: List[str] = [

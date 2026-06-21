@@ -1,0 +1,840 @@
+"""
+Item Tracking routes — QR code generation, photo upload, intake/fold confirmation,
+category management, and polling for POS sync.
+"""
+import logging
+from datetime import datetime, timezone
+from typing import Optional
+from fastapi import APIRouter, HTTPException, Query
+from pydantic import BaseModel
+
+from app.database import get_db, get_cursor
+from app.services.token_service import generate_token, validate_token, hash_token
+
+logger = logging.getLogger(__name__)
+
+router = APIRouter()
+track_router = APIRouter()  # Public endpoints for mobile upload page (token auth, no admin auth)
+
+
+# ── Models ────────────────────────────────────────────────────────────────────
+
+class QRCodeResponse(BaseModel):
+    qrUrl: str
+    expiresAt: str
+    token: str
+
+
+# ── QR Code Generation ────────────────────────────────────────────────────────
+
+@router.get("/item-tracking/qr-code", response_model=QRCodeResponse)
+async def generate_qr_code(
+    orderId: str = Query(..., description="Order ID"),
+    laundryId: str = Query(..., description="Laundry shop ID"),
+    phase: str = Query(..., description="Phase: intake or fold"),
+    employeeId: str = Query(..., description="Employee ID"),
+    baseUrl: Optional[str] = Query(None, description="Base URL for the mobile page"),
+):
+    """
+    Generate a QR code URL with an embedded authentication token.
+    The QR code links to the mobile upload page for the specified order and phase.
+    Creates a tracking session record in the database.
+    """
+    if phase not in ("intake", "fold"):
+        raise HTTPException(status_code=400, detail="Phase must be 'intake' or 'fold'")
+
+    # Generate token
+    token = generate_token(
+        order_id=orderId,
+        laundry_id=laundryId,
+        phase=phase,
+        employee_id=employeeId,
+    )
+
+    # Validate token to get expiry info
+    payload = validate_token(token)
+    if not payload:
+        raise HTTPException(status_code=500, detail="Failed to generate valid token")
+
+    # Build the QR URL
+    base = baseUrl or ""
+    qr_url = f"{base}/track/{token}"
+
+    # Create tracking session in DB
+    with get_db() as conn:
+        cur = get_cursor(conn)
+        cur.execute(
+            """
+            INSERT INTO tracking.tracking_sessions
+                (order_id, laundry_id, employee_id, phase, token_hash, status, expires_at)
+            VALUES (%s, %s, %s, %s, %s, 'waiting', %s)
+            ON CONFLICT DO NOTHING
+            """,
+            (
+                orderId,
+                laundryId,
+                employeeId,
+                phase,
+                hash_token(token),
+                payload.exp,
+            ),
+        )
+
+    return QRCodeResponse(
+        qrUrl=qr_url,
+        expiresAt=payload.exp.isoformat(),
+        token=token,
+    )
+
+
+# ── Category Management ───────────────────────────────────────────────────────
+
+class CategoryItem(BaseModel):
+    categoryId: Optional[str] = None
+    name: str
+    displayOrder: int = 0
+    isActive: bool = True
+
+
+class CategoryUpdateRequest(BaseModel):
+    laundryId: str
+    categories: list[CategoryItem]
+
+
+class CategoryResponse(BaseModel):
+    categoryId: str
+    name: str
+    displayOrder: int
+    isActive: bool
+
+
+@router.get("/item-tracking/categories", response_model=list[CategoryResponse])
+async def get_categories(
+    laundryId: str = Query(..., description="Laundry shop ID"),
+    includeInactive: bool = Query(False, description="Include deactivated categories"),
+):
+    """
+    Get item categories for a laundry shop.
+    By default returns only active categories, ordered by display_order.
+    If no categories exist, seeds default categories first.
+    """
+    from app.migrations.add_item_tracking import seed_default_categories
+
+    with get_db() as conn:
+        cur = get_cursor(conn)
+
+        # Check if any categories exist — seed defaults if not
+        cur.execute(
+            "SELECT COUNT(*) AS cnt FROM tracking.item_categories WHERE laundry_id = %s",
+            (laundryId,),
+        )
+        row = cur.fetchone()
+        if row and row["cnt"] == 0:
+            seed_default_categories(laundryId)
+            # Re-fetch after seeding (need new transaction since seed_default_categories uses its own)
+
+    # Fetch categories
+    with get_db() as conn:
+        cur = get_cursor(conn)
+
+        if includeInactive:
+            cur.execute(
+                """
+                SELECT category_id, name, display_order, is_active
+                FROM tracking.item_categories
+                WHERE laundry_id = %s
+                ORDER BY display_order
+                """,
+                (laundryId,),
+            )
+        else:
+            cur.execute(
+                """
+                SELECT category_id, name, display_order, is_active
+                FROM tracking.item_categories
+                WHERE laundry_id = %s AND is_active = TRUE
+                ORDER BY display_order
+                """,
+                (laundryId,),
+            )
+
+        rows = cur.fetchall()
+
+    return [
+        CategoryResponse(
+            categoryId=str(row["category_id"]),
+            name=row["name"],
+            displayOrder=row["display_order"],
+            isActive=row["is_active"],
+        )
+        for row in rows
+    ]
+
+
+@router.post("/item-tracking/categories")
+async def update_categories(request: CategoryUpdateRequest):
+    """
+    Add, rename, reorder, or deactivate categories for a laundry.
+    Accepts the full list of categories — updates are applied based on categoryId presence.
+    - If categoryId is provided: update the existing category (rename, reorder, deactivate)
+    - If categoryId is None: insert a new category
+    """
+    with get_db() as conn:
+        cur = get_cursor(conn)
+
+        for cat in request.categories:
+            if cat.categoryId:
+                # Update existing category
+                cur.execute(
+                    """
+                    UPDATE tracking.item_categories
+                    SET name = %s, display_order = %s, is_active = %s, updated_at = NOW()
+                    WHERE category_id = %s::uuid AND laundry_id = %s
+                    """,
+                    (cat.name, cat.displayOrder, cat.isActive, cat.categoryId, request.laundryId),
+                )
+            else:
+                # Insert new category
+                cur.execute(
+                    """
+                    INSERT INTO tracking.item_categories (laundry_id, name, display_order, is_active)
+                    VALUES (%s, %s, %s, %s)
+                    ON CONFLICT (laundry_id, name) DO UPDATE
+                    SET display_order = EXCLUDED.display_order,
+                        is_active = EXCLUDED.is_active,
+                        updated_at = NOW()
+                    """,
+                    (request.laundryId, cat.name, cat.displayOrder, cat.isActive),
+                )
+
+    return {"status": "success", "message": "Categories updated"}
+
+
+# ── Mobile Upload Page Endpoints (token-authenticated, no admin auth) ─────────
+
+class PhotoUploadRequest(BaseModel):
+    token: str
+    images: list[str]  # Base64 encoded images (2-3 angle photos)
+
+
+class VisionResultItemResponse(BaseModel):
+    category: str
+    count: int
+    confidence: int
+    note: Optional[str] = None
+    flagged: bool = False
+
+
+class PhotoUploadResponse(BaseModel):
+    status: str
+    result: Optional[dict] = None
+    error: Optional[str] = None
+
+
+@track_router.post("/track/upload", response_model=PhotoUploadResponse)
+async def upload_photos(request: PhotoUploadRequest):
+    """
+    Accept photos from the mobile upload page, upload to S3,
+    call Claude Vision, and return structured results.
+    Token-based auth (no admin login required).
+    """
+    from app.services.vision_service import (
+        analyze_photos,
+        flag_low_confidence,
+        VisionServiceError,
+    )
+    from app.services.s3_service import get_s3_client, DELIVERY_IMAGES_BUCKET
+    import base64
+    import uuid
+
+    # Validate token
+    payload = validate_token(request.token)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+
+    # Validate image count (2-3 required)
+    if len(request.images) < 2:
+        raise HTTPException(status_code=400, detail="Minimum 2 photos required")
+    if len(request.images) > 3:
+        raise HTTPException(status_code=400, detail="Maximum 3 photos per upload")
+
+    # Upload images to S3
+    image_urls = []
+    for i, img_base64 in enumerate(request.images):
+        # Strip data URL prefix if present
+        if "," in img_base64 and img_base64.startswith("data:"):
+            img_base64 = img_base64.split(",", 1)[1]
+
+        try:
+            image_bytes = base64.b64decode(img_base64)
+        except Exception:
+            raise HTTPException(status_code=400, detail=f"Invalid base64 data for image {i+1}")
+
+        if len(image_bytes) < 1000:
+            raise HTTPException(status_code=400, detail=f"Image {i+1} is too small or corrupted")
+
+        # Detect content type
+        content_type = "image/jpeg"
+        ext = "jpg"
+        if image_bytes[:8] == b'\x89PNG\r\n\x1a\n':
+            content_type = "image/png"
+            ext = "png"
+
+        # Upload to S3
+        unique_id = uuid.uuid4().hex[:8]
+        s3_key = f"{payload.laundry_id}/{payload.order_id}/tracking_{payload.phase}_{unique_id}.{ext}"
+
+        try:
+            s3 = get_s3_client()
+            s3.put_object(
+                Bucket=settings.s3_tracking_bucket,
+                Key=s3_key,
+                Body=image_bytes,
+                ContentType=content_type,
+            )
+            image_url = f"https://{settings.s3_tracking_bucket}.s3.amazonaws.com/{s3_key}"
+            image_urls.append(image_url)
+        except Exception as e:
+            logger.error(f"S3 upload failed for tracking photo: {e}")
+            raise HTTPException(status_code=500, detail="Failed to upload photo")
+
+    # Get active categories for this laundry
+    with get_db() as conn:
+        cur = get_cursor(conn)
+        cur.execute(
+            """
+            SELECT name FROM tracking.item_categories
+            WHERE laundry_id = %s AND is_active = TRUE
+            ORDER BY display_order
+            """,
+            (payload.laundry_id,),
+        )
+        category_rows = cur.fetchall()
+
+    categories = [row["name"] for row in category_rows]
+    if not categories:
+        # Use defaults if none configured
+        from app.migrations.add_item_tracking import DEFAULT_CATEGORIES
+        categories = DEFAULT_CATEGORIES
+
+    # Call Claude Vision
+    try:
+        vision_result = await analyze_photos(image_urls, categories)
+    except VisionServiceError as e:
+        if e.code == "RATE_LIMIT":
+            raise HTTPException(status_code=429, detail=e.message)
+        raise HTTPException(status_code=503, detail=e.message)
+
+    # Flag low-confidence items
+    flagged_items = flag_low_confidence(vision_result.items)
+
+    return PhotoUploadResponse(
+        status="success",
+        result={
+            "items": flagged_items,
+            "imageUrls": image_urls,
+            "processingTimeMs": vision_result.processing_time_ms,
+        },
+    )
+
+
+# ── Intake Confirmation ───────────────────────────────────────────────────────
+
+class ConfirmIntakeRequest(BaseModel):
+    token: str
+    items: list[dict]  # [{ "category": "Shirts", "count": 5 }]
+    photoUrls: list[str]
+
+
+class ConfirmIntakeResponse(BaseModel):
+    status: str
+    recordId: Optional[str] = None
+    smsSent: bool = False
+
+
+@track_router.post("/track/confirm-intake", response_model=ConfirmIntakeResponse)
+async def confirm_intake(request: ConfirmIntakeRequest):
+    """
+    Confirm the intake record for an order.
+    Saves the intake record, updates the tracking session, and sends SMS to customer.
+    """
+    from app.services.notification_service import send_sms
+    from app.services.sms_formatter import format_intake_sms
+
+    # Validate token
+    payload = validate_token(request.token)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+
+    if payload.phase != "intake":
+        raise HTTPException(status_code=400, detail="Token is not for intake phase")
+
+    now = datetime.now(timezone.utc)
+
+    with get_db() as conn:
+        cur = get_cursor(conn)
+
+        # Check for duplicate
+        cur.execute(
+            "SELECT record_id FROM tracking.intake_records WHERE order_id = %s AND laundry_id = %s",
+            (payload.order_id, payload.laundry_id),
+        )
+        existing = cur.fetchone()
+        if existing:
+            raise HTTPException(status_code=409, detail="Intake already recorded for this order")
+
+        # Save intake record
+        import json
+        cur.execute(
+            """
+            INSERT INTO tracking.intake_records
+                (order_id, laundry_id, employee_id, items, photo_urls, status, confirmed_at)
+            VALUES (%s, %s, %s, %s::jsonb, %s::jsonb, 'confirmed', %s)
+            RETURNING record_id
+            """,
+            (
+                payload.order_id,
+                payload.laundry_id,
+                payload.employee_id,
+                json.dumps(request.items),
+                json.dumps(request.photoUrls),
+                now,
+            ),
+        )
+        row = cur.fetchone()
+        record_id = str(row["record_id"])
+
+        # Update tracking session to confirmed
+        cur.execute(
+            """
+            UPDATE tracking.tracking_sessions
+            SET status = 'confirmed', result_data = %s::jsonb, confirmed_at = %s
+            WHERE order_id = %s AND laundry_id = %s AND phase = 'intake' AND status = 'waiting'
+            """,
+            (
+                json.dumps({"recordId": record_id, "items": request.items}),
+                now,
+                payload.order_id,
+                payload.laundry_id,
+            ),
+        )
+
+    # Send SMS to customer (non-blocking — don't fail the confirmation if SMS fails)
+    sms_sent = False
+    try:
+        # Look up customer phone and shop name for this order
+        with get_db() as conn:
+            cur = get_cursor(conn)
+            cur.execute(
+                """
+                SELECT o.customer_phone, o.customer_name, l.laundry_name
+                FROM shop.orders o
+                JOIN shop.laundries l ON l.laundry_id = o.laundry_id
+                WHERE o.order_id = %s AND o.laundry_id = %s
+                """,
+                (payload.order_id, payload.laundry_id),
+            )
+            order_info = cur.fetchone()
+
+        if order_info and order_info.get("customer_phone"):
+            sms_message = format_intake_sms(
+                shop_name=order_info["laundry_name"],
+                order_id=payload.order_id,
+                items=request.items,
+            )
+            sms_sent = send_sms(order_info["customer_phone"], sms_message)
+    except Exception as e:
+        logger.error(f"Failed to send intake SMS for order {payload.order_id}: {e}")
+
+    return ConfirmIntakeResponse(
+        status="success",
+        recordId=record_id,
+        smsSent=sms_sent,
+    )
+
+
+# ── Fold Confirmation ─────────────────────────────────────────────────────────
+
+class AcknowledgementItem(BaseModel):
+    category: str
+    reason: str
+    intakeCount: Optional[int] = None
+    foldCount: Optional[int] = None
+    freeText: Optional[str] = None
+
+
+class ConfirmFoldRequest(BaseModel):
+    token: str
+    items: list[dict]  # [{ "category": "Shirts", "count": 5 }]
+    acknowledgements: list[AcknowledgementItem] = []
+    photoUrls: list[str]
+
+
+class ConfirmFoldResponse(BaseModel):
+    status: str
+    recordId: Optional[str] = None
+    smsSent: bool = False
+    discrepancies: list[dict] = []
+
+
+@track_router.post("/track/confirm-fold", response_model=ConfirmFoldResponse)
+async def confirm_fold(request: ConfirmFoldRequest):
+    """
+    Confirm the fold record for an order.
+    Runs reconciliation, validates acknowledgements, saves record, and sends SMS.
+    """
+    from app.services.notification_service import send_sms
+    from app.services.sms_formatter import format_completion_sms
+    from app.services.reconciliation_service import compute_discrepancies
+
+    # Validate token
+    payload = validate_token(request.token)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+
+    if payload.phase != "fold":
+        raise HTTPException(status_code=400, detail="Token is not for fold phase")
+
+    now = datetime.now(timezone.utc)
+
+    # Fetch intake record for reconciliation
+    with get_db() as conn:
+        cur = get_cursor(conn)
+        cur.execute(
+            "SELECT items FROM tracking.intake_records WHERE order_id = %s AND laundry_id = %s",
+            (payload.order_id, payload.laundry_id),
+        )
+        intake_row = cur.fetchone()
+
+    # Compute discrepancies
+    discrepancies = []
+    if intake_row:
+        intake_items = intake_row["items"] if isinstance(intake_row["items"], list) else []
+        discrepancies = compute_discrepancies(intake_items, request.items)
+
+        # Validate all discrepancies are acknowledged
+        acknowledged_categories = {ack.category for ack in request.acknowledgements}
+        unresolved = [d for d in discrepancies if d["category"] not in acknowledged_categories]
+
+        if unresolved:
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "message": "All discrepancies must be acknowledged before confirming",
+                    "unresolved": unresolved,
+                },
+            )
+
+    # Save fold record
+    import json
+    with get_db() as conn:
+        cur = get_cursor(conn)
+
+        # Check for duplicate
+        cur.execute(
+            "SELECT record_id FROM tracking.fold_records WHERE order_id = %s AND laundry_id = %s",
+            (payload.order_id, payload.laundry_id),
+        )
+        existing = cur.fetchone()
+        if existing:
+            raise HTTPException(status_code=409, detail="Fold record already exists for this order")
+
+        acknowledgements_data = [ack.model_dump() for ack in request.acknowledgements]
+
+        cur.execute(
+            """
+            INSERT INTO tracking.fold_records
+                (order_id, laundry_id, employee_id, items, photo_urls,
+                 discrepancies, acknowledgements, status, confirmed_at)
+            VALUES (%s, %s, %s, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, 'confirmed', %s)
+            RETURNING record_id
+            """,
+            (
+                payload.order_id,
+                payload.laundry_id,
+                payload.employee_id,
+                json.dumps(request.items),
+                json.dumps(request.photoUrls),
+                json.dumps(discrepancies),
+                json.dumps(acknowledgements_data),
+                now,
+            ),
+        )
+        row = cur.fetchone()
+        record_id = str(row["record_id"])
+
+        # Update tracking session
+        cur.execute(
+            """
+            UPDATE tracking.tracking_sessions
+            SET status = 'confirmed', result_data = %s::jsonb, confirmed_at = %s
+            WHERE order_id = %s AND laundry_id = %s AND phase = 'fold' AND status = 'waiting'
+            """,
+            (
+                json.dumps({"recordId": record_id, "items": request.items, "discrepancies": discrepancies}),
+                now,
+                payload.order_id,
+                payload.laundry_id,
+            ),
+        )
+
+    # Send completion SMS
+    sms_sent = False
+    try:
+        with get_db() as conn:
+            cur = get_cursor(conn)
+            cur.execute(
+                """
+                SELECT o.customer_phone, l.laundry_name
+                FROM shop.orders o
+                JOIN shop.laundries l ON l.laundry_id = o.laundry_id
+                WHERE o.order_id = %s AND o.laundry_id = %s
+                """,
+                (payload.order_id, payload.laundry_id),
+            )
+            order_info = cur.fetchone()
+
+        if order_info and order_info.get("customer_phone"):
+            sms_message = format_completion_sms(
+                shop_name=order_info["laundry_name"],
+                items=request.items,
+                has_discrepancies=len(discrepancies) > 0,
+            )
+            sms_sent = send_sms(order_info["customer_phone"], sms_message)
+    except Exception as e:
+        logger.error(f"Failed to send completion SMS for order {payload.order_id}: {e}")
+
+    return ConfirmFoldResponse(
+        status="success",
+        recordId=record_id,
+        smsSent=sms_sent,
+        discrepancies=discrepancies,
+    )
+
+
+# ── POS Polling / Sync Endpoints ─────────────────────────────────────────────
+
+class TrackingStatusResponse(BaseModel):
+    status: str  # "waiting" | "confirmed" | "expired"
+    record: Optional[dict] = None
+    qrGeneratedAt: Optional[str] = None
+    confirmedAt: Optional[str] = None
+
+
+@router.get("/item-tracking/status", response_model=TrackingStatusResponse)
+async def get_tracking_status(
+    orderId: str = Query(...),
+    laundryId: str = Query(...),
+    phase: str = Query(..., description="intake or fold"),
+):
+    """
+    Polling endpoint for POS to check if the mobile upload flow is complete.
+    POS calls this every 3 seconds while waiting for employee to finish on phone.
+    """
+    with get_db() as conn:
+        cur = get_cursor(conn)
+        cur.execute(
+            """
+            SELECT session_id, status, result_data, expires_at, confirmed_at, created_at
+            FROM tracking.tracking_sessions
+            WHERE order_id = %s AND laundry_id = %s AND phase = %s
+            ORDER BY created_at DESC
+            LIMIT 1
+            """,
+            (orderId, laundryId, phase),
+        )
+        session = cur.fetchone()
+
+    if not session:
+        return TrackingStatusResponse(status="no_session")
+
+    # Check if expired
+    now = datetime.now(timezone.utc)
+    expires_at = session["expires_at"]
+    if hasattr(expires_at, 'tzinfo') and expires_at.tzinfo is None:
+        from datetime import timezone as tz
+        expires_at = expires_at.replace(tzinfo=tz.utc)
+
+    if session["status"] == "waiting" and now > expires_at:
+        return TrackingStatusResponse(
+            status="expired",
+            qrGeneratedAt=session["created_at"].isoformat() if session["created_at"] else None,
+        )
+
+    if session["status"] == "confirmed":
+        return TrackingStatusResponse(
+            status="confirmed",
+            record=session["result_data"],
+            confirmedAt=session["confirmed_at"].isoformat() if session["confirmed_at"] else None,
+        )
+
+    return TrackingStatusResponse(
+        status="waiting",
+        qrGeneratedAt=session["created_at"].isoformat() if session["created_at"] else None,
+    )
+
+
+# ── Tracking Record Retrieval ─────────────────────────────────────────────────
+
+class TrackingRecordResponse(BaseModel):
+    intakeRecord: Optional[dict] = None
+    foldRecord: Optional[dict] = None
+    discrepancies: list[dict] = []
+    acknowledgements: list[dict] = []
+
+
+@router.get("/item-tracking/record", response_model=TrackingRecordResponse)
+async def get_tracking_record(
+    orderId: str = Query(...),
+    laundryId: str = Query(...),
+):
+    """
+    Retrieve the full tracking record for an order (intake + fold + discrepancies).
+    Used in the order detail view on POS for audit purposes.
+    """
+    with get_db() as conn:
+        cur = get_cursor(conn)
+
+        # Fetch intake record
+        cur.execute(
+            """
+            SELECT record_id, items, photo_urls, employee_id, confirmed_at, created_at
+            FROM tracking.intake_records
+            WHERE order_id = %s AND laundry_id = %s
+            """,
+            (orderId, laundryId),
+        )
+        intake_row = cur.fetchone()
+
+        # Fetch fold record
+        cur.execute(
+            """
+            SELECT record_id, items, photo_urls, discrepancies, acknowledgements,
+                   employee_id, confirmed_at, created_at
+            FROM tracking.fold_records
+            WHERE order_id = %s AND laundry_id = %s
+            """,
+            (orderId, laundryId),
+        )
+        fold_row = cur.fetchone()
+
+    intake_record = None
+    if intake_row:
+        intake_record = {
+            "recordId": str(intake_row["record_id"]),
+            "items": intake_row["items"],
+            "photoUrls": intake_row["photo_urls"],
+            "employeeId": intake_row["employee_id"],
+            "confirmedAt": intake_row["confirmed_at"].isoformat() if intake_row["confirmed_at"] else None,
+        }
+
+    fold_record = None
+    discrepancies = []
+    acknowledgements = []
+    if fold_row:
+        fold_record = {
+            "recordId": str(fold_row["record_id"]),
+            "items": fold_row["items"],
+            "photoUrls": fold_row["photo_urls"],
+            "employeeId": fold_row["employee_id"],
+            "confirmedAt": fold_row["confirmed_at"].isoformat() if fold_row["confirmed_at"] else None,
+        }
+        discrepancies = fold_row["discrepancies"] or []
+        acknowledgements = fold_row["acknowledgements"] or []
+
+    return TrackingRecordResponse(
+        intakeRecord=intake_record,
+        foldRecord=fold_record,
+        discrepancies=discrepancies,
+        acknowledgements=acknowledgements,
+    )
+
+
+# ── Token Validation (for mobile page load) ───────────────────────────────────
+
+class TokenValidationResponse(BaseModel):
+    orderId: str
+    laundryId: str
+    phase: str
+    employeeId: str
+    expiresAt: str
+
+
+@track_router.get("/track/validate", response_model=TokenValidationResponse)
+async def validate_tracking_token(token: str = Query(...)):
+    """
+    Validate a tracking token and return its payload.
+    Used by the mobile upload page on load to verify the link is still valid.
+    """
+    payload = validate_token(token)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Invalid or expired link. Please scan a new QR code from the POS.")
+
+    return TokenValidationResponse(
+        orderId=payload.order_id,
+        laundryId=payload.laundry_id,
+        phase=payload.phase,
+        employeeId=payload.employee_id,
+        expiresAt=payload.exp.isoformat(),
+    )
+
+
+# ── Customer-Facing Photo Access ──────────────────────────────────────────────
+
+class CustomerTrackingResponse(BaseModel):
+    orderId: str
+    intakeItems: Optional[list[dict]] = None
+    intakePhotos: Optional[list[str]] = None
+    intakeConfirmedAt: Optional[str] = None
+    foldItems: Optional[list[dict]] = None
+    foldPhotos: Optional[list[str]] = None
+    foldConfirmedAt: Optional[str] = None
+
+
+@track_router.get("/track/customer/{order_id}", response_model=CustomerTrackingResponse)
+async def get_customer_tracking(
+    order_id: str,
+    laundryId: str = Query(...),
+):
+    """
+    Public endpoint for customers to view their item tracking photos and counts.
+    No auth required — accessible via the order tracking link.
+    """
+    with get_db() as conn:
+        cur = get_cursor(conn)
+
+        # Fetch intake record
+        cur.execute(
+            """
+            SELECT items, photo_urls, confirmed_at
+            FROM tracking.intake_records
+            WHERE order_id = %s AND laundry_id = %s
+            """,
+            (order_id, laundryId),
+        )
+        intake_row = cur.fetchone()
+
+        # Fetch fold record
+        cur.execute(
+            """
+            SELECT items, photo_urls, confirmed_at
+            FROM tracking.fold_records
+            WHERE order_id = %s AND laundry_id = %s
+            """,
+            (order_id, laundryId),
+        )
+        fold_row = cur.fetchone()
+
+    response = CustomerTrackingResponse(orderId=order_id)
+
+    if intake_row:
+        response.intakeItems = intake_row["items"]
+        response.intakePhotos = intake_row["photo_urls"]
+        response.intakeConfirmedAt = intake_row["confirmed_at"].isoformat() if intake_row["confirmed_at"] else None
+
+    if fold_row:
+        response.foldItems = fold_row["items"]
+        response.foldPhotos = fold_row["photo_urls"]
+        response.foldConfirmedAt = fold_row["confirmed_at"].isoformat() if fold_row["confirmed_at"] else None
+
+    return response

@@ -20,6 +20,7 @@ import LaundryLandingWrapper from './Pages/LaundryLandingWrapper';
 import PlatformAdminPage from './Pages/PlatformAdminPage';
 import OnboardingPage from './Pages/OnboardingPage';
 import SareeRollingPage from './Pages/SareeRollingPage';
+import ItemTrackingUpload from './Pages/ItemTrackingUpload';
 import { Navigate } from 'react-router-dom';
 import theme from './theme';
 
@@ -49,6 +50,7 @@ function App() {
                         <Route path="/onboard" element={<OnboardingPage />} />
                         <Route path="/saree-rolling" element={<SareeRollingPage />} />
                         <Route path="/:laundryId/saree-rolling" element={<SareeRollingPage />} />
+                        <Route path="/track/:token" element={<ItemTrackingUpload />} />
 
                         <Route path="/:laundryId/*" element={
                             <LaundryProvider>
