@@ -28,49 +28,107 @@ class VisionResult:
     raw_response: Optional[str] = None
 
 
-def build_vision_prompt(categories: list[str]) -> str:
+def build_vision_prompt(categories: list[str], phase: str = "intake") -> str:
     """
     Build the structured prompt for Claude Vision to identify and count
     laundry items from multiple angle photos.
 
+    Uses different prompts for intake (dirty, spread out) vs fold (clean, stacked).
+
     Args:
         categories: List of configured item category names
+        phase: "intake" for dirty laundry spread out, "fold" for folded stacks
 
     Returns:
         The system prompt string
     """
     categories_str = ", ".join(categories)
 
-    return f"""You are a laundry item counter. You are looking at photos of laundry items spread out on a table, taken from 2-3 different angles.
+    if phase == "fold":
+        return _build_fold_prompt(categories_str)
+    else:
+        return _build_intake_prompt(categories_str)
 
-Your task:
-1. Identify all individual laundry items visible across the provided photos
-2. Cross-reference the different angle views to get an accurate count — do NOT double-count items visible in multiple photos
-3. Classify each item using ONLY these categories: {categories_str}
-4. Count the total number of individual items per category
-5. Assign a confidence score (0-100) for each category's count
 
-IMPORTANT RULES:
-- Count INDIVIDUAL items, not stacks or groups
-- Cross-reference angles to resolve items that may be hidden or overlapping in one view
-- If an item doesn't match any category, classify it as "Other"
-- If items are overlapping or partially hidden from ALL angles, lower the confidence score
-- Respond ONLY with valid JSON in this exact format:
+def _build_intake_prompt(categories_str: str) -> str:
+    """Prompt for dirty laundry spread out on a table."""
+    return f"""You are a laundry garment inventory assistant at a laundromat. You are analyzing photos of DIRTY laundry items spread out on a table, taken from 2-3 different angles.
+
+Your goal is to identify and count every visible garment.
+
+RULES:
+1. Count only garments that are actually visible in the photos.
+2. Do NOT guess hidden garments inside bunches or folds.
+3. If multiple garments are tangled together and cannot be reliably separated, still count each distinguishable piece.
+4. Treat matching socks as 1 pair only when both socks are visible.
+5. Ignore hangers, bags, tables, laundry carts, baskets, and background objects.
+6. Cross-reference all angle photos — the same items appear in multiple photos, do NOT double-count.
+7. Use visible edges, collars, sleeves, waistbands, and fabric boundaries to distinguish separate items.
+8. Be thorough — a typical laundry order has 5-30 items. Count every piece of fabric that is a garment.
+9. If unsure about an item type, classify it using the closest matching category or "Other".
+
+CATEGORIES TO USE: {categories_str}
+
+For each category found, report:
+- category: The item type from the list above
+- count: Number of individual items of that type
+- confidence: 0-100 how certain you are about the count
+- note: (optional) any observation about visibility or uncertainty
+
+RESPOND WITH ONLY THIS JSON — nothing else before or after:
 
 {{
   "items": [
-    {{"category": "Shirts", "count": 5, "confidence": 95}},
-    {{"category": "Pants", "count": 3, "confidence": 88, "note": "2 partially overlapping"}}
+    {{"category": "Shirts", "count": 5, "confidence": 92}},
+    {{"category": "Pants", "count": 3, "confidence": 85, "note": "2 are bunched together"}},
+    {{"category": "Socks (pairs)", "count": 2, "confidence": 70, "note": "some may be singles"}}
   ]
 }}
 
-Categories to use: {categories_str}
-"""
+Remember: Every piece of fabric that is a wearable garment should be counted. Do NOT return an empty items list if garments are visible."""
+
+
+def _build_fold_prompt(categories_str: str) -> str:
+    """Prompt for folded/clean laundry stacked on a table."""
+    return f"""You are analyzing photos of FOLDED clean laundry stacked on a table, taken from 2-3 different angles.
+
+Your goal is to estimate the number of individual garments in the folded stacks.
+
+RULES:
+1. Count only garments whose boundaries can be visually distinguished.
+2. Use visible folds, sleeves, collars, waistbands, pant legs, and edges to identify separate garments.
+3. Do NOT assume garments hidden deep inside a stack — only count what you can see evidence of.
+4. If a garment cannot be visually separated from adjacent garments, include it but with lower confidence.
+5. Cross-reference all angle photos to get the most accurate count — side views often reveal layers that top views miss.
+6. Folded items are typically uniform in size within a category — use stack height and visible layers to estimate count.
+7. A neatly folded stack of shirts will show distinct edges for each item — count the layers.
+8. Be conservative but not overly so — if you can see 5 distinct fold lines in a stack, that's likely 5 items.
+
+CATEGORIES TO USE: {categories_str}
+
+For each category found, report:
+- category: The item type from the list above
+- count: Number of individual items you can identify
+- confidence: 0-100 how certain you are (lower for items deep in stack)
+- note: (optional) observation about stack depth or visibility
+
+RESPOND WITH ONLY THIS JSON — nothing else before or after:
+
+{{
+  "items": [
+    {{"category": "Shirts", "count": 5, "confidence": 88, "note": "5 distinct fold layers visible"}},
+    {{"category": "Pants", "count": 3, "confidence": 90}},
+    {{"category": "Towels", "count": 2, "confidence": 95, "note": "clearly separated"}}
+  ]
+}}
+
+Remember: Folded laundry always has items. Use layer edges and fold boundaries to count. Do NOT return an empty items list if folded garments are visible."""
 
 
 async def analyze_photos(
     image_urls: list[str],
     categories: list[str],
+    phase: str = "intake",
 ) -> VisionResult:
     """
     Send images to Claude Vision API for item identification and counting.
@@ -78,6 +136,7 @@ async def analyze_photos(
     Args:
         image_urls: List of S3 URLs for the uploaded photos (2-3 angle shots)
         categories: List of configured item category names for classification
+        phase: "intake" for dirty laundry, "fold" for folded stacks
 
     Returns:
         VisionResult with identified items, counts, and confidence scores
@@ -100,8 +159,9 @@ async def analyze_photos(
         import base64
 
         content = []
-        for url in image_urls:
+        for i, url in enumerate(image_urls):
             try:
+                logger.info(f"[VISION] Fetching image {i+1}/{len(image_urls)}: {url[:80]}...")
                 resp = httpx.get(url, timeout=10)
                 if resp.status_code == 200:
                     img_base64 = base64.standard_b64encode(resp.content).decode("utf-8")
@@ -109,6 +169,7 @@ async def analyze_photos(
                     media_type = "image/jpeg"
                     if resp.content[:8] == b'\x89PNG\r\n\x1a\n':
                         media_type = "image/png"
+                    logger.info(f"[VISION] Image {i+1} fetched OK: {len(resp.content)} bytes, {media_type}")
                     content.append({
                         "type": "image",
                         "source": {
@@ -118,9 +179,9 @@ async def analyze_photos(
                         },
                     })
                 else:
-                    logger.warning(f"Failed to fetch image from {url}: HTTP {resp.status_code}")
+                    logger.warning(f"[VISION] Failed to fetch image {i+1} from {url}: HTTP {resp.status_code}")
             except Exception as e:
-                logger.warning(f"Failed to fetch image from {url}: {e}")
+                logger.warning(f"[VISION] Failed to fetch image {i+1} from {url}: {e}")
 
         if not content:
             raise VisionServiceError("INVALID_IMAGE", "Could not fetch any uploaded images for analysis")
@@ -131,10 +192,11 @@ async def analyze_photos(
         })
 
         # Call Claude Vision
+        logger.info(f"[VISION] Calling Claude with {len(content) - 1} images, phase={phase}, categories: {categories}")
         response = client.messages.create(
             model="claude-sonnet-4-6",
             max_tokens=1024,
-            system=build_vision_prompt(categories),
+            system=build_vision_prompt(categories, phase=phase),
             messages=[
                 {
                     "role": "user",
@@ -147,8 +209,14 @@ async def analyze_photos(
         response_text = response.content[0].text
         processing_time = int((time.time() - start_time) * 1000)
 
+        logger.info(f"[VISION] Claude response ({processing_time}ms): {response_text[:500]}")
+
         # Extract JSON from response
         result_data = _parse_vision_response(response_text, categories)
+
+        logger.info(f"[VISION] Parsed {len(result_data)} item categories from response")
+        if len(result_data) == 0:
+            logger.warning(f"[VISION] ZERO ITEMS DETECTED! Full response: {response_text}")
 
         return VisionResult(
             items=result_data,
@@ -184,11 +252,29 @@ def _parse_vision_response(response_text: str, categories: list[str]) -> list[Vi
         if text.endswith("```"):
             text = text[:-3].strip()
 
+    # Try to extract JSON from anywhere in the response
+    if not text.startswith("{"):
+        # Look for JSON object in the text
+        import re
+        json_match = re.search(r'\{[\s\S]*"items"[\s\S]*\}', text)
+        if json_match:
+            text = json_match.group()
+            logger.info(f"[VISION] Extracted JSON from mixed response")
+        else:
+            logger.warning(f"[VISION] No JSON found in response: {text[:300]}")
+            return []
+
     try:
         data = json.loads(text)
-    except json.JSONDecodeError:
-        logger.warning(f"Failed to parse vision response as JSON: {text[:200]}")
+    except json.JSONDecodeError as e:
+        logger.warning(f"[VISION] JSON parse failed: {e}. Text: {text[:300]}")
         return []
+
+    if "items" not in data:
+        logger.warning(f"[VISION] Response JSON has no 'items' key. Keys: {list(data.keys())}")
+        return []
+
+    logger.info(f"[VISION] Parsed JSON successfully with {len(data['items'])} items")
 
     items = []
     for item in data.get("items", []):

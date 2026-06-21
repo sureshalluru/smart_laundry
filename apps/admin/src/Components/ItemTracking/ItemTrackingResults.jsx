@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react';
 import {
   Box,
   VStack,
@@ -13,14 +14,49 @@ import {
   Divider,
   Image,
   SimpleGrid,
+  Alert,
+  AlertIcon,
+  Collapse,
+  Button,
+  Tooltip,
 } from '@chakra-ui/react';
+
+const API_BASE = process.env.REACT_APP_API_URL || '';
 
 /**
  * ItemTrackingResults — Displays the intake or fold item counts on the POS.
  * Shows item counts AND the uploaded photos.
  * Shown after the mobile upload flow is confirmed.
+ * Also shows customer feedback/discrepancy indicators if present.
  */
-function ItemTrackingResults({ record, phase }) {
+function ItemTrackingResults({ record, phase, orderId, laundryId }) {
+  const [feedback, setFeedback] = useState(null);
+  const [showFeedback, setShowFeedback] = useState(false);
+
+  useEffect(() => {
+    if (orderId && laundryId) {
+      fetchFeedback();
+    }
+  }, [orderId, laundryId]);
+
+  const fetchFeedback = async () => {
+    try {
+      const res = await fetch(
+        `${API_BASE}/api/admin/item-tracking/feedback?laundryId=${laundryId}&orderId=${orderId}`
+      );
+      if (res.ok) {
+        const data = await res.json();
+        // Filter to the current phase
+        const phaseFeedback = data.filter((f) => f.phase === phase);
+        if (phaseFeedback.length > 0) {
+          setFeedback(phaseFeedback[0]);
+        }
+      }
+    } catch (e) {
+      // Non-critical — don't break the UI
+    }
+  };
+
   if (!record) return null;
 
   const items = record.items || [];
@@ -92,6 +128,68 @@ function ItemTrackingResults({ record, phase }) {
           <Text fontSize="xs" color="gray.400">
             Recorded by: {record.employeeId}
           </Text>
+        )}
+
+        {/* Customer Feedback Indicator */}
+        {feedback && (
+          <Box mt={2}>
+            <Alert status="warning" borderRadius="md" py={2} px={3}>
+              <AlertIcon boxSize="16px" />
+              <Box flex="1">
+                <HStack justify="space-between" w="full">
+                  <Tooltip label="Customer reported a count discrepancy">
+                    <Text fontSize="xs" fontWeight="bold" color="orange.700">
+                      ⚠ Customer reported discrepancy
+                    </Text>
+                  </Tooltip>
+                  <Button
+                    size="xs"
+                    variant="ghost"
+                    onClick={() => setShowFeedback(!showFeedback)}
+                  >
+                    {showFeedback ? 'Hide' : 'Details'}
+                  </Button>
+                </HStack>
+                <Collapse in={showFeedback}>
+                  <Box mt={2} p={2} bg="orange.50" borderRadius="sm">
+                    <Text fontSize="xs" fontWeight="semibold" mb={1}>
+                      Customer says:
+                    </Text>
+                    {(feedback.customerCounts || []).map((item, i) => (
+                      <HStack key={i} justify="space-between" fontSize="xs">
+                        <Text>{item.category}</Text>
+                        <Text fontWeight="bold">{item.count}</Text>
+                      </HStack>
+                    ))}
+                    <Divider my={1} />
+                    <Text fontSize="xs" fontWeight="semibold" mb={1}>
+                      AI counted:
+                    </Text>
+                    {(feedback.aiCounts || []).map((item, i) => (
+                      <HStack key={i} justify="space-between" fontSize="xs">
+                        <Text>{item.category}</Text>
+                        <Text fontWeight="bold">{item.count}</Text>
+                      </HStack>
+                    ))}
+                    {feedback.comment && (
+                      <>
+                        <Divider my={1} />
+                        <Text fontSize="xs" color="gray.600" fontStyle="italic">
+                          "{feedback.comment}"
+                        </Text>
+                      </>
+                    )}
+                    <Badge mt={1} size="sm" colorScheme={
+                      feedback.status === 'resolved' ? 'green' :
+                      feedback.status === 'reviewed' ? 'blue' : 'orange'
+                    }>
+                      {feedback.status}
+                    </Badge>
+                  </Box>
+                </Collapse>
+              </Box>
+            </Alert>
+          </Box>
         )}
       </VStack>
     </Box>

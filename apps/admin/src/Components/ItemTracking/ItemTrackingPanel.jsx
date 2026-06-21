@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Box, VStack, Text, Button } from '@chakra-ui/react';
+import { Box, VStack, HStack, Text, Button, Badge } from '@chakra-ui/react';
 import ItemTrackingQR from './ItemTrackingQR';
 import ItemTrackingResults from './ItemTrackingResults';
 import DiscrepancyAlert from './DiscrepancyAlert';
@@ -10,26 +10,13 @@ const API_BASE = process.env.REACT_APP_API_URL || '';
  * ItemTrackingPanel — Inline panel that manages the full item tracking
  * workflow for a single order. Renders within the order detail view.
  *
- * Shows:
- * - QR code for intake/fold (when appropriate status)
- * - Results after confirmation
- * - Discrepancy alerts
- * - Skip option for rush orders
- *
- * Props:
- * - orderId: string
- * - laundryId: string
- * - orderStatus: string (e.g., "ReceivedAtFacility", "ProcessingCompleted")
- * - employeeId: string
- * - onSkip: () => void (called when employee skips tracking)
+ * Always shows an "Upload Photos" button so admin can scan QR at any time.
+ * Also shows existing results if tracking data exists.
  */
 function ItemTrackingPanel({ orderId, laundryId, orderStatus, employeeId, onSkip }) {
   const [trackingRecord, setTrackingRecord] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [skipped, setSkipped] = useState(false);
-
-  // Determine which phase to show based on order status
-  const phase = getPhaseForStatus(orderStatus);
+  const [showQR, setShowQR] = useState(null); // null, 'intake', or 'fold'
 
   // Fetch existing tracking record on mount
   useEffect(() => {
@@ -50,100 +37,91 @@ function ItemTrackingPanel({ orderId, laundryId, orderStatus, employeeId, onSkip
     setLoading(false);
   };
 
-  const handleResultsReceived = (record) => {
-    // Refresh the tracking record
+  const handleResultsReceived = () => {
+    setShowQR(null);
     fetchTrackingRecord();
   };
 
-  const handleSkip = () => {
-    setSkipped(true);
-    if (onSkip) onSkip();
-  };
-
   if (loading) return null;
-  if (skipped) return null;
 
   const hasIntakeRecord = trackingRecord?.intakeRecord != null;
   const hasFoldRecord = trackingRecord?.foldRecord != null;
 
   return (
-    <Box mt={3} mb={3}>
+    <Box mt={3} mb={3} p={3} borderWidth="1px" borderRadius="md" bg="gray.50">
       <VStack spacing={3} align="stretch">
-        {/* Show intake results if already recorded */}
-        {hasIntakeRecord && (
-          <ItemTrackingResults record={trackingRecord.intakeRecord} phase="intake" />
-        )}
-
-        {/* Show QR for intake if not yet recorded */}
-        {phase === 'intake' && !hasIntakeRecord && (
-          <>
-            <ItemTrackingQR
-              orderId={orderId}
-              laundryId={laundryId}
-              phase="intake"
-              employeeId={employeeId}
-              onResultsReceived={handleResultsReceived}
-            />
+        {/* Header with Upload Photos buttons */}
+        <HStack justify="space-between" align="center">
+          <HStack>
+            <Text fontSize="sm" fontWeight="bold">📷 Item Tracking</Text>
+            {hasIntakeRecord && <Badge colorScheme="blue" fontSize="xs">Intake ✓</Badge>}
+            {hasFoldRecord && <Badge colorScheme="green" fontSize="xs">Fold ✓</Badge>}
+          </HStack>
+          <HStack spacing={2}>
             <Button
               size="xs"
-              variant="ghost"
-              color="gray.400"
-              onClick={handleSkip}
+              colorScheme="blue"
+              variant={showQR === 'intake' ? 'solid' : 'outline'}
+              onClick={() => setShowQR(showQR === 'intake' ? null : 'intake')}
             >
-              Skip Item Tracking
+              {hasIntakeRecord ? 'Re-scan Intake' : 'Scan Intake'}
             </Button>
-          </>
+            <Button
+              size="xs"
+              colorScheme="green"
+              variant={showQR === 'fold' ? 'solid' : 'outline'}
+              onClick={() => setShowQR(showQR === 'fold' ? null : 'fold')}
+            >
+              {hasFoldRecord ? 'Re-scan Fold' : 'Scan Fold'}
+            </Button>
+          </HStack>
+        </HStack>
+
+        {/* QR Code (shown when button clicked) */}
+        {showQR && (
+          <ItemTrackingQR
+            orderId={orderId}
+            laundryId={laundryId}
+            phase={showQR}
+            employeeId={employeeId}
+            onResultsReceived={handleResultsReceived}
+          />
         )}
 
-        {/* Show fold results if already recorded */}
+        {/* Existing intake results */}
+        {hasIntakeRecord && (
+          <ItemTrackingResults
+            record={trackingRecord.intakeRecord}
+            phase="intake"
+            orderId={orderId}
+            laundryId={laundryId}
+          />
+        )}
+
+        {/* Existing fold results */}
         {hasFoldRecord && (
           <>
-            <ItemTrackingResults record={trackingRecord.foldRecord} phase="fold" />
+            <ItemTrackingResults
+              record={trackingRecord.foldRecord}
+              phase="fold"
+              orderId={orderId}
+              laundryId={laundryId}
+            />
             {trackingRecord.discrepancies?.length > 0 && (
               <DiscrepancyAlert discrepancies={trackingRecord.discrepancies} />
             )}
           </>
         )}
 
-        {/* Show QR for fold if intake exists but fold not yet recorded */}
-        {phase === 'fold' && hasIntakeRecord && !hasFoldRecord && (
-          <ItemTrackingQR
-            orderId={orderId}
-            laundryId={laundryId}
-            phase="fold"
-            employeeId={employeeId}
-            onResultsReceived={handleResultsReceived}
-          />
-        )}
-
-        {/* Show QR for fold without reconciliation if no intake */}
-        {phase === 'fold' && !hasIntakeRecord && !hasFoldRecord && (
-          <>
-            <Text fontSize="xs" color="gray.500" fontStyle="italic">
-              Intake not recorded — fold count only (no reconciliation)
-            </Text>
-            <ItemTrackingQR
-              orderId={orderId}
-              laundryId={laundryId}
-              phase="fold"
-              employeeId={employeeId}
-              onResultsReceived={handleResultsReceived}
-            />
-          </>
+        {/* No data yet message */}
+        {!hasIntakeRecord && !hasFoldRecord && !showQR && (
+          <Text fontSize="xs" color="gray.500" textAlign="center">
+            Click "Scan Intake" to start counting items for this order.
+          </Text>
         )}
       </VStack>
     </Box>
   );
-}
-
-function getPhaseForStatus(status) {
-  if (!status) return 'intake'; // Default to intake for any order
-  const s = status.toLowerCase();
-  // Show fold QR when processing is completed
-  if (s.includes('processingcompleted') || s === 'processingcompleted') return 'fold';
-  if (s.includes('enroute') || s.includes('delivered') || s.includes('pickedup')) return 'fold';
-  // All other statuses show intake (or results if already recorded)
-  return 'intake';
 }
 
 export default ItemTrackingPanel;

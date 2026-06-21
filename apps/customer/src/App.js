@@ -21,6 +21,7 @@ import PlatformAdminPage from './Pages/PlatformAdminPage';
 import OnboardingPage from './Pages/OnboardingPage';
 import SareeRollingPage from './Pages/SareeRollingPage';
 import ItemTrackingUpload from './Pages/ItemTrackingUpload';
+import OrderTrackingPhotos from './Pages/OrderTrackingPhotos';
 import { Navigate } from 'react-router-dom';
 import theme from './theme';
 
@@ -51,6 +52,7 @@ function App() {
                         <Route path="/saree-rolling" element={<SareeRollingPage />} />
                         <Route path="/:laundryId/saree-rolling" element={<SareeRollingPage />} />
                         <Route path="/track/:token" element={<ItemTrackingUpload />} />
+                        <Route path="/order-tracking/:orderId" element={<OrderTrackingPhotos />} />
 
                         <Route path="/:laundryId/*" element={
                             <LaundryProvider>

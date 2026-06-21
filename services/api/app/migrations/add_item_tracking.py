@@ -131,6 +131,26 @@ def run():
             ON tracking.tracking_sessions (order_id, laundry_id, phase)
         """)
 
+        # Create customer_feedback table for discrepancy reporting
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS tracking.customer_feedback (
+                feedback_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                order_id TEXT NOT NULL,
+                laundry_id TEXT NOT NULL,
+                phase TEXT NOT NULL,
+                customer_counts JSONB NOT NULL,
+                ai_counts JSONB NOT NULL,
+                photo_urls JSONB,
+                comment TEXT,
+                status TEXT NOT NULL DEFAULT 'pending',
+                created_at TIMESTAMP DEFAULT NOW()
+            )
+        """)
+        cur.execute("""
+            CREATE INDEX IF NOT EXISTS idx_customer_feedback_order_id
+            ON tracking.customer_feedback (order_id)
+        """)
+
         logger.info("Migration: item tracking tables created successfully.")
 
 

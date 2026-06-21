@@ -15,6 +15,8 @@ def format_intake_sms(
     shop_name: str,
     order_id: str,
     items: list[dict],
+    base_url: str = "",
+    laundry_id: str = "",
 ) -> str:
     """
     Format the intake confirmation SMS message.
@@ -23,6 +25,8 @@ def format_intake_sms(
         shop_name: Name of the laundry shop
         order_id: Order identifier
         items: List of dicts with 'category' and 'count'
+        base_url: Base URL for the tracking page link
+        laundry_id: Laundry ID for the tracking page link
 
     Returns:
         Formatted SMS message string
@@ -32,6 +36,11 @@ def format_intake_sms(
     )
 
     message = f"{shop_name} received your laundry ({order_id}): {items_str}"
+
+    if base_url and laundry_id:
+        tracking_url = f"{base_url}/order-tracking/{order_id}?laundryId={laundry_id}"
+        message += f" View photos: {tracking_url}"
+
     return message
 
 
@@ -39,6 +48,9 @@ def format_completion_sms(
     shop_name: str,
     items: list[dict],
     has_discrepancies: bool = False,
+    base_url: str = "",
+    order_id: str = "",
+    laundry_id: str = "",
 ) -> str:
     """
     Format the fold completion SMS message.
@@ -47,6 +59,9 @@ def format_completion_sms(
         shop_name: Name of the laundry shop
         items: List of dicts with 'category' and 'count'
         has_discrepancies: Whether any discrepancies were acknowledged
+        base_url: Base URL for the tracking page link
+        order_id: Order ID for the tracking page link
+        laundry_id: Laundry ID for the tracking page link
 
     Returns:
         Formatted SMS message string
@@ -59,6 +74,10 @@ def format_completion_sms(
 
     if has_discrepancies:
         message += " Note: item difference noted — please contact us with questions."
+
+    if base_url and order_id and laundry_id:
+        tracking_url = f"{base_url}/order-tracking/{order_id}?laundryId={laundry_id}"
+        message += f" View details: {tracking_url}"
 
     return message
 

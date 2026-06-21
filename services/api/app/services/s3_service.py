@@ -141,3 +141,57 @@ def upload_review_image(laundry_id: str, order_id: str, image_base64: str) -> di
     except Exception as e:
         logger.exception(f"Review image upload error for order {order_id}")
         return {"status": "error", "message": str(e)}
+
+
+def generate_presigned_url(bucket: str, key: str, expires_in: int = 3600) -> str:
+    """
+    Generate a pre-signed URL for accessing a private S3 object.
+
+    Args:
+        bucket: S3 bucket name
+        key: Object key in the bucket
+        expires_in: URL validity in seconds (default 1 hour)
+
+    Returns:
+        Pre-signed URL string, or the direct URL if signing fails
+    """
+    try:
+        s3 = get_s3_client()
+        url = s3.generate_presigned_url(
+            'get_object',
+            Params={'Bucket': bucket, 'Key': key},
+            ExpiresIn=expires_in,
+        )
+        return url
+    except Exception as e:
+        logger.warning(f"Failed to generate pre-signed URL: {e}")
+        # Fallback to direct URL
+        return f"https://{bucket}.s3.amazonaws.com/{key}"
+
+
+def get_presigned_urls(photo_urls: list[str], expires_in: int = 3600) -> list[str]:
+    """
+    Convert a list of S3 URLs to pre-signed URLs.
+
+    Args:
+        photo_urls: List of S3 URLs (https://bucket.s3.amazonaws.com/key)
+        expires_in: URL validity in seconds
+
+    Returns:
+        List of pre-signed URLs
+    """
+    presigned = []
+    for url in photo_urls:
+        try:
+            # Parse bucket and key from URL
+            # Format: https://bucket-name.s3.amazonaws.com/key/path
+            if ".s3.amazonaws.com/" in url:
+                parts = url.split(".s3.amazonaws.com/", 1)
+                bucket = parts[0].replace("https://", "")
+                key = parts[1]
+                presigned.append(generate_presigned_url(bucket, key, expires_in))
+            else:
+                presigned.append(url)
+        except Exception:
+            presigned.append(url)
+    return presigned

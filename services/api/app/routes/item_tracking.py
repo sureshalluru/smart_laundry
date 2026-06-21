@@ -17,6 +17,30 @@ router = APIRouter()
 track_router = APIRouter()  # Public endpoints for mobile upload page (token auth, no admin auth)
 
 
+def get_laundry_base_url(laundry_id: str) -> str:
+    """
+    Look up the laundry's custom domain from the database.
+    Returns the full URL (https://domain) or falls back to the default.
+    """
+    try:
+        with get_db() as conn:
+            cur = get_cursor(conn)
+            cur.execute(
+                "SELECT user_domain FROM shop.laundry_shops WHERE laundry_id = %s",
+                (laundry_id,),
+            )
+            row = cur.fetchone()
+            if row and row.get("user_domain"):
+                domain = row["user_domain"]
+                if not domain.startswith("http"):
+                    domain = f"https://{domain}"
+                return domain
+    except Exception as e:
+        logger.warning(f"Failed to lookup laundry domain for {laundry_id}: {e}")
+
+    return "https://www.roundrocklaundry.com"  # fallback
+
+
 # ── Models ────────────────────────────────────────────────────────────────────
 
 class QRCodeResponse(BaseModel):
@@ -325,7 +349,7 @@ async def upload_photos(request: PhotoUploadRequest):
 
     # Call Claude Vision
     try:
-        vision_result = await analyze_photos(image_urls, categories)
+        vision_result = await analyze_photos(image_urls, categories, phase=payload.phase)
     except VisionServiceError as e:
         if e.code == "RATE_LIMIT":
             raise HTTPException(status_code=429, detail=e.message)
@@ -446,10 +470,14 @@ async def confirm_intake(request: ConfirmIntakeRequest):
             order_info = cur.fetchone()
 
         if order_info and order_info.get("customer_phone"):
+            # Get laundry's custom domain for the tracking URL
+            base_url = get_laundry_base_url(payload.laundry_id)
             sms_message = format_intake_sms(
                 shop_name=order_info["laundry_name"],
                 order_id=payload.order_id,
                 items=request.items,
+                base_url=base_url,
+                laundry_id=payload.laundry_id,
             )
             sms_sent = send_sms(order_info["customer_phone"], sms_message)
     except Exception as e:
@@ -604,10 +632,14 @@ async def confirm_fold(request: ConfirmFoldRequest):
             order_info = cur.fetchone()
 
         if order_info and order_info.get("customer_phone"):
+            base_url = get_laundry_base_url(payload.laundry_id)
             sms_message = format_completion_sms(
                 shop_name=order_info["laundry_name"],
                 items=request.items,
                 has_discrepancies=len(discrepancies) > 0,
+                base_url=base_url,
+                order_id=payload.order_id,
+                laundry_id=payload.laundry_id,
             )
             sms_sent = send_sms(order_info["customer_phone"], sms_message)
     except Exception as e:
@@ -700,7 +732,10 @@ async def get_tracking_record(
     """
     Retrieve the full tracking record for an order (intake + fold + discrepancies).
     Used in the order detail view on POS for audit purposes.
+    Returns pre-signed URLs for photos so they're accessible in the browser.
     """
+    from app.services.s3_service import get_presigned_urls
+
     with get_db() as conn:
         cur = get_cursor(conn)
 
@@ -732,7 +767,7 @@ async def get_tracking_record(
         intake_record = {
             "recordId": str(intake_row["record_id"]),
             "items": intake_row["items"],
-            "photoUrls": intake_row["photo_urls"],
+            "photoUrls": get_presigned_urls(intake_row["photo_urls"] or []),
             "employeeId": intake_row["employee_id"],
             "confirmedAt": intake_row["confirmed_at"].isoformat() if intake_row["confirmed_at"] else None,
         }
@@ -744,7 +779,7 @@ async def get_tracking_record(
         fold_record = {
             "recordId": str(fold_row["record_id"]),
             "items": fold_row["items"],
-            "photoUrls": fold_row["photo_urls"],
+            "photoUrls": get_presigned_urls(fold_row["photo_urls"] or []),
             "employeeId": fold_row["employee_id"],
             "confirmedAt": fold_row["confirmed_at"].isoformat() if fold_row["confirmed_at"] else None,
         }
@@ -809,6 +844,8 @@ async def get_customer_tracking(
     Public endpoint for customers to view their item tracking photos and counts.
     No auth required — accessible via the order tracking link.
     """
+    from app.services.s3_service import get_presigned_urls
+
     with get_db() as conn:
         cur = get_cursor(conn)
 
@@ -838,12 +875,148 @@ async def get_customer_tracking(
 
     if intake_row:
         response.intakeItems = intake_row["items"]
-        response.intakePhotos = intake_row["photo_urls"]
+        response.intakePhotos = get_presigned_urls(intake_row["photo_urls"] or [])
         response.intakeConfirmedAt = intake_row["confirmed_at"].isoformat() if intake_row["confirmed_at"] else None
 
     if fold_row:
         response.foldItems = fold_row["items"]
-        response.foldPhotos = fold_row["photo_urls"]
+        response.foldPhotos = get_presigned_urls(fold_row["photo_urls"] or [])
         response.foldConfirmedAt = fold_row["confirmed_at"].isoformat() if fold_row["confirmed_at"] else None
 
     return response
+
+
+# ── Customer Discrepancy Feedback ─────────────────────────────────────────────
+
+class CustomerFeedbackRequest(BaseModel):
+    orderId: str
+    laundryId: str
+    phase: str  # 'intake' or 'fold'
+    customerCounts: list[dict]  # [{ "category": "Shirts", "count": 6 }]
+    comment: Optional[str] = None
+
+
+class CustomerFeedbackResponse(BaseModel):
+    status: str
+    feedbackId: str
+
+
+@track_router.post("/track/customer-feedback", response_model=CustomerFeedbackResponse)
+async def submit_customer_feedback(request: CustomerFeedbackRequest):
+    """
+    Customer reports a discrepancy between their actual item counts and what the AI counted.
+    Looks up the AI counts from the intake/fold record and saves the feedback for review.
+    """
+    import json
+
+    if request.phase not in ("intake", "fold"):
+        raise HTTPException(status_code=400, detail="Phase must be 'intake' or 'fold'")
+
+    with get_db() as conn:
+        cur = get_cursor(conn)
+
+        # Look up the existing record for AI counts and photo URLs
+        if request.phase == "intake":
+            cur.execute(
+                """
+                SELECT items, photo_urls
+                FROM tracking.intake_records
+                WHERE order_id = %s AND laundry_id = %s
+                """,
+                (request.orderId, request.laundryId),
+            )
+        else:
+            cur.execute(
+                """
+                SELECT items, photo_urls
+                FROM tracking.fold_records
+                WHERE order_id = %s AND laundry_id = %s
+                """,
+                (request.orderId, request.laundryId),
+            )
+
+        record = cur.fetchone()
+        if not record:
+            raise HTTPException(
+                status_code=404,
+                detail=f"No {request.phase} record found for this order",
+            )
+
+        ai_counts = record["items"] if isinstance(record["items"], list) else []
+        photo_urls = record["photo_urls"] if record["photo_urls"] else []
+
+        # Save customer feedback
+        cur.execute(
+            """
+            INSERT INTO tracking.customer_feedback
+                (order_id, laundry_id, phase, customer_counts, ai_counts, photo_urls, comment)
+            VALUES (%s, %s, %s, %s::jsonb, %s::jsonb, %s::jsonb, %s)
+            RETURNING feedback_id
+            """,
+            (
+                request.orderId,
+                request.laundryId,
+                request.phase,
+                json.dumps(request.customerCounts),
+                json.dumps(ai_counts),
+                json.dumps(photo_urls),
+                request.comment,
+            ),
+        )
+        row = cur.fetchone()
+        feedback_id = str(row["feedback_id"])
+
+    return CustomerFeedbackResponse(status="success", feedbackId=feedback_id)
+
+
+# ── Admin Feedback Review ─────────────────────────────────────────────────────
+
+@router.get("/item-tracking/feedback")
+async def get_customer_feedback(
+    laundryId: str = Query(..., description="Laundry shop ID"),
+    status: Optional[str] = Query(None, description="Filter by status: pending, reviewed, resolved"),
+    orderId: Optional[str] = Query(None, description="Filter by order ID"),
+):
+    """
+    Admin endpoint to list customer feedback entries for review.
+    Used to identify AI counting errors and improve prompts.
+    """
+    with get_db() as conn:
+        cur = get_cursor(conn)
+
+        query = """
+            SELECT feedback_id, order_id, laundry_id, phase,
+                   customer_counts, ai_counts, photo_urls, comment, status, created_at
+            FROM tracking.customer_feedback
+            WHERE laundry_id = %s
+        """
+        params = [laundryId]
+
+        if status:
+            query += " AND status = %s"
+            params.append(status)
+
+        if orderId:
+            query += " AND order_id = %s"
+            params.append(orderId)
+
+        query += " ORDER BY created_at DESC"
+
+        cur.execute(query, tuple(params))
+        rows = cur.fetchall()
+
+    return [
+        {
+            "feedbackId": str(row["feedback_id"]),
+            "orderId": row["order_id"],
+            "laundryId": row["laundry_id"],
+            "phase": row["phase"],
+            "customerCounts": row["customer_counts"],
+            "aiCounts": row["ai_counts"],
+            "photoUrls": row["photo_urls"],
+            "comment": row["comment"],
+            "status": row["status"],
+            "createdAt": row["created_at"].isoformat() if row["created_at"] else None,
+        }
+        for row in rows
+    ]
