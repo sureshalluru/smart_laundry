@@ -112,11 +112,12 @@ def _get_laundry_info(cur, laundry_id, is_customer=None):
 
     # Services
     cur.execute("""
-        SELECT service_name, price, description, input_weight, customer_access, category_id
+        SELECT service_id, service_name, price, description, input_weight, customer_access, category_id
         FROM shop.laundry_services
         WHERE laundry_id = %s AND is_active = TRUE ORDER BY service_id
     """, (laundry_id,))
     all_services = [{
+        "serviceId": str(r["service_id"]),
         "serviceName": r["service_name"],
         "price": str(r["price"]),
         "description": r["description"] or "",

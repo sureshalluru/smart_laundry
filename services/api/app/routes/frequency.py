@@ -108,7 +108,12 @@ async def process_frequencies():
                 dropoff_date = dropoff_dt.strftime('%Y-%m-%d')
 
                 # Calculate next future pickup date
-                freq_days = 7 if frequency.lower() == 'weekly' else 14
+                if frequency.lower() == 'weekly':
+                    freq_days = 7
+                elif frequency.lower() == 'monthly':
+                    freq_days = 30
+                else:
+                    freq_days = 14  # bi-weekly
                 next_future_pickup = (pickup_dt + timedelta(days=freq_days)).strftime('%Y-%m-%d')
 
                 # Determine Uber pickup/dropoff from frequency flags
@@ -449,3 +454,83 @@ async def cancel_frequency(
             return {"status": "error", "message": "Frequency not found"}
 
     return {"status": "success", "message": "Frequency subscription canceled"}
+
+
+@router.get("/upcoming")
+async def get_upcoming_orders(
+    laundryId: str = Query(...),
+    days: int = Query(90),
+    current_user: dict = Depends(get_current_user),
+):
+    """
+    Project upcoming recurring orders for the next N days (default 90).
+    Based on active frequency subscriptions, calculates all future pickup dates.
+    """
+    with get_db() as conn:
+        cur = get_cursor(conn)
+        cur.execute("""
+            SELECT lf.frequency_id, lf.customer_id, lf.frequency,
+                   lf.future_pickup_date, lf.pickup_time_interval, lf.dropoff_time_interval,
+                   lf.auto_charge,
+                   c.first_name, c.last_name, c.phone_number,
+                   ca.address
+            FROM orders.laundry_frequency lf
+            JOIN shop.customers c ON c.customer_id = lf.customer_id
+            LEFT JOIN shop.customer_addresses ca ON ca.address_id = lf.address_id
+            WHERE lf.laundry_id = %s AND lf.is_active = TRUE
+            ORDER BY lf.future_pickup_date ASC
+        """, (laundryId,))
+        subscriptions = cur.fetchall()
+
+    # Project future dates for each subscription
+    today = datetime.now().date()
+    end_date = today + timedelta(days=days)
+    upcoming = []
+
+    for sub in subscriptions:
+        frequency = sub["frequency"]
+        if frequency.lower() == 'weekly':
+            freq_days = 7
+        elif frequency.lower() == 'monthly':
+            freq_days = 30
+        else:
+            freq_days = 14  # bi-weekly
+
+        # Start from future_pickup_date and project forward
+        next_date = sub["future_pickup_date"]
+        if next_date is None:
+            continue
+
+        # Convert to date if it's a datetime
+        if hasattr(next_date, 'date'):
+            next_date = next_date.date()
+        elif isinstance(next_date, str):
+            next_date = datetime.strptime(str(next_date), '%Y-%m-%d').date()
+
+        while next_date <= end_date:
+            if next_date >= today:
+                upcoming.append({
+                    "frequencyId": str(sub["frequency_id"]),
+                    "customerId": sub["customer_id"],
+                    "customerName": f"{sub['first_name']} {sub['last_name']}".strip(),
+                    "customerPhone": sub["phone_number"] or "",
+                    "address": sub["address"] or "",
+                    "frequency": frequency,
+                    "pickupDate": str(next_date),
+                    "pickupTimeInterval": sub["pickup_time_interval"] or "",
+                    "dropoffTimeInterval": sub["dropoff_time_interval"] or "",
+                    "autoCharge": sub["auto_charge"] or False,
+                    "pickupService": "LaundryDriver",
+                    "dropoffService": "LaundryDriver",
+                })
+            next_date = next_date + timedelta(days=freq_days)
+
+    # Sort by pickup date
+    upcoming.sort(key=lambda x: x["pickupDate"])
+
+    return {
+        "status": "success",
+        "upcoming": upcoming,
+        "totalCount": len(upcoming),
+        "daysProjected": days,
+    }

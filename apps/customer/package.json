@@ -34,9 +34,18 @@
   },
   "scripts": {
     "start": "react-scripts start",
-    "build": "react-scripts build",
+    "build": "set \"CI=false\" && react-scripts build",
     "test": "react-scripts test",
     "eject": "react-scripts eject"
+  },
+  "jest": {
+    "transformIgnorePatterns": [
+      "node_modules/(?!(fast-check|pure-rand)/)"
+    ],
+    "moduleNameMapper": {
+      "^pure-rand/(.*)$": "<rootDir>/node_modules/pure-rand/lib/$1.js",
+      "^@chakra-ui/utils/(.*)$": "<rootDir>/node_modules/@chakra-ui/utils/dist/cjs/$1.cjs"
+    }
   },
   "eslintConfig": {
     "extends": [
@@ -57,6 +66,7 @@
     ]
   },
   "devDependencies": {
-    "@babel/plugin-proposal-private-property-in-object": "^7.21.11"
+    "@babel/plugin-proposal-private-property-in-object": "^7.21.11",
+    "fast-check": "^4.8.0"
   }
 }

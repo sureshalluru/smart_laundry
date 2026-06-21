@@ -1,4 +1,4 @@
-import React, {useContext, useEffect, useRef, useState} from 'react';
+import React, {useContext, useEffect, useRef, useState, useReducer} from 'react';
 import {
     Box,
     Button,
@@ -13,13 +13,13 @@ import {
     FormControl, FormLabel, Input,
     useSteps, StepIcon, StepNumber, useToast, VStack, Image, Heading
 } from "@chakra-ui/react";
-import ServicePage from '../Components/LaundryPickup/ServicePage';
 import PaymentPage from '../Components/LaundryPickup/PaymentPage';
-import ReviewOrderPage from '../Components/LaundryPickup/ReviewOrderPage';
-import PricingChoice from '../Components/LaundryPickup/PricingChoice';
-import CategorySelection from '../Components/LaundryPickup/CategorySelection';
-import BagOrderPage from '../Components/LaundryPickup/BagOrderPage';
-import BagReviewOrderPage from '../Components/LaundryPickup/BagReviewOrderPage';
+import UnifiedServicePage from '../Components/LaundryPickup/UnifiedServicePage';
+import SchedulePage from '../Components/LaundryPickup/SchedulePage';
+import UnifiedReviewPage from '../Components/LaundryPickup/UnifiedReviewPage';
+import OrderTypeSelection from '../Components/LaundryPickup/OrderTypeSelection';
+import cartReducer, { initialCartState } from '../Components/LaundryPickup/cartReducer';
+import { buildOrderPayload, getCartSubtotal } from '../Components/LaundryPickup/cartUtils';
 import {useNavigate} from "react-router-dom";
 import { Elements } from '@stripe/react-stripe-js';
 import { loadStripe } from '@stripe/stripe-js';
@@ -32,59 +32,55 @@ import {addDays} from 'date-fns';
 import {LaundryContext} from "../Components/Contexts/LaundryContext";
 
 export default function LaundryPickupPage({laundryId,customerId,customerPaymentId,setCustomerPaymentId, laundryTimeZone, setLaundryTimeZone, specialInstructions, setSpecialInstructions}) {
-    // Pricing type: "per_bag" or "per_pound"
-    const [pricingType, setPricingType] = useState(() => {
-        const saved = localStorage.getItem('selectedPricingType');
+    // Fixed 5-step stepper (Order Type + Services + Schedule + Payment + Review)
+    const steps = [
+        { title: 'Order Type' },
+        { title: 'Services' },
+        { title: 'Schedule' },
+        { title: 'Payment' },
+        { title: 'Review' },
+    ];
+
+    // Order type state
+    const [orderType, setOrderType] = useState(null); // 'one-time' | 'frequency' | 'subscribe-save'
+
+    // Pre-selected order type from landing page navigation
+    const [preSelectedType] = useState(() => {
+        const saved = localStorage.getItem('selectedOrderType');
         if (saved) {
-            localStorage.removeItem('selectedPricingType'); // Use once then clear
+            localStorage.removeItem('selectedOrderType');
             return saved;
         }
         return null;
     });
-    const [bagPrice, setBagPrice] = useState(30.00);
 
-    // Steps depend on pricing type
-    const getSteps = () => {
-        if (pricingType === 'per_bag') {
-            return [
-                {title: 'Pricing'},
-                {title: 'Bags & Schedule'},
-                {title: 'Payment'},
-                {title: 'Review'},
-            ];
-        }
-        return [
-            {title: 'Pricing'},
-            {title: 'Service'},
-            {title: 'Payment'},
-            {title: 'Review Order'},
-        ];
-    };
-    const steps = getSteps();
+    // Cart state via useReducer (Task 5.3)
+    const [cart, dispatch] = useReducer(cartReducer, initialCartState);
+
     const { laundryData } = useContext(LaundryContext);
-    const {activeStep, setActiveStep} = useSteps({index: pricingType ? 1 : 0});
-    const [isPlaceOrderEnabled, setIsPlaceOrderEnabled] = useState(false);
-    const [isServiceStepValid, setIsServiceStepValid] = useState(false);
+    const {activeStep, setActiveStep} = useSteps({index: 0});
     const [isPaymentStepValid,setIsPaymentStepValid] = useState(false);
     const navigate = useNavigate();
     const toast = useToast();
     const authToken = localStorage.getItem('idToken');
-    const [isAddressValidating,setIsAddressValidating] = useState(false); // State to monitor the address validation
-    // State Management for the Service Page
-    const [services, setServices] = useState([]); // Start with empty array
-    const [pickupDate, setPickupDate] = useState(''); // Set the pickup date
-    const [pickupTime, setPickupTime] = useState(''); // set the pickup time
-    const [dropoffDate, setDropoffDate] = useState(''); // set the drop off date
-    const [dropoffTime, setDropoffTime] = useState(''); // set the drop off date
-    const [frequency, setFrequency] = useState(null); // set the frequency
-    const [promoCode, setPromoCode] = useState(''); // set the promo code
-    const [laundryBags, setLaundryBags] = useState(1); // set the laundry Bags
-    const [saveSpecialInstructions, setSaveSpecialInstructions] = useState(false); // set the save Special Instructions boolean flag
-    const [frequencyPromotions, setFrequencyPromotions] = useState([]); // set the frequency descriptions and also the coupon values
-    const [promoDescriptionMessage, setPromoDescriptionMessage] = useState(''); // set the promo notifications text
+    const [isAddressValidating,setIsAddressValidating] = useState(false);
+
+    // State Management for scheduling
+    const [pickupDate, setPickupDate] = useState('');
+    const [pickupTime, setPickupTime] = useState('');
+    const [dropoffDate, setDropoffDate] = useState('');
+    const [dropoffTime, setDropoffTime] = useState('');
+    const [frequency, setFrequency] = useState(null);
+    const [promoCode, setPromoCode] = useState('');
+    const [laundryBags, setLaundryBags] = useState(1);
+    const [saveSpecialInstructions, setSaveSpecialInstructions] = useState(false);
+    const [frequencyPromotions, setFrequencyPromotions] = useState([]);
+    const [promoDescriptionMessage, setPromoDescriptionMessage] = useState('');
+
     // State management for the payment page
-    const [existingPaymentMethods, setExistingPaymentMethods] = useState([]); // Store the payment methods of a customer
-    const [payByInvoice, setPayByInvoice] = useState(false); // Commercial customers can pay by invoice
+    const [existingPaymentMethods, setExistingPaymentMethods] = useState([]);
+    const [payByInvoice, setPayByInvoice] = useState(false);
+
     // State management for the review order page
     const [orderProcessing, setOrderProcessing] = useState(false);
     const [tip, setTip] = useState({
@@ -98,23 +94,22 @@ export default function LaundryPickupPage({laundryId,customerId,customerPaymentI
     });
 
     // State variables for address validation
-    const [address, setAddress] = useState(localStorage.getItem('customerAddress') || ''); // Store the user address
-    const [addressInstructions,setAddressInstructions] = useState(''); // Store the address instructions
-    const [doorNumber, setDoorNumber] = useState('');// Store the Address Door Number
-    const [isAddressValidated, setIsAddressValidated] = useState(!!localStorage.getItem('customerAddress')); // Skip address if returning user
+    const [address, setAddress] = useState(localStorage.getItem('customerAddress') || '');
+    const [addressInstructions,setAddressInstructions] = useState('');
+    const [doorNumber, setDoorNumber] = useState('');
+    const [isAddressValidated, setIsAddressValidated] = useState(!!localStorage.getItem('customerAddress'));
 
     // For Google Maps API
     const searchBoxRef = useRef(null);
+
     // State variables for laundry info
-    const [laundryServices, setLaundryServices] = useState([]); // set the laundry services information
-    const [serviceCategories, setServiceCategories] = useState([]); // service categories from API
-    const [selectedCategory, setSelectedCategory] = useState(null); // selected category for order flow
+    const [laundryServices, setLaundryServices] = useState([]);
+    const [serviceCategories, setServiceCategories] = useState([]);
     const [servicesLoaded, setServicesLoaded] = useState(false);
-    const [deliveryTimeSlots, setDeliveryTimeSlots] = useState([]); // set the delivery time slots information
-    const [deliveryTimeInterval, setDeliveryTimeInterval] = useState(0); // set the delivery time interval to generate the slots
-    const [laundryFrequency, setLaundryFrequency] = useState([]); // set the laundry frequency
-    const [stripePromise, setStripePromise] = useState(null); // State to hold the Stripe promise
-    const [defaultServiceInitialized, setDefaultServiceInitialized] = useState(false);
+    const [deliveryTimeSlots, setDeliveryTimeSlots] = useState([]);
+    const [deliveryTimeInterval, setDeliveryTimeInterval] = useState(0);
+    const [laundryFrequency, setLaundryFrequency] = useState([]);
+    const [stripePromise, setStripePromise] = useState(null);
     const [pickupService, setPickupService] = useState("");
     const [dropoffService, setDropoffService] = useState("");
     const [uberExists, setUberExists] = useState(false);
@@ -162,58 +157,18 @@ export default function LaundryPickupPage({laundryId,customerId,customerPaymentI
                         setFrequencyPromotions(response.data.frequencyPromotions || []);
                         setLaundryAddress(response.data.laundryAddress || '');
                         setUberEnv(response.data.uberEnv || '');
-                        const env = response?.data?.uberEnv;
-                        const creds = response?.data?.uberCredentials;
                         setUberExists(response.data?.uberCredentialsExist === true);
-                        // Set bag price from API (configurable per laundry)
-                        if (response.data.bagPrice) {
-                            setBagPrice(parseFloat(response.data.bagPrice));
-                        }
 
                         // Store service categories
                         const cats = response.data.serviceCategories || [];
                         setServiceCategories(cats);
 
-                        // Auto-detect pricing type based on categories or legacy input_weight
-                        const svcs = response.data.laundryServices || [];
-
-                        if (cats.length > 0) {
-                            // Category-based routing
-                            const activeCats = cats.filter(cat =>
-                                svcs.some(s => s.categoryId === cat.categoryId)
-                            );
-                            if (activeCats.length === 1) {
-                                // Single category — skip selection, determine type from services
-                                setSelectedCategory(activeCats[0]);
-                                const catSvcs = svcs.filter(s => s.categoryId === activeCats[0].categoryId);
-                                const catHasWeight = catSvcs.some(s => s.inputWeight === true || s.inputWeight === 'true');
-                                setPricingType(catHasWeight ? 'per_pound' : 'per_bag');
-                                setActiveStep(1);
-                            }
-                            // Multiple categories → stay on step 0 (category selection)
-                        } else if (cats.length === 0) {
-                            // Legacy: no categories, use input_weight auto-detect
-                            const hasPerPound = svcs.some(s => s.inputWeight === true || s.inputWeight === 'true');
-                            const hasPerPiece = svcs.some(s => !s.inputWeight || s.inputWeight === false || s.inputWeight === 'false');
-                            if (!hasPerPound && hasPerPiece) {
-                                setPricingType('per_bag');
-                                setActiveStep(1);
-                            } else if (hasPerPound && !hasPerPiece) {
-                                setPricingType('per_pound');
-                                setActiveStep(1);
-                            }
-                            // If both exist, stay on step 0 (pricing choice page)
-                        }
                         setServicesLoaded(true);
 
                         // Initialize Stripe with the fetched public key
                         if (laundryData?.stripePublicKey){
                             setStripePromise(loadStripe(laundryData?.stripePublicKey));
-
                         }
-                        // if (response.data.stripePublicKey) {
-                        //     setStripePromise(loadStripe(response.data.stripePublicKey));
-                        // }
                     } else {
                         toast({
                             title: "Error fetching laundry info",
@@ -248,250 +203,139 @@ export default function LaundryPickupPage({laundryId,customerId,customerPaymentI
         }
     }, [laundryTimeZone,pickupDate,dropoffDate,isAddressValidated]);
 
+    // Task 5.5: Single-service auto-skip logic
+    // If only 1 service exists AND orderType is already set, auto-add it and skip to step 2 (schedule)
     useEffect(() => {
-        if (!defaultServiceInitialized && laundryServices.length > 0 && services.length === 0) {
-            const firstService = laundryServices[0];
-            // console.log(firstService);
-            setServices([{
-                service: firstService.serviceName,
-                count: firstService.inputWeight? 10 : 1,
-                cost: String((parseFloat(firstService.price) * parseFloat(10)).toFixed(2)),
-                basePrice: String(firstService.price)
-            }]);
-            setDefaultServiceInitialized(true); // Mark as initialized
+        if (servicesLoaded && laundryServices.length === 1 && cart.items.length === 0 && orderType) {
+            const singleService = laundryServices[0];
+            const isWeight = singleService.inputWeight === true || singleService.inputWeight === 'true';
+            dispatch({
+                type: 'ADD_ITEM',
+                payload: {
+                    serviceId: singleService.serviceId || singleService.serviceName,
+                    serviceName: singleService.serviceName,
+                    categoryId: singleService.categoryId || 'uncategorized',
+                    categoryName: singleService.categoryName || 'Uncategorized',
+                    price: parseFloat(singleService.price),
+                    inputWeight: isWeight,
+                    quantity: isWeight ? 1 : 1,
+                },
+            });
+            setActiveStep(2); // Skip directly to Schedule (step 2 in 5-step flow)
         }
-    }, [laundryServices, services.length, defaultServiceInitialized]);
+    }, [servicesLoaded, laundryServices, cart.items.length, orderType]);
 
-
-    // Proceed to the next step only if the current step is valid
-    const handleNextStep = () => {
-        if (activeStep === 0) {
-            // Pricing choice step — handled by PricingChoice callback
-            setActiveStep(1);
-        } else if (activeStep === 1 && isServiceStepValid) {
-            setActiveStep(2);
-        } else if (activeStep === 2 && isPaymentStepValid) {
-            setActiveStep(3);
-            setIsPlaceOrderEnabled(true);
+    // Handle order type selection
+    const handleOrderTypeSelect = (type) => {
+        setOrderType(type);
+        // Clear cart when changing order type (prevents stale items from wrong category)
+        dispatch({ type: 'CLEAR_CART' });
+        if (type === 'subscribe-save') {
+            // Auto-set frequency to first available if not already set
+            if (!frequency && laundryFrequency.length > 0) {
+                setFrequency(laundryFrequency[0]);
+            }
+        } else if (type === 'one-time') {
+            // Clear frequency for one-time orders
+            setFrequency(null);
         }
-    };
-
-    // Handle pricing choice selection
-    const handlePricingChoice = (type) => {
-        setPricingType(type);
         setActiveStep(1);
     };
 
-    // Handle category selection (when categories exist)
-    const handleCategorySelect = (category) => {
-        setSelectedCategory(category);
-        const catSvcs = laundryServices.filter(s => s.categoryId === category.categoryId);
-        const catHasWeight = catSvcs.some(s => s.inputWeight === true || s.inputWeight === 'true');
-        setPricingType(catHasWeight ? 'per_pound' : 'per_bag');
-        setActiveStep(1);
-    };
-
-    // Get filtered services for selected category (or all if no categories)
-    const getFilteredServices = () => {
-        if (selectedCategory) {
-            return laundryServices.filter(s => s.categoryId === selectedCategory.categoryId);
+    // Get filtered services based on order type
+    const getFilteredServicesForOrderType = () => {
+        if (orderType === 'subscribe-save') {
+            return laundryServices.filter(s => s.inputWeight === false || s.inputWeight === 'false');
         }
         return laundryServices;
     };
 
-    // Order placement function
+    // Updated handlePlaceOrder using buildOrderPayload (Task 5.3)
     const handlePlaceOrder = async () => {
-        let payload;
-
-        if (pricingType === 'per_bag') {
-            // Per-bag order payload
-            const bagTotal = Number(laundryBags * bagPrice).toFixed(2);
-            if (!pickupDate || !pickupTime || !dropoffDate || !dropoffTime || laundryBags < 1) {
-                toast({
-                    title: "Error",
-                    description: "Please fill in all required fields.",
-                    status: "error",
-                    duration: 3000,
-                    isClosable: true,
-                });
-                setOrderProcessing(false);
-                return false;
-            }
-            if (!customerPaymentId && !payByInvoice) {
-                toast({
-                    title: "Payment Information Missing",
-                    description: "Please add payment information before placing the order.",
-                    status: "error",
-                    duration: 3000,
-                    isClosable: true,
-                });
-                setOrderProcessing(false);
-                return false;
-            }
-            const pickupDateUTC = formatISO(parseISO(pickupDate), { representation: 'date' });
-            const dropoffDateUTC = formatISO(parseISO(dropoffDate), { representation: 'date' });
-
-            payload = {
-                operation: "placeOrder",
-                pricingType: "per_bag",
-                customerId: customerId,
-                laundryId: laundryId,
-                address: address,
-                doorNumber: doorNumber,
-                addressInstructions: addressInstructions,
-                specialInstructions: specialInstructions,
-                services: [],
-                pickupDate: pickupDateUTC,
-                pickupTimeInterval: pickupTime,
-                dropoffDate: dropoffDateUTC,
-                dropoffTimeInterval: dropoffTime,
-                frequency: frequency || null,
-                autoCharge: !!frequency,
-                laundryBags: laundryBags,
-                bagPrice: bagPrice,
-                totalCost: bagTotal,
-                subTotal: bagTotal,
-                grandTotal: bagTotal,
-                saveSpecialInstructions: saveSpecialInstructions,
-                tip: {
-                    tipAmount: tip.tipAmount,
-                    tipPercentage: tip.tipPercentage,
-                    tipType: tip.tipType,
-                    tipMethod: tip.tipMethod,
-                    tipReceiverId: tip.tipReceivedId,
-                },
-                coupon: '',
-                pickupService: pickupService || 'LaundryDriver',
-                dropoffService: dropoffService || 'LaundryDriver',
-                customerPaymentId: customerPaymentId,
-                payByInvoice: payByInvoice,
-            };
-        } else {
-            // Per-pound order payload (existing logic)
-            const filledServices = services.filter(service => service.service && service.count && service.cost);
-            const total = Number(services.reduce((sum, service) => sum + parseFloat(service.cost || 0), 0)).toFixed(2);
-            if (!filledServices.length || !pickupDate || !pickupTime || !dropoffDate || !dropoffTime || !laundryBags) {
-                toast({
-                    title: "Error",
-                    description: "Please fill in all required fields and select at least one service.",
-                    status: "error",
-                    duration: 3000,
-                    isClosable: true,
-                });
-                setOrderProcessing(false);
-                return false;
-            }
-            const pickupDateUTC = formatISO(parseISO(pickupDate), { representation: 'date' });
-            const dropoffDateUTC = formatISO(parseISO(dropoffDate), { representation: 'date' });
-            if (!customerPaymentId && !payByInvoice) {
-                toast({
-                    title: "Payment Information Missing",
-                    description: "Please add payment information before placing the order.",
-                    status: "error",
-                    duration: 3000,
-                    isClosable: true,
-                });
-                setOrderProcessing(false);
-                return false;
-            }
-
-            payload = {
-                operation: pickupService === "Uber" || dropoffService === "Uber"
-                    ? "uberPlaceOrder"
-                    : "placeOrder",
-                pricingType: "per_pound",
-                customerId: customerId,
-                laundryId: laundryId,
-                address: address,
-                doorNumber: doorNumber,
-                addressInstructions: addressInstructions,
-                specialInstructions: specialInstructions,
-                services: filledServices.map(service => ({
-                    serviceName: service.service,
-                    weightOrCount: service.count,
-                    servicePrice: service.basePrice,
-                })),
-                pickupDate: pickupDateUTC,
-                pickupTimeInterval: pickupTime,
-                dropoffDate: dropoffDateUTC,
-                dropoffTimeInterval: dropoffTime,
-                frequency: frequency,
-                laundryBags: laundryBags,
-                totalCost: total,
-                subTotal: total,
-                grandTotal: total,
-                saveSpecialInstructions: saveSpecialInstructions,
-                tip: {
-                    tipAmount: tip.tipAmount,
-                    tipPercentage: tip.tipPercentage,
-                    tipType: tip.tipType,
-                    tipMethod: tip.tipMethod,
-                    tipReceiverId: tip.tipReceivedId,
-                },
-                coupon: promoCode,
-                pickupService: pickupService,
-                dropoffService: dropoffService,
-                uberPickupFrequency: uberPickupFrequency,
-                uberDropoffFrequency: uberDropoffFrequency,
-                customerPaymentId: customerPaymentId,
-                payByInvoice: payByInvoice,
-            };
+        if (cart.items.length === 0) {
+            toast({ title: "Error", description: "Cart is empty.", status: "error", duration: 3000, isClosable: true });
+            return false;
+        }
+        if (!pickupDate || !pickupTime || !dropoffDate || !dropoffTime) {
+            toast({ title: "Error", description: "Please fill in all schedule fields.", status: "error", duration: 3000, isClosable: true });
+            return false;
+        }
+        if (!customerPaymentId && !payByInvoice) {
+            toast({ title: "Payment Information Missing", description: "Please add payment info.", status: "error", duration: 3000, isClosable: true });
+            return false;
         }
 
-        console.log("payload for placing the order:", payload);
+        // Compute grand total
+        const subtotal = getCartSubtotal(cart.items);
+        const subscriptionDiscount = orderType === 'subscribe-save' ? (laundryData?.subscriptionDiscount || 0) : 0;
+        const discountAmount = subscriptionDiscount > 0 ? subtotal * (subscriptionDiscount / 100) : 0;
+        const taxableAmount = subtotal - discountAmount;
+        const taxRate = laundryData?.taxRate || 0;
+        const tax = taxRate > 0 ? taxableAmount * (taxRate / 100) : 0;
+        const tipAmount = parseFloat(tip.tipAmount || '0') || 0;
+        const grandTotal = taxableAmount + tax + tipAmount;
+
+        const payload = buildOrderPayload(cart, {
+            customerId,
+            laundryId,
+            address,
+            doorNumber,
+            addressInstructions,
+            specialInstructions,
+            pickupDate: formatISO(parseISO(pickupDate), { representation: 'date' }),
+            pickupTimeInterval: pickupTime,
+            dropoffDate: formatISO(parseISO(dropoffDate), { representation: 'date' }),
+            dropoffTimeInterval: dropoffTime,
+            frequency: frequency || null,
+            laundryBags,
+            grandTotal: grandTotal.toFixed(2),
+            tip: {
+                tipAmount: tip.tipAmount,
+                tipPercentage: tip.tipPercentage,
+                tipType: tip.tipType,
+                tipMethod: tip.tipMethod,
+                tipReceiverId: tip.tipReceivedId,
+            },
+            coupon: promoCode,
+            pickupService: pickupService || 'LaundryDriver',
+            dropoffService: dropoffService || 'LaundryDriver',
+            customerPaymentId,
+            payByInvoice,
+        });
+
+        // If using Uber, change operation
+        if (pickupService === 'Uber' || dropoffService === 'Uber') {
+            payload.operation = 'uberPlaceOrder';
+        }
+        payload.uberPickupFrequency = uberPickupFrequency;
+        payload.uberDropoffFrequency = uberDropoffFrequency;
+        payload.saveSpecialInstructions = saveSpecialInstructions;
+        payload.autoCharge = !!frequency;
 
         try {
-            // Set order processing to true while the request is made
             setOrderProcessing(true);
-
-            // Make API call to place the order
             const response = await axios.post(
                 `${process.env.REACT_APP_AWS_API_URL}/api/customer/place-order`,
                 payload,
-                {
-                    headers: {
-                        'x-api-key': authToken,
-                    },
-                }
+                { headers: { 'x-api-key': authToken } }
             );
-
-            // Check for success status
             if (response.data.status === 'success') {
-                toast({
-                    title: "Order Confirmed",
-                    description: "Your order has been placed successfully!",
-                    status: "success",
-                    duration: 3000,
-                    isClosable: true,
-                });
-
-                // Set order processing to false and navigate to success page
+                toast({ title: "Order Confirmed", description: "Your order has been placed!", status: "success", duration: 3000, isClosable: true });
                 setOrderProcessing(false);
                 navigate(`/${laundryId}/user/order-success`);
                 return true;
             } else {
-                toast({
-                    title: "Order Failed",
-                    description: response.data.message || "Failed to place the order.",
-                    status: "error",
-                    duration: 3000,
-                    isClosable: true,
-                });
-                setOrderProcessing(false);  // Stop processing on failure
+                toast({ title: "Order Failed", description: response.data.message || "Failed.", status: "error", duration: 3000, isClosable: true });
+                setOrderProcessing(false);
                 return false;
             }
         } catch (error) {
-            toast({
-                title: "Error",
-                description: error.message || "Failed to place the order.",
-                status: "error",
-                duration: 3000,
-                isClosable: true,
-            });
-            setOrderProcessing(false);  // Stop processing on error
+            toast({ title: "Error", description: error.message || "Failed.", status: "error", duration: 3000, isClosable: true });
+            setOrderProcessing(false);
             return false;
         }
     };
+
     // Function to validate the address
     const validateAddress = async (addr) => {
         try {
@@ -513,10 +357,8 @@ export default function LaundryPickupPage({laundryId,customerId,customerPaymentI
             if (data.status === 'success') {
                 if (data.serviceable) {
                     setIsAddressValidated(true);
-                    // Store the address in localStorage
                     localStorage.setItem('customerAddress', addr);
                 } else {
-                    // Address not serviceable, prompt user to enter address
                     toast({
                         title: "Address Not Serviceable",
                         description: "The entered address is not serviceable. Please enter a different address.",
@@ -633,7 +475,7 @@ export default function LaundryPickupPage({laundryId,customerId,customerPaymentI
                                     Welcome to {laundryData?.laundryName}
                                 </Heading>
                                 <Box fontSize="sm" color="gray.500" mt={1}>
-                                    Free pickup & delivery — enter your address to get started
+                                    Free Pickup & Delivery
                                 </Box>
                             </Box>
 
@@ -704,7 +546,7 @@ export default function LaundryPickupPage({laundryId,customerId,customerPaymentI
                             </Box>
                         </VStack>
                 ) : (
-                    // Existing Stepper Steps Code
+                    // Order Flow with 4-step stepper
                     <>
                         {/* Show current address with change option */}
                         {address && (
@@ -731,111 +573,67 @@ export default function LaundryPickupPage({laundryId,customerId,customerPaymentI
                         </Stepper>
 
                         <Box bg="white" borderRadius="2xl" boxShadow="sm" border="1px solid" borderColor="gray.100" padding={[4,5,6]}>
-                            {/* Step 0: Pricing Choice or Category Selection — only show after services loaded */}
-                            {activeStep === 0 && servicesLoaded && serviceCategories.length > 0 && (
-                                <CategorySelection
-                                    categories={serviceCategories}
-                                    services={laundryServices}
-                                    onSelect={handleCategorySelect}
+                            {/* Step 0: Order Type Selection */}
+                            {activeStep === 0 && servicesLoaded && (
+                                <OrderTypeSelection
+                                    onSelect={handleOrderTypeSelect}
+                                    frequencyPromotions={frequencyPromotions}
+                                    subscriptionDiscount={laundryData?.subscriptionDiscount || 0}
+                                    laundryFrequency={laundryFrequency}
+                                    themeColor={laundryData?.themeColor || 'blue'}
+                                    preSelectedType={preSelectedType}
+                                    laundryServices={laundryServices}
+                                />
+                            )}
+
+                            {/* Step 1: Unified Service Page */}
+                            {activeStep === 1 && servicesLoaded && (
+                                <UnifiedServicePage
+                                    laundryServices={getFilteredServicesForOrderType()}
+                                    serviceCategories={serviceCategories}
+                                    cart={cart}
+                                    dispatch={dispatch}
+                                    onContinue={() => setActiveStep(2)}
                                     themeColor={laundryData?.themeColor || 'blue'}
                                 />
                             )}
-                            {activeStep === 0 && servicesLoaded && serviceCategories.length === 0 && (
-                                <PricingChoice
-                                    pricingType={pricingType}
-                                    setPricingType={setPricingType}
-                                    bagPrice={bagPrice}
-                                    onContinue={handlePricingChoice}
-                                />
-                            )}
 
-                            {/* Step 1: Service (per-pound) or Bags & Schedule (per-bag) */}
-                            {activeStep === 1 && pricingType === 'per_bag' && (
-                                <BagOrderPage
-                                    bagPrice={bagPrice}
-                                    setBagPrice={setBagPrice}
-                                    laundryBags={laundryBags}
-                                    setLaundryBags={setLaundryBags}
-                                    pickupDate={pickupDate}
-                                    setPickupDate={setPickupDate}
-                                    pickupTime={pickupTime}
-                                    setPickupTime={setPickupTime}
-                                    dropoffDate={dropoffDate}
-                                    setDropoffDate={setDropoffDate}
-                                    dropoffTime={dropoffTime}
-                                    setDropoffTime={setDropoffTime}
-                                    specialInstructions={specialInstructions}
-                                    setSpecialInstructions={setSpecialInstructions}
-                                    deliveryTimeSlots={deliveryTimeSlots}
-                                    deliveryTimeInterval={deliveryTimeInterval}
-                                    laundryTimeZone={laundryTimeZone}
-                                    setIsServiceStepValid={setIsServiceStepValid}
-                                    handleNextStep={handleNextStep}
-                                    isServiceStepValid={isServiceStepValid}
-                                    pickupService={pickupService}
-                                    setPickupService={setPickupService}
-                                    dropoffService={dropoffService}
-                                    setDropoffService={setDropoffService}
-                                    laundryServices={getFilteredServices()}
-                                    categoryName={selectedCategory?.categoryName || ''}
-                                    subscriptionDiscount={laundryData?.subscriptionDiscount || 0}
-                                    frequency={frequency}
-                                    setFrequency={setFrequency}
-                                    laundryFrequency={laundryFrequency}
-                                />
-                            )}
-
-                            {activeStep === 1 && pricingType === 'per_pound' && (
-                                <ServicePage
-                                    setIsServiceStepValid={setIsServiceStepValid}
-                                    handleNextStep={handleNextStep}
-                                    isServiceStepValid={isServiceStepValid}
-                                    services={services}
-                                    setServices={setServices}
-                                    pickupDate={pickupDate}
-                                    dropoffDate={dropoffDate}
-                                    setPickupDate={setPickupDate}
-                                    setDropoffDate={setDropoffDate}
-                                    pickupTime={pickupTime}
-                                    dropoffTime={dropoffTime}
-                                    setPickupTime={setPickupTime}
-                                    setDropoffTime={setDropoffTime}
-                                    specialInstructions={specialInstructions}
-                                    frequency={frequency}
-                                    setFrequency={setFrequency}
-                                    setSpecialInstructions={setSpecialInstructions}
+                            {/* Step 2: Schedule Page */}
+                            {activeStep === 2 && (
+                                <SchedulePage
+                                    orderType={orderType}
+                                    pickupDate={pickupDate} setPickupDate={setPickupDate}
+                                    pickupTime={pickupTime} setPickupTime={setPickupTime}
+                                    dropoffDate={dropoffDate} setDropoffDate={setDropoffDate}
+                                    dropoffTime={dropoffTime} setDropoffTime={setDropoffTime}
+                                    pickupService={pickupService} setPickupService={setPickupService}
+                                    dropoffService={dropoffService} setDropoffService={setDropoffService}
+                                    frequency={frequency} setFrequency={setFrequency}
+                                    promoCode={promoCode} setPromoCode={setPromoCode}
+                                    specialInstructions={specialInstructions} setSpecialInstructions={setSpecialInstructions}
                                     setSaveSpecialInstructions={setSaveSpecialInstructions}
-                                    laundryId={laundryId}
-                                    laundryServices={getFilteredServices()}
+                                    laundryBags={laundryBags} setLaundryBags={setLaundryBags}
                                     deliveryTimeSlots={deliveryTimeSlots}
                                     deliveryTimeInterval={deliveryTimeInterval}
-                                    laundryFrequency={laundryFrequency}
                                     laundryTimeZone={laundryTimeZone}
-                                    promoCode={promoCode}
-                                    setPromoCode={setPromoCode}
-                                    laundryBags={laundryBags}
-                                    setLaundryBags={setLaundryBags}
+                                    laundryFrequency={orderType === 'one-time' ? [] : laundryFrequency}
                                     frequencyPromotions={frequencyPromotions}
                                     promoDescriptionMessage={promoDescriptionMessage}
                                     setPromoDescriptionMessage={setPromoDescriptionMessage}
-                                    pickupService={pickupService}
-                                    setPickupService={setPickupService}
-                                    dropoffService={dropoffService}
-                                    setDropoffService={setDropoffService}
                                     uberEnv={uberEnv}
-                                    uberExists={uberExists}
-                                    setUberExists={setUberExists}
+                                    uberExists={uberExists} setUberExists={setUberExists}
                                     laundryAddress={laundryAddress}
                                     address={address}
-                                    uberPickupFrequency={uberPickupFrequency}
-                                    setUberPickupFrequency={setUberPickupFrequency}
-                                    uberDropoffFrequency={uberDropoffFrequency}
-                                    setUberDropoffFrequency={setUberDropoffFrequency}
+                                    uberPickupFrequency={uberPickupFrequency} setUberPickupFrequency={setUberPickupFrequency}
+                                    uberDropoffFrequency={uberDropoffFrequency} setUberDropoffFrequency={setUberDropoffFrequency}
+                                    laundryId={laundryId}
+                                    onContinue={() => setActiveStep(3)}
+                                    onBack={() => setActiveStep(1)}
                                 />
                             )}
 
-                            {/* Step 2: Payment */}
-                            {activeStep === 2 && stripePromise && (
+                            {/* Step 3: Payment */}
+                            {activeStep === 3 && stripePromise && (
                                 <Elements stripe={stripePromise}>
                                     <PaymentPage
                                         customerId={customerId}
@@ -846,58 +644,32 @@ export default function LaundryPickupPage({laundryId,customerId,customerPaymentI
                                         isPaymentStepValid={isPaymentStepValid}
                                         existingPaymentMethods={existingPaymentMethods}
                                         setExistingPaymentMethods={setExistingPaymentMethods}
-                                        handleNextStep={handleNextStep}
+                                        handleNextStep={() => setActiveStep(4)}
                                         payByInvoice={payByInvoice}
                                         setPayByInvoice={setPayByInvoice}
                                     />
                                 </Elements>
                             )}
 
-                            {/* Step 3: Review Order */}
-                            {activeStep === 3 && pricingType === 'per_bag' && (
-                                <BagReviewOrderPage
-                                    laundryBags={laundryBags}
-                                    bagPrice={bagPrice}
+                            {/* Step 4: Review Order */}
+                            {activeStep === 4 && (
+                                <UnifiedReviewPage
+                                    cart={cart}
+                                    dispatch={dispatch}
                                     pickupDate={pickupDate}
                                     pickupTime={pickupTime}
                                     dropoffDate={dropoffDate}
                                     dropoffTime={dropoffTime}
-                                    handlePlaceOrder={handlePlaceOrder}
-                                    orderProcessing={orderProcessing}
-                                    isPlaceOrderEnabled={isPlaceOrderEnabled}
-                                    setActiveStep={setActiveStep}
                                     tip={tip}
                                     setTip={setTip}
-                                    pickupService={pickupService}
-                                    dropoffService={dropoffService}
                                     taxRate={laundryData?.taxRate || 0}
-                                    subscriptionDiscount={laundryData?.subscriptionDiscount || 0}
-                                    frequency={frequency}
-                                />
-                            )}
-
-                            {activeStep === 3 && pricingType === 'per_pound' && (
-                                <ReviewOrderPage
-                                    services={services}
-                                    pickupDate={pickupDate}
-                                    pickupTime={pickupTime}
-                                    dropoffDate={dropoffDate}
-                                    dropoffTime={dropoffTime}
-                                    handlePlaceOrder={handlePlaceOrder}
-                                    orderProcessing={orderProcessing}
-                                    isPlaceOrderEnabled={isPlaceOrderEnabled}
-                                    setActiveStep={setActiveStep}
-                                    laundryBags={laundryBags}
                                     promoCode={promoCode}
-                                    frequency={frequency}
-                                    tip={tip}
-                                    setTip={setTip}
                                     promoDescriptionMessage={promoDescriptionMessage}
-                                    pickupService={pickupService}
-                                    dropoffService={dropoffService}
-                                    uberPickupFrequency={uberPickupFrequency}
-                                    uberDropoffFrequency={uberDropoffFrequency}
-                                    taxRate={laundryData?.taxRate || 0}
+                                    frequency={frequency}
+                                    subscriptionDiscount={orderType === 'subscribe-save' ? (laundryData?.subscriptionDiscount || 0) : 0}
+                                    onPlaceOrder={handlePlaceOrder}
+                                    onEdit={() => setActiveStep(1)}
+                                    orderProcessing={orderProcessing}
                                 />
                             )}
                         </Box>

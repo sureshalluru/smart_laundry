@@ -12,7 +12,6 @@ import {
 } from "@chakra-ui/react";
 import {
     FaTshirt,
-    FaWeightHanging,
     FaCalendarAlt,
     FaClock,
     FaShoppingBag,
@@ -44,7 +43,8 @@ export default function ReviewOrderPage({
                                             dropoffService,
                                             uberPickupFrequency,
                                             uberDropoffFrequency,
-                                            taxRate = 0
+                                            taxRate = 0,
+                                            setServices,
                                         }) {
 
     // Destructure properties from tip
@@ -109,7 +109,7 @@ export default function ReviewOrderPage({
 
     // Function to handle editing services
     const handleEditService = () => {
-        setActiveStep(0); // Go to ServicePage (Step 0) when edit icon is clicked
+        setActiveStep(1); // Go to Service step (Step 1) — not category selection
     };
 
 
@@ -127,10 +127,10 @@ export default function ReviewOrderPage({
 
             <Divider />
 
-            {/* Services Section */}
+            {/* Services Section — Clear cart breakdown */}
             <VStack  align="flex-start" width="100%">
                 <Flex justify="space-between" align="center" width="100%" wrap="wrap">
-                    <Text fontSize={['md','lg']} fontWeight="bold">Services</Text>
+                    <Text fontSize={['md','lg']} fontWeight="bold">Your Cart</Text>
                     <IconButton
                         icon={<EditIcon />}
                         aria-label="Edit Services"
@@ -141,30 +141,53 @@ export default function ReviewOrderPage({
                 </Flex>
 
                 <Stack spacing={2} width="100%">
-                    {services.map((service, index) => (
-                        <Box
-                            key={index}
-                            border="1px"
-                            borderColor="gray.200"
-                            borderRadius="md"
-                            p={[2,3]}
-                            shadow="sm"
-                        >
-                            <Stack direction={{ base: 'column', md: 'row' }} spacing={[2,4]} align="flex-start" wrap="wrap">
-                                <Flex align="center" wrap="wrap">
-                                    <Icon as={FaTshirt} boxSize={[4,5]} color="green.500" mr={2} />
-                                    <Text fontSize={{ base: "sm", md: "md" }} flexShrink={0}>
-                                        {service.service}
-                                    </Text>
+                    {services.map((service, index) => {
+                        const price = parseFloat(service.basePrice || 0);
+                        const count = parseFloat(service.count || 0);
+                        const lineTotal = (price * count).toFixed(2);
+                        return (
+                            <Box
+                                key={index}
+                                border="1px"
+                                borderColor="gray.200"
+                                borderRadius="md"
+                                p={[2,3]}
+                                shadow="sm"
+                            >
+                                <Flex justify="space-between" align="center" wrap="wrap">
+                                    <HStack spacing={2} flex="1">
+                                        <Icon as={FaTshirt} boxSize={[4,5]} color="green.500" />
+                                        <Box>
+                                            <Text fontSize={{ base: "sm", md: "md" }} fontWeight="600">
+                                                {service.service}
+                                            </Text>
+                                            <Text fontSize="xs" color="gray.500">
+                                                {count} × ${price.toFixed(2)}
+                                            </Text>
+                                        </Box>
+                                    </HStack>
+                                    <HStack spacing={2}>
+                                        <Text fontWeight="bold" fontSize="sm" color="gray.800">
+                                            ${lineTotal}
+                                        </Text>
+                                        {setServices && services.length > 1 && (
+                                            <IconButton
+                                                icon={<span>✕</span>}
+                                                aria-label="Remove item"
+                                                size="xs"
+                                                colorScheme="red"
+                                                variant="ghost"
+                                                onClick={() => {
+                                                    const updated = services.filter((_, i) => i !== index);
+                                                    setServices(updated.length > 0 ? updated : [{service: '', count: '', cost: '', basePrice: ''}]);
+                                                }}
+                                            />
+                                        )}
+                                    </HStack>
                                 </Flex>
-
-                                <Flex align="center" wrap="wrap">
-                                    <Icon as={FaWeightHanging} boxSize={[4,5]} color="purple.500" mr={2} />
-                                    <Text fontSize={{ base: "sm", md: "md" }}>Count/Weight: {service.count}</Text>
-                                </Flex>
-                            </Stack>
-                        </Box>
-                    ))}
+                            </Box>
+                        );
+                    })}
                 </Stack>
             </VStack>
 

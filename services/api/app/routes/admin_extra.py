@@ -1098,3 +1098,71 @@ async def delete_service_category(
         if cur.rowcount == 0:
             return {"status": "error", "message": "Category not found"}
     return {"status": "success", "message": "Category deleted"}
+
+
+# ── Customer Pricing (Commercial Accounts) ────────────────────────────────────
+
+@router.get("/customer-pricing")
+async def get_customer_pricing(
+    laundryId: str = Query(...),
+    customerId: str = Query(...),
+    current_user: dict = Depends(get_current_user),
+):
+    """Get custom pricing rules for a specific customer."""
+    with get_db() as conn:
+        cur = get_cursor(conn)
+        cur.execute("""
+            SELECT id, pricing_type, service_name, value
+            FROM shop.customer_pricing
+            WHERE customer_id = %s AND laundry_id = %s
+            ORDER BY service_name NULLS FIRST
+        """, (customerId, laundryId))
+        rules = [{
+            "id": r["id"],
+            "pricingType": r["pricing_type"],
+            "serviceName": r["service_name"],
+            "value": float(r["value"]),
+        } for r in cur.fetchall()]
+    return {"status": "success", "pricingRules": rules}
+
+
+@router.post("/customer-pricing")
+async def set_customer_pricing(
+    body: dict = Body({}),
+    current_user: dict = Depends(get_current_user),
+):
+    """Set custom pricing for a customer. Supports discount % or custom service price."""
+    customer_id = body.get("customerId")
+    laundry_id = body.get("laundryId")
+    pricing_type = body.get("pricingType", "discount")  # 'discount' or 'custom_price'
+    service_name = body.get("serviceName") or None  # NULL = applies to all
+    value = float(body.get("value", 0))
+
+    if not customer_id or not laundry_id or value <= 0:
+        return {"status": "error", "message": "customerId, laundryId, and value > 0 are required"}
+
+    with get_db() as conn:
+        cur = get_cursor(conn)
+        cur.execute("""
+            INSERT INTO shop.customer_pricing (customer_id, laundry_id, pricing_type, service_name, value)
+            VALUES (%s, %s, %s, %s, %s)
+            ON CONFLICT (customer_id, laundry_id, service_name)
+            DO UPDATE SET pricing_type = EXCLUDED.pricing_type, value = EXCLUDED.value
+            RETURNING id
+        """, (customer_id, laundry_id, pricing_type, service_name, value))
+        row = cur.fetchone()
+
+    return {"status": "success", "id": row["id"]}
+
+
+@router.delete("/customer-pricing")
+async def delete_customer_pricing(
+    id: int = Query(...),
+    laundryId: str = Query(...),
+    current_user: dict = Depends(get_current_user),
+):
+    """Remove a custom pricing rule."""
+    with get_db() as conn:
+        cur = get_cursor(conn)
+        cur.execute("DELETE FROM shop.customer_pricing WHERE id = %s AND laundry_id = %s", (id, laundryId))
+    return {"status": "success", "message": "Pricing rule removed"}

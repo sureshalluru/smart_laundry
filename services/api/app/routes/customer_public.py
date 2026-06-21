@@ -116,8 +116,8 @@ async def customer_place_order(
                 grand_total = round(total_cost + tip_amount, 2)
             # Create a single service entry for bag pricing
             services = [{"serviceName": "Per Bag Service", "servicePrice": bag_price, "weightOrCount": laundry_bags}]
-        else:
-            # Per-pound pricing: existing logic
+        elif pricing_type == "mixed" or pricing_type == "per_pound":
+            # Per-pound or mixed pricing: calculate from services array
             if sub_total == 0 and services:
                 for svc in services:
                     price = float(str(svc.get("servicePrice") or svc.get("price", 0) or 0))
@@ -218,12 +218,25 @@ async def customer_place_order(
 
             for svc in services:
                 svc_name = svc.get("serviceName") or svc.get("service") or svc.get("name", "")
-                cur.execute("""
-                    INSERT INTO orders.order_services (order_id, service_name, service_price, weight_or_count)
-                    VALUES (%s,%s,%s,%s)
-                """, (order_id, svc_name,
-                      float(str(svc.get("servicePrice") or svc.get("price", 0) or 0)),
-                      float(str(svc.get("weightOrCount") or svc.get("weight", 0) or 0))))
+                input_weight = svc.get("inputWeight", False)
+                category_id = svc.get("categoryId")
+                try:
+                    cur.execute("""
+                        INSERT INTO orders.order_services (order_id, service_name, service_price, weight_or_count, input_weight, category_id)
+                        VALUES (%s,%s,%s,%s,%s,%s)
+                    """, (order_id, svc_name,
+                          float(str(svc.get("servicePrice") or svc.get("price", 0) or 0)),
+                          float(str(svc.get("weightOrCount") or svc.get("weight", 0) or 0)),
+                          input_weight,
+                          category_id))
+                except Exception:
+                    # Fallback if input_weight/category_id columns don't exist yet
+                    cur.execute("""
+                        INSERT INTO orders.order_services (order_id, service_name, service_price, weight_or_count)
+                        VALUES (%s,%s,%s,%s)
+                    """, (order_id, svc_name,
+                          float(str(svc.get("servicePrice") or svc.get("price", 0) or 0)),
+                          float(str(svc.get("weightOrCount") or svc.get("weight", 0) or 0))))
 
             if tip_data.get("tipType") or tip_amount > 0:
                 cur.execute("""
@@ -238,7 +251,12 @@ async def customer_place_order(
                 from datetime import datetime, timedelta
 
                 # Calculate future pickup date based on frequency
-                freq_days = 7 if frequency.lower() == 'weekly' else 14  # biweekly = 14 days
+                if frequency.lower() == 'weekly':
+                    freq_days = 7
+                elif frequency.lower() == 'monthly':
+                    freq_days = 30
+                else:
+                    freq_days = 14  # bi-weekly
                 pickup_dt = datetime.strptime(pickup_date, '%Y-%m-%d') if pickup_date else datetime.now()
                 future_pickup = (pickup_dt + timedelta(days=freq_days)).strftime('%Y-%m-%d')
 

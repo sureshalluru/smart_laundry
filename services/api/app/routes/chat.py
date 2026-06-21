@@ -65,6 +65,37 @@ async def customer_send_message(body: dict = Body(...)):
         """, (conversation_id, customer_id, customer_name, message))
         msg = cur.fetchone()
 
+        # Send email notification to platform admin if this is a laundry-to-platform chat
+        if laundry_id == 'platform' and customer_id.startswith('laundry-'):
+            try:
+                from app.services.notification_service import send_email
+                tenant_laundry_id = customer_id.replace('laundry-', '')
+                cur.execute("SELECT laundry_name FROM shop.laundry_shops WHERE laundry_id = %s", (tenant_laundry_id,))
+                shop_row = cur.fetchone()
+                laundry_name = shop_row["laundry_name"] if shop_row else f"Laundry {tenant_laundry_id}"
+
+                from datetime import datetime
+                timestamp = datetime.now().strftime("%b %d, %Y at %I:%M %p")
+
+                email_html = f"""
+                <h2>💬 New Support Message</h2>
+                <p>You have a new chat message from a laundry operator:</p>
+                <table style="border-collapse:collapse; margin:16px 0; width:100%; max-width:500px;">
+                    <tr><td style="padding:8px 12px; font-weight:bold; background:#f7f7f7; border:1px solid #ddd;">From</td>
+                        <td style="padding:8px 12px; border:1px solid #ddd;">{customer_name} ({laundry_name})</td></tr>
+                    <tr><td style="padding:8px 12px; font-weight:bold; background:#f7f7f7; border:1px solid #ddd;">Time</td>
+                        <td style="padding:8px 12px; border:1px solid #ddd;">{timestamp}</td></tr>
+                    <tr><td style="padding:8px 12px; font-weight:bold; background:#f7f7f7; border:1px solid #ddd;">Message</td>
+                        <td style="padding:8px 12px; border:1px solid #ddd; font-style:italic;">{message}</td></tr>
+                </table>
+                <p><a href="https://smartlaundrybasket.com/platform-admin" style="color:#2B6CB0; font-weight:bold;">Open Platform Admin to reply →</a></p>
+                <p style="font-size:12px; color:#999;">This is an automated notification from Smart Laundry Basket support chat.</p>
+                """
+                send_email("roundrocklaundry@gmail.com", f"💬 Chat from {laundry_name}: {message[:50]}", email_html)
+                logger.info(f"Platform admin notified about chat from {laundry_name}")
+            except Exception as notify_err:
+                logger.warning(f"Failed to send chat notification email: {notify_err}")
+
     return {
         "status": "success",
         "messageId": str(msg["message_id"]),

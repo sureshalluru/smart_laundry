@@ -37,6 +37,7 @@ import {
     MenuList,
     MenuItem,
     Divider,
+    Select,
     useToast,
     useDisclosure,
     Grid,
@@ -55,7 +56,7 @@ import { GoogleMap, LoadScript, Marker, Autocomplete } from '@react-google-maps/
 import { DeleteIcon, EditIcon, CheckIcon, SearchIcon, CloseIcon, EmailIcon, ChevronDownIcon, RepeatIcon, PhoneIcon} from "@chakra-ui/icons";
 import axios from "axios";
 import { useParams } from "react-router-dom";
-import { format } from "date-fns"; 
+import { format, startOfWeek, parseISO } from "date-fns";
 
 const ManagerDashboardPage = () => {
     const { laundryId } = useParams();
@@ -469,6 +470,69 @@ const ManagerDashboardPage = () => {
     const [updatedPreferences, setUpdatedPreferences] = useState({});
     const BATCH_SIZE = 20;
 
+    // Custom pricing state
+    const [pricingModalOpen, setPricingModalOpen] = useState(false);
+    const [pricingCustomer, setPricingCustomer] = useState(null);
+    const [pricingRules, setPricingRules] = useState([]);
+    const [newPricingType, setNewPricingType] = useState('discount');
+    const [newPricingService, setNewPricingService] = useState('');
+    const [newPricingValue, setNewPricingValue] = useState('');
+    const [servicesData, setServicesData] = useState([]);
+
+    // Fetch services for dropdown
+    useEffect(() => {
+        if (laundryId) {
+            axios.get(`${process.env.REACT_APP_AWS_API_URL}/api/admin/laundry-products-info`, {
+                params: { operation: 'viewServices', laundryId },
+                headers: { Authorization: `Bearer ${authToken}` },
+            }).then(res => {
+                setServicesData(Object.values(res.data?.body?.services || {}));
+            }).catch(() => {});
+        }
+    }, [laundryId]);
+
+    const fetchCustomerPricing = async (customerId) => {
+        try {
+            const res = await axios.get(`${process.env.REACT_APP_AWS_API_URL}/api/admin/customer-pricing`, {
+                params: { laundryId, customerId },
+                headers: { Authorization: `Bearer ${authToken}` },
+            });
+            setPricingRules(res.data?.pricingRules || []);
+        } catch (err) { console.error(err); }
+    };
+
+    const handleAddPricingRule = async () => {
+        if (!newPricingValue || parseFloat(newPricingValue) <= 0) return;
+        try {
+            await axios.post(`${process.env.REACT_APP_AWS_API_URL}/api/admin/customer-pricing`, {
+                customerId: pricingCustomer.customerId,
+                laundryId,
+                pricingType: newPricingType,
+                serviceName: newPricingService || null,
+                value: parseFloat(newPricingValue),
+            }, { headers: { Authorization: `Bearer ${authToken}` } });
+            fetchCustomerPricing(pricingCustomer.customerId);
+            setNewPricingValue('');
+            setNewPricingService('');
+            toast({ title: 'Pricing rule saved', status: 'success', duration: 2000 });
+        } catch (err) {
+            toast({ title: 'Error saving pricing', status: 'error', duration: 3000 });
+        }
+    };
+
+    const handleDeletePricingRule = async (ruleId) => {
+        try {
+            await axios.delete(`${process.env.REACT_APP_AWS_API_URL}/api/admin/customer-pricing`, {
+                params: { id: ruleId, laundryId },
+                headers: { Authorization: `Bearer ${authToken}` },
+            });
+            setPricingRules(prev => prev.filter(r => r.id !== ruleId));
+            toast({ title: 'Removed', status: 'success', duration: 2000 });
+        } catch (err) {
+            toast({ title: 'Error', status: 'error', duration: 3000 });
+        }
+    };
+
     useEffect(() => {
         if (activeTab === "customer") {
             fetchCustomers();
@@ -631,6 +695,68 @@ const ManagerDashboardPage = () => {
         }
     };
 
+    /* ---------- UPCOMING RECURRING ORDERS ---------- */
+    const [upcomingOrders, setUpcomingOrders] = useState([]);
+    const [upcomingTotalCount, setUpcomingTotalCount] = useState(0);
+    const [loadingUpcoming, setLoadingUpcoming] = useState(false);
+
+    useEffect(() => {
+        if (activeTab === "upcoming") {
+            fetchUpcomingOrders();
+        }
+    }, [activeTab, laundryId]);
+
+    const fetchUpcomingOrders = async () => {
+        setLoadingUpcoming(true);
+        try {
+            const res = await axios.get(
+                `${process.env.REACT_APP_AWS_API_URL}/api/frequency/upcoming`,
+                {
+                    params: { laundryId, days: 90 },
+                    headers: { Authorization: `Bearer ${authToken}` },
+                }
+            );
+            setUpcomingOrders(res.data?.upcoming || []);
+            setUpcomingTotalCount(res.data?.totalCount || 0);
+        } catch (error) {
+            console.error("Error fetching upcoming orders:", error);
+            toast({
+                title: "Error fetching upcoming orders",
+                description: "Could not retrieve upcoming recurring orders.",
+                status: "error",
+                duration: 5000,
+                isClosable: true,
+            });
+        } finally {
+            setLoadingUpcoming(false);
+        }
+    };
+
+    // Group upcoming orders by week
+    const groupedUpcomingByWeek = useMemo(() => {
+        if (!upcomingOrders.length) return [];
+        const groups = {};
+        upcomingOrders.forEach((order) => {
+            const date = parseISO(order.pickupDate);
+            const weekStart = startOfWeek(date, { weekStartsOn: 1 });
+            const key = format(weekStart, "yyyy-MM-dd");
+            if (!groups[key]) {
+                groups[key] = { weekStart, label: `Week of ${format(weekStart, "MMM d")}`, orders: [] };
+            }
+            groups[key].orders.push(order);
+        });
+        return Object.values(groups).sort((a, b) => a.weekStart - b.weekStart);
+    }, [upcomingOrders]);
+
+    const frequencyColorScheme = (freq) => {
+        switch (freq) {
+            case "Weekly": return "purple";
+            case "Bi-Weekly": return "blue";
+            case "Monthly": return "orange";
+            default: return "gray";
+        }
+    };
+
    /* ---------- SEARCH ---------- */
     const [searchTerm, setSearchTerm] = useState("");
 
@@ -676,6 +802,7 @@ const ManagerDashboardPage = () => {
                     { id: "employee", label: "Employee Management" },
                     { id: "customer", label: "Customer Management" },
                     { id: "employeeTips", label: "Monthly Employee Tips" },
+                    { id: "upcoming", label: "Upcoming" },
                 ].map(({ id, label }) => (
                     <WrapItem key={id}>
                     <Button
@@ -1299,6 +1426,10 @@ const ManagerDashboardPage = () => {
                                                         ))}
                                                     </Box>
                                                 )}
+                                                <Button size="sm" colorScheme="orange" variant="outline"
+                                                    onClick={() => { setPricingCustomer(cust); setPricingModalOpen(true); fetchCustomerPricing(cust.customerId); }}>
+                                                    💰 Custom Pricing
+                                                </Button>
                                             </VStack>
                                         </AccordionPanel>
                                     </AccordionItem>
@@ -1337,6 +1468,140 @@ const ManagerDashboardPage = () => {
             {activeTab === "employeeTips" && (
   <EmployeeTipTab laundryId={laundryId} />
 )}
+
+            {/* UPCOMING RECURRING ORDERS SECTION */}
+            {activeTab === "upcoming" && (
+                <Box>
+                    <Flex align="center" gap={3} mb={4}>
+                        <Heading as="h2" size="md">
+                            Upcoming Recurring Orders (Next 90 Days)
+                        </Heading>
+                        <Badge colorScheme="teal" fontSize="md" px={3} py={1} borderRadius="full">
+                            {upcomingTotalCount}
+                        </Badge>
+                    </Flex>
+
+                    {loadingUpcoming ? (
+                        <VStack spacing={4} mt={6} align="center">
+                            <Spinner thickness="4px" speed="0.65s" emptyColor="gray.200" color="teal.500" size="xl" />
+                            <Text fontSize="lg" textAlign="center" color="gray.500">
+                                Loading upcoming orders…
+                            </Text>
+                        </VStack>
+                    ) : upcomingOrders.length === 0 ? (
+                        <Text color="gray.500" mt={4}>No upcoming recurring orders found.</Text>
+                    ) : (
+                        <VStack spacing={6} align="stretch">
+                            {groupedUpcomingByWeek.map((group) => (
+                                <Box key={group.label}>
+                                    <Heading as="h3" size="sm" color="teal.700" mb={2} borderBottom="1px solid" borderColor="gray.200" pb={1}>
+                                        {group.label}
+                                    </Heading>
+                                    <Box bg="white" borderRadius="xl" boxShadow="sm" overflowX="auto">
+                                        <Table variant="striped" size="sm" sx={{ "tbody tr:nth-of-type(odd)": { bg: "teal.50" } }}>
+                                            <Thead>
+                                                <Tr bg="teal.700">
+                                                    <Th color="white">Pickup Date</Th>
+                                                    <Th color="white">Customer</Th>
+                                                    <Th color="white">Frequency</Th>
+                                                    <Th color="white">Time Slot</Th>
+                                                    <Th color="white">Service</Th>
+                                                    <Th color="white">Auto-Charge</Th>
+                                                </Tr>
+                                            </Thead>
+                                            <Tbody>
+                                                {group.orders.map((order, idx) => (
+                                                    <Tr key={`${order.frequencyId}-${idx}`} _hover={{ bg: "teal.100" }}>
+                                                        <Td fontWeight="medium">{format(parseISO(order.pickupDate), "EEE, MMM d")}</Td>
+                                                        <Td>
+                                                            <VStack align="start" spacing={0}>
+                                                                <Text fontWeight="medium">{order.customerName}</Text>
+                                                                <Text fontSize="xs" color="gray.500">{order.customerPhone}</Text>
+                                                            </VStack>
+                                                        </Td>
+                                                        <Td>
+                                                            <Badge colorScheme={frequencyColorScheme(order.frequency)} borderRadius="full" px={2}>
+                                                                {order.frequency}
+                                                            </Badge>
+                                                        </Td>
+                                                        <Td fontSize="sm">{order.pickupTimeInterval}</Td>
+                                                        <Td fontSize="sm">{order.pickupService}</Td>
+                                                        <Td>
+                                                            <Badge colorScheme={order.autoCharge ? "green" : "gray"} variant="subtle" borderRadius="full" px={2}>
+                                                                {order.autoCharge ? "Yes" : "No"}
+                                                            </Badge>
+                                                        </Td>
+                                                    </Tr>
+                                                ))}
+                                            </Tbody>
+                                        </Table>
+                                    </Box>
+                                </Box>
+                            ))}
+                        </VStack>
+                    )}
+                </Box>
+            )}
+
+            {/* Custom Pricing Modal */}
+            {pricingModalOpen && pricingCustomer && (
+                <Modal isOpen={pricingModalOpen} onClose={() => setPricingModalOpen(false)} size="lg">
+                    <ModalOverlay />
+                    <ModalContent>
+                        <ModalHeader>💰 Custom Pricing: {pricingCustomer.firstName} {pricingCustomer.lastName}</ModalHeader>
+                        <ModalCloseButton />
+                        <ModalBody>
+                            <VStack spacing={4} align="stretch">
+                                {/* Existing rules */}
+                                {pricingRules.length > 0 && (
+                                    <Box>
+                                        <Text fontWeight="bold" mb={2}>Current Rules:</Text>
+                                        {pricingRules.map(rule => (
+                                            <Flex key={rule.id} justify="space-between" align="center" p={2} bg="gray.50" borderRadius="md" mb={1}>
+                                                <Box>
+                                                    <Text fontSize="sm" fontWeight="600">
+                                                        {rule.pricingType === 'discount'
+                                                            ? `${rule.value}% discount${rule.serviceName ? ` on ${rule.serviceName}` : ' (all services)'}`
+                                                            : `$${rule.value}${rule.serviceName ? ` for ${rule.serviceName}` : ''}`}
+                                                    </Text>
+                                                </Box>
+                                                <Button size="xs" colorScheme="red" variant="ghost" onClick={() => handleDeletePricingRule(rule.id)}>✕</Button>
+                                            </Flex>
+                                        ))}
+                                    </Box>
+                                )}
+
+                                {/* Add new rule */}
+                                <Box p={3} border="1px solid" borderColor="gray.200" borderRadius="md">
+                                    <Text fontWeight="bold" mb={2}>Add Rule:</Text>
+                                    <HStack mb={2}>
+                                        <Select size="sm" value={newPricingType} onChange={e => setNewPricingType(e.target.value)}>
+                                            <option value="discount">% Discount</option>
+                                            <option value="custom_price">Custom Price ($)</option>
+                                        </Select>
+                                        <Input size="sm" placeholder={newPricingType === 'discount' ? 'e.g. 15' : 'e.g. 1.50'}
+                                            value={newPricingValue} onChange={e => setNewPricingValue(e.target.value)} type="number" />
+                                    </HStack>
+                                    <HStack>
+                                        <Select size="sm" placeholder="All services" value={newPricingService} onChange={e => setNewPricingService(e.target.value)}>
+                                            {(servicesData || []).map((svc, i) => (
+                                                <option key={i} value={svc.serviceName}>{svc.serviceName}</option>
+                                            ))}
+                                        </Select>
+                                        <Button size="sm" colorScheme="blue" onClick={handleAddPricingRule}>Add</Button>
+                                    </HStack>
+                                    <Text fontSize="xs" color="gray.500" mt={1}>
+                                        {newPricingType === 'discount' ? 'Applies % off when processing this customer\'s orders.' : 'Overrides the service price for this customer.'}
+                                    </Text>
+                                </Box>
+                            </VStack>
+                        </ModalBody>
+                        <ModalFooter>
+                            <Button onClick={() => setPricingModalOpen(false)}>Close</Button>
+                        </ModalFooter>
+                    </ModalContent>
+                </Modal>
+            )}
 
         </Box>
     );

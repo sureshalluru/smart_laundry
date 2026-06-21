@@ -533,6 +533,102 @@ async def self_service_onboard(body: dict = Body(...)):
         return {"status": "error", "message": f"Onboarding failed: {str(e)}"}
 
 
+@router.get("/laundries/{laundry_id}/owner-credentials")
+async def get_owner_credentials(laundry_id: str, x_platform_key: str = Header(None)):
+    """Retrieve owner/admin credentials for a laundry. Platform admin only."""
+    verify_platform_admin(x_platform_key)
+
+    with get_db() as conn:
+        cur = get_cursor(conn)
+        cur.execute("""
+            SELECT emp_id, first_name, last_name, role, passcode, email, phone_number
+            FROM shop.employees
+            WHERE laundry_id = %s AND role IN ('Admin', 'Manager') AND is_active = TRUE
+            ORDER BY role = 'Admin' DESC, created_at ASC
+        """, (laundry_id,))
+        employees = [{
+            "empId": r["emp_id"],
+            "firstName": r["first_name"],
+            "lastName": r["last_name"],
+            "role": r["role"],
+            "passcode": r["passcode"],
+            "email": r["email"],
+            "phone": r["phone_number"],
+        } for r in cur.fetchall()]
+
+        cur.execute("SELECT device_registration_code FROM shop.laundry_shops WHERE laundry_id = %s", (laundry_id,))
+        shop = cur.fetchone()
+        reg_code = shop["device_registration_code"] if shop else ""
+
+    return {
+        "status": "success",
+        "employees": employees,
+        "deviceRegistrationCode": reg_code,
+    }
+
+
+@router.post("/laundries/{laundry_id}/send-owner-credentials")
+async def send_owner_credentials(laundry_id: str, body: dict = Body({}), x_platform_key: str = Header(None)):
+    """Send owner credentials via email. Platform admin only."""
+    verify_platform_admin(x_platform_key)
+
+    emp_id = body.get("empId")  # Optional: send to specific employee. If omitted, sends to first Admin.
+
+    with get_db() as conn:
+        cur = get_cursor(conn)
+        if emp_id:
+            cur.execute("""
+                SELECT emp_id, first_name, last_name, role, passcode, email
+                FROM shop.employees
+                WHERE emp_id = %s AND laundry_id = %s AND is_active = TRUE
+            """, (emp_id, laundry_id))
+        else:
+            cur.execute("""
+                SELECT emp_id, first_name, last_name, role, passcode, email
+                FROM shop.employees
+                WHERE laundry_id = %s AND role = 'Admin' AND is_active = TRUE
+                ORDER BY created_at ASC LIMIT 1
+            """, (laundry_id,))
+        emp = cur.fetchone()
+
+        if not emp:
+            return {"status": "error", "message": "No admin employee found for this laundry"}
+        if not emp["email"]:
+            return {"status": "error", "message": f"Employee {emp['emp_id']} has no email address on file"}
+
+        cur.execute("SELECT laundry_name, device_registration_code FROM shop.laundry_shops WHERE laundry_id = %s", (laundry_id,))
+        shop = cur.fetchone()
+        laundry_name = shop["laundry_name"] if shop else "Smart Laundry"
+        reg_code = shop["device_registration_code"] if shop else ""
+
+    # Send email
+    try:
+        from app.services.notification_service import send_email
+        html_body = f"""
+        <h2>Your Admin Credentials</h2>
+        <p>Hi {emp['first_name']},</p>
+        <p>Here are your login credentials for <strong>{laundry_name}</strong>:</p>
+        <table style="border-collapse:collapse; margin: 16px 0;">
+            <tr><td style="padding:10px 16px;font-weight:bold;background:#f7f7f7;border:1px solid #ddd;">Employee ID</td><td style="padding:10px 16px;border:1px solid #ddd;font-size:18px;">{emp['emp_id']}</td></tr>
+            <tr><td style="padding:10px 16px;font-weight:bold;background:#f7f7f7;border:1px solid #ddd;">Passcode</td><td style="padding:10px 16px;border:1px solid #ddd;font-size:18px;font-weight:bold;color:#2B6CB0;">{emp['passcode']}</td></tr>
+            <tr><td style="padding:10px 16px;font-weight:bold;background:#f7f7f7;border:1px solid #ddd;">Role</td><td style="padding:10px 16px;border:1px solid #ddd;">{emp['role']}</td></tr>
+            <tr><td style="padding:10px 16px;font-weight:bold;background:#f7f7f7;border:1px solid #ddd;">Device Reg Code</td><td style="padding:10px 16px;border:1px solid #ddd;font-size:18px;color:#DD6B20;">{reg_code}</td></tr>
+        </table>
+        <p><strong>How to log in:</strong></p>
+        <ol>
+            <li>Go to your admin page</li>
+            <li>Enter your Employee ID and Passcode</li>
+            <li>If prompted for device registration, enter the Device Reg Code above</li>
+        </ol>
+        <p style="color:#666;font-size:12px;margin-top:20px;">Please keep these credentials secure and do not share them.</p>
+        """
+        send_email(emp["email"], f"Your Login Credentials - {laundry_name}", html_body)
+        return {"status": "success", "message": f"Credentials sent to {emp['email']}"}
+    except Exception as e:
+        logger.exception("Failed to send credentials email")
+        return {"status": "error", "message": f"Failed to send email: {str(e)}"}
+
+
 @router.get("/audit-log")
 async def get_audit_log(
     laundryId: str = Query(None),

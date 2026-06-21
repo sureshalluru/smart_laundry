@@ -6,7 +6,7 @@ import {
     useDisclosure, Table, Thead, Tbody, Tr, Th, Td, Select, Spinner,
     Drawer, DrawerOverlay, DrawerContent, DrawerHeader, DrawerBody, DrawerCloseButton,
 } from '@chakra-ui/react';
-import { FiPlus, FiRefreshCw, FiUsers, FiMonitor, FiKey, FiMessageCircle } from 'react-icons/fi';
+import { FiPlus, FiRefreshCw, FiUsers, FiMonitor, FiKey, FiMessageCircle, FiMail, FiEye } from 'react-icons/fi';
 import axios from 'axios';
 
 const API_URL = process.env.REACT_APP_AWS_API_URL || '';
@@ -84,6 +84,45 @@ export default function PlatformAdminPage() {
             }
         } catch (err) {
             toast({ title: 'Error', status: 'error' });
+        }
+    };
+
+    // Send owner credentials state
+    const [sendingCredentials, setSendingCredentials] = useState({});
+    const [credentialsModal, setCredentialsModal] = useState(null); // { laundryId, employees, regCode }
+
+    const sendOwnerCredentials = async (laundryId, empId) => {
+        setSendingCredentials(prev => ({ ...prev, [laundryId + (empId || '')]: true }));
+        try {
+            const res = await axios.post(
+                `${API_URL}/api/platform/laundries/${laundryId}/send-owner-credentials`,
+                empId ? { empId } : {},
+                { headers }
+            );
+            if (res.data.status === 'success') {
+                toast({ title: 'Credentials Sent', description: res.data.message, status: 'success', duration: 5000 });
+            } else {
+                toast({ title: 'Failed', description: res.data.message, status: 'error', duration: 5000 });
+            }
+        } catch (err) {
+            toast({ title: 'Error', description: err.response?.data?.message || 'Failed to send', status: 'error' });
+        } finally {
+            setSendingCredentials(prev => ({ ...prev, [laundryId + (empId || '')]: false }));
+        }
+    };
+
+    const viewOwnerCredentials = async (laundryId) => {
+        try {
+            const res = await axios.get(`${API_URL}/api/platform/laundries/${laundryId}/owner-credentials`, { headers });
+            if (res.data.status === 'success') {
+                setCredentialsModal({
+                    laundryId,
+                    employees: res.data.employees,
+                    regCode: res.data.deviceRegistrationCode,
+                });
+            }
+        } catch (err) {
+            toast({ title: 'Error', description: 'Failed to retrieve credentials', status: 'error' });
         }
     };
 
@@ -285,6 +324,17 @@ export default function PlatformAdminPage() {
                                         </Badge>
                                     )}
                                 </Button>
+                                <HStack w="100%" spacing={2}>
+                                    <Button size="xs" leftIcon={<FiEye />} colorScheme="purple" variant="outline" onClick={() => viewOwnerCredentials(l.laundryId)} flex={1}>
+                                        View Credentials
+                                    </Button>
+                                    <Button size="xs" leftIcon={<FiMail />} colorScheme="orange" variant="outline"
+                                        onClick={() => sendOwnerCredentials(l.laundryId)}
+                                        isLoading={sendingCredentials[l.laundryId + '']}
+                                        flex={1}>
+                                        Send Credentials
+                                    </Button>
+                                </HStack>
                             </VStack>
                         </Box>
                     ))}
@@ -380,6 +430,54 @@ export default function PlatformAdminPage() {
 
             {/* Support Chat Drawer */}
             <Drawer isOpen={chatOpen} onClose={closeChat} placement="right" size="md">
+
+            {/* Credentials Modal */}
+            <Modal isOpen={!!credentialsModal} onClose={() => setCredentialsModal(null)} size="md">
+                <ModalOverlay />
+                <ModalContent>
+                    <ModalHeader>Owner Credentials</ModalHeader>
+                    <ModalCloseButton />
+                    <ModalBody>
+                        {credentialsModal && (
+                            <VStack spacing={4} align="stretch">
+                                <Box bg="orange.50" p={3} borderRadius="md">
+                                    <HStack><FiKey /><Text fontWeight="600" fontSize="sm">Device Registration Code:</Text></HStack>
+                                    <Text fontSize="lg" fontWeight="bold" color="orange.600" mt={1}>{credentialsModal.regCode}</Text>
+                                </Box>
+                                <Divider />
+                                {credentialsModal.employees.map(emp => (
+                                    <Box key={emp.empId} bg="gray.50" p={3} borderRadius="md" border="1px solid" borderColor="gray.200">
+                                        <HStack justify="space-between" mb={2}>
+                                            <Text fontWeight="600" fontSize="sm">{emp.firstName} {emp.lastName}</Text>
+                                            <Badge colorScheme={emp.role === 'Admin' ? 'red' : 'blue'} fontSize="xs">{emp.role}</Badge>
+                                        </HStack>
+                                        <Table size="sm" variant="simple">
+                                            <Tbody>
+                                                <Tr><Td fontWeight="600" px={2} py={1}>Employee ID</Td><Td px={2} py={1} fontFamily="mono">{emp.empId}</Td></Tr>
+                                                <Tr><Td fontWeight="600" px={2} py={1}>Passcode</Td><Td px={2} py={1} fontFamily="mono" fontSize="lg" color="blue.600">{emp.passcode}</Td></Tr>
+                                                <Tr><Td fontWeight="600" px={2} py={1}>Email</Td><Td px={2} py={1}>{emp.email || '—'}</Td></Tr>
+                                            </Tbody>
+                                        </Table>
+                                        {emp.email && (
+                                            <Button size="xs" leftIcon={<FiMail />} colorScheme="orange" mt={2}
+                                                onClick={() => sendOwnerCredentials(credentialsModal.laundryId, emp.empId)}
+                                                isLoading={sendingCredentials[credentialsModal.laundryId + emp.empId]}>
+                                                Email Credentials to {emp.firstName}
+                                            </Button>
+                                        )}
+                                    </Box>
+                                ))}
+                                {credentialsModal.employees.length === 0 && (
+                                    <Text color="gray.500" textAlign="center" py={4}>No admin employees found.</Text>
+                                )}
+                            </VStack>
+                        )}
+                    </ModalBody>
+                    <ModalFooter>
+                        <Button onClick={() => setCredentialsModal(null)}>Close</Button>
+                    </ModalFooter>
+                </ModalContent>
+            </Modal>
                 <DrawerOverlay />
                 <DrawerContent>
                     <DrawerCloseButton />
@@ -399,7 +497,9 @@ export default function PlatformAdminPage() {
                                                 px={3} py={2} borderRadius="lg" boxShadow="sm"
                                                 border={msg.senderType !== 'admin' ? '1px solid' : 'none'} borderColor="gray.200">
                                                 <Text fontSize="sm">{msg.message}</Text>
-                                                <Text fontSize="xs" opacity={0.7} mt={1}>{msg.senderName} • {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</Text>
+                                                <Text fontSize="xs" opacity={0.7} mt={1}>
+                                                    {msg.senderName} • {new Date(msg.createdAt).toLocaleDateString([], { month: 'short', day: 'numeric' })} {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                                </Text>
                                             </Box>
                                         </Flex>
                                     ))}
