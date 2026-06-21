@@ -460,9 +460,10 @@ async def confirm_intake(request: ConfirmIntakeRequest):
             cur = get_cursor(conn)
             cur.execute(
                 """
-                SELECT o.customer_phone, o.customer_name, l.laundry_name
-                FROM shop.orders o
-                JOIN shop.laundries l ON l.laundry_id = o.laundry_id
+                SELECT c.phone_number as customer_phone, c.first_name as customer_name, l.laundry_name
+                FROM orders.orders o
+                JOIN shop.customers c ON c.customer_id = o.customer_id
+                JOIN shop.laundry_shops l ON l.laundry_id = o.laundry_id
                 WHERE o.order_id = %s AND o.laundry_id = %s
                 """,
                 (payload.order_id, payload.laundry_id),
@@ -622,9 +623,10 @@ async def confirm_fold(request: ConfirmFoldRequest):
             cur = get_cursor(conn)
             cur.execute(
                 """
-                SELECT o.customer_phone, l.laundry_name
-                FROM shop.orders o
-                JOIN shop.laundries l ON l.laundry_id = o.laundry_id
+                SELECT c.phone_number as customer_phone, l.laundry_name
+                FROM orders.orders o
+                JOIN shop.customers c ON c.customer_id = o.customer_id
+                JOIN shop.laundry_shops l ON l.laundry_id = o.laundry_id
                 WHERE o.order_id = %s AND o.laundry_id = %s
                 """,
                 (payload.order_id, payload.laundry_id),
