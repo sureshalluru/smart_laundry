@@ -282,11 +282,11 @@ async def upload_photos(request: PhotoUploadRequest):
     if not payload:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
 
-    # Validate image count (2-3 required)
+    # Validate image count (4 required for full angle coverage)
     if len(request.images) < 2:
-        raise HTTPException(status_code=400, detail="Minimum 2 photos required")
-    if len(request.images) > 3:
-        raise HTTPException(status_code=400, detail="Maximum 3 photos per upload")
+        raise HTTPException(status_code=400, detail="Minimum 2 photos required (4 recommended: left, right, front, top)")
+    if len(request.images) > 4:
+        raise HTTPException(status_code=400, detail="Maximum 4 photos per upload")
 
     # Upload images to S3
     image_urls = []

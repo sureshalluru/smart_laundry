@@ -52,19 +52,23 @@ def build_vision_prompt(categories: list[str], phase: str = "intake") -> str:
 
 def _build_intake_prompt(categories_str: str) -> str:
     """Prompt for dirty laundry spread out on a table."""
-    return f"""You are a laundry garment inventory assistant at a laundromat. You are analyzing photos of DIRTY laundry items spread out on a table, taken from 2-3 different angles.
+    return f"""You are a laundry garment inventory assistant at a laundromat. You are analyzing 4 photos of DIRTY laundry items spread out on a table, taken from 4 specific angles:
+- Photo 1: LEFT side view
+- Photo 2: RIGHT side view  
+- Photo 3: FRONT/STRAIGHT view
+- Photo 4: TOP/OVERHEAD view
 
-Your goal is to identify and count every visible garment.
+Your goal is to identify and count every visible garment by cross-referencing all 4 angles.
 
 RULES:
-1. Count only garments that are actually visible in the photos.
-2. Do NOT guess hidden garments inside bunches or folds.
-3. If multiple garments are tangled together and cannot be reliably separated, still count each distinguishable piece.
-4. Treat matching socks as 1 pair only when both socks are visible.
-5. Ignore hangers, bags, tables, laundry carts, baskets, and background objects.
-6. Cross-reference all angle photos — the same items appear in multiple photos, do NOT double-count.
+1. Count only garments that are actually visible across the photos.
+2. Cross-reference ALL 4 angles — the same items appear in all photos. Use left+right to see items hidden from one side. Use top view for overall layout. Use front view for depth.
+3. Do NOT double-count — each physical item should be counted exactly once regardless of how many photos show it.
+4. Do NOT guess hidden garments inside bunches or folds.
+5. Treat matching socks as 1 pair only when both socks are visible.
+6. Ignore hangers, bags, tables, laundry carts, baskets, and background objects.
 7. Use visible edges, collars, sleeves, waistbands, and fabric boundaries to distinguish separate items.
-8. Be thorough — a typical laundry order has 5-30 items. Count every piece of fabric that is a garment.
+8. Be thorough — a typical laundry batch has 5-30 items. Count every piece of fabric that is a garment.
 9. If unsure about an item type, classify it using the closest matching category or "Other".
 
 CATEGORIES TO USE: {categories_str}
@@ -85,24 +89,28 @@ RESPOND WITH ONLY THIS JSON — nothing else before or after:
   ]
 }}
 
-Remember: Every piece of fabric that is a wearable garment should be counted. Do NOT return an empty items list if garments are visible."""
+Remember: Every piece of fabric that is a wearable garment should be counted. Use all 4 angles to verify your count. Do NOT return an empty items list if garments are visible."""
 
 
 def _build_fold_prompt(categories_str: str) -> str:
     """Prompt for folded/clean laundry stacked on a table."""
-    return f"""You are analyzing photos of FOLDED clean laundry stacked on a table, taken from 2-3 different angles.
+    return f"""You are analyzing 4 photos of FOLDED clean laundry on a table, taken from 4 specific angles:
+- Photo 1: LEFT side view (reveals stack layers from the left)
+- Photo 2: RIGHT side view (reveals stack layers from the right)
+- Photo 3: FRONT/STRAIGHT view (shows stack height and item edges)
+- Photo 4: TOP/OVERHEAD view (shows the top items and stack layout)
 
-Your goal is to estimate the number of individual garments in the folded stacks.
+Your goal is to estimate the number of individual garments in the folded stacks by cross-referencing all angles.
 
 RULES:
-1. Count only garments whose boundaries can be visually distinguished.
-2. Use visible folds, sleeves, collars, waistbands, pant legs, and edges to identify separate garments.
-3. Do NOT assume garments hidden deep inside a stack — only count what you can see evidence of.
-4. If a garment cannot be visually separated from adjacent garments, include it but with lower confidence.
-5. Cross-reference all angle photos to get the most accurate count — side views often reveal layers that top views miss.
-6. Folded items are typically uniform in size within a category — use stack height and visible layers to estimate count.
-7. A neatly folded stack of shirts will show distinct edges for each item — count the layers.
-8. Be conservative but not overly so — if you can see 5 distinct fold lines in a stack, that's likely 5 items.
+1. Count only garments whose boundaries can be visually distinguished across the 4 angles.
+2. Use LEFT and RIGHT views to count visible layers in each stack.
+3. Use FRONT view to see stack height and identify separate folded items by their edges.
+4. Use TOP view to identify item types by their visible surface (collar = shirt, waistband = pants, etc.).
+5. Do NOT assume garments hidden deep inside a stack — only count what you can see evidence of from any angle.
+6. Cross-reference all angles to get the most accurate count — side views reveal layers that top views miss.
+7. Folded items typically show distinct edges for each item — count the layers.
+8. Be conservative but not overly so — if you can see distinct fold lines, count them.
 
 CATEGORIES TO USE: {categories_str}
 
@@ -116,13 +124,13 @@ RESPOND WITH ONLY THIS JSON — nothing else before or after:
 
 {{
   "items": [
-    {{"category": "Shirts", "count": 5, "confidence": 88, "note": "5 distinct fold layers visible"}},
+    {{"category": "Shirts", "count": 5, "confidence": 88, "note": "5 distinct fold layers visible from side"}},
     {{"category": "Pants", "count": 3, "confidence": 90}},
     {{"category": "Towels", "count": 2, "confidence": 95, "note": "clearly separated"}}
   ]
 }}
 
-Remember: Folded laundry always has items. Use layer edges and fold boundaries to count. Do NOT return an empty items list if folded garments are visible."""
+Remember: Folded laundry always has items. Use all 4 angles — especially side views — to count layers. Do NOT return an empty items list if folded garments are visible."""
 
 
 async def analyze_photos(

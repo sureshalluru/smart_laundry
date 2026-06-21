@@ -42,8 +42,9 @@ function ItemTrackingUpload() {
   const [validating, setValidating] = useState(true);
 
   // Photo capture state
-  const [photos, setPhotos] = useState([]);
+  const [photos, setPhotos] = useState([null, null, null, null]); // 4 slots: left, right, front, top
   const [photoUrls, setPhotoUrls] = useState([]);
+  const [currentAngle, setCurrentAngle] = useState(0);
 
   // Vision processing state
   const [processing, setProcessing] = useState(false);
@@ -109,24 +110,23 @@ function ItemTrackingUpload() {
     if (files.length === 0) return;
 
     const newPhotos = [...photos];
-    files.forEach(file => {
-      if (newPhotos.length < 3) {
-        newPhotos.push(file);
-      }
-    });
+    newPhotos[currentAngle] = files[0];
     setPhotos(newPhotos);
     e.target.value = ''; // Reset input
   };
 
   const removePhoto = (index) => {
-    setPhotos(photos.filter((_, i) => i !== index));
+    const newPhotos = [...photos];
+    newPhotos[index] = null;
+    setPhotos(newPhotos);
   };
 
   const uploadAndAnalyze = async () => {
-    if (photos.length < 2) {
+    const validPhotos = photos.filter(Boolean);
+    if (validPhotos.length < 4) {
       toast({
-        title: 'Need more photos',
-        description: 'Please take at least 2 photos from different angles.',
+        title: 'Need 4 photos',
+        description: 'Take photos from Left, Right, Front, and Top angles.',
         status: 'warning',
         duration: 3000,
       });
@@ -136,9 +136,9 @@ function ItemTrackingUpload() {
     setProcessing(true);
 
     try {
-      // Convert photos to base64
+      // Convert photos to base64 (in order: left, right, front, top)
       const base64Images = await Promise.all(
-        photos.map(file => fileToBase64(file))
+        validPhotos.map(file => fileToBase64(file))
       );
 
       const res = await fetch(`${API_BASE}/api/track/upload`, {
@@ -326,71 +326,202 @@ function ItemTrackingUpload() {
         {!results && (
           <VStack spacing={3}>
             <Text fontWeight="bold" fontSize="md">
-              📸 Take 2-3 photos from different angles
-            </Text>
-            <Text fontSize="sm" color="gray.600">
-              Lay items on the table, then photograph from overhead, left, and right.
+              📸 Take 4 photos from these angles:
             </Text>
 
-            <input
-              type="file"
-              accept="image/*"
-              capture="environment"
-              multiple
-              ref={fileInputRef}
-              style={{ display: 'none' }}
-              onChange={handlePhotoCapture}
-            />
-
-            <Button
-              colorScheme="blue"
-              size="lg"
-              w="full"
-              onClick={() => fileInputRef.current?.click()}
-              isDisabled={photos.length >= 3}
-            >
-              📷 Take Photo ({photos.length}/3)
-            </Button>
-
-            {/* Photo previews */}
-            {photos.length > 0 && (
-              <SimpleGrid columns={3} spacing={2} w="full">
-                {photos.map((photo, i) => (
-                  <Box key={i} position="relative">
-                    <Image
-                      src={URL.createObjectURL(photo)}
-                      borderRadius="md"
-                      h="80px"
-                      w="full"
-                      objectFit="cover"
-                    />
+            {/* 4 Photo Frames */}
+            <SimpleGrid columns={2} spacing={3} w="full">
+              {/* Left Angle */}
+              <Box
+                borderWidth="2px"
+                borderColor={photos[0] ? 'green.400' : 'gray.300'}
+                borderStyle={photos[0] ? 'solid' : 'dashed'}
+                borderRadius="lg"
+                h="120px"
+                position="relative"
+                overflow="hidden"
+                cursor="pointer"
+                onClick={() => {
+                  if (!photos[0]) {
+                    setCurrentAngle(0);
+                    fileInputRef.current?.click();
+                  }
+                }}
+              >
+                {photos[0] ? (
+                  <>
+                    <Image src={URL.createObjectURL(photos[0])} h="full" w="full" objectFit="cover" />
                     <IconButton
-                      icon={<Text>✕</Text>}
+                      icon={<Text fontSize="xs">✕</Text>}
                       size="xs"
                       position="absolute"
                       top={1}
                       right={1}
                       colorScheme="red"
                       borderRadius="full"
-                      onClick={() => removePhoto(i)}
-                      aria-label="Remove photo"
+                      onClick={(e) => { e.stopPropagation(); removePhoto(0); }}
+                      aria-label="Remove"
                     />
-                  </Box>
-                ))}
-              </SimpleGrid>
-            )}
+                    <Badge position="absolute" bottom={1} left={1} colorScheme="green" fontSize="xs">✓ Left</Badge>
+                  </>
+                ) : (
+                  <VStack h="full" justify="center" spacing={1}>
+                    <Text fontSize="2xl">← 📷</Text>
+                    <Text fontSize="xs" fontWeight="bold" color="gray.500">LEFT SIDE</Text>
+                  </VStack>
+                )}
+              </Box>
 
-            {photos.length >= 2 && (
+              {/* Right Angle */}
+              <Box
+                borderWidth="2px"
+                borderColor={photos[1] ? 'green.400' : 'gray.300'}
+                borderStyle={photos[1] ? 'solid' : 'dashed'}
+                borderRadius="lg"
+                h="120px"
+                position="relative"
+                overflow="hidden"
+                cursor="pointer"
+                onClick={() => {
+                  if (!photos[1]) {
+                    setCurrentAngle(1);
+                    fileInputRef.current?.click();
+                  }
+                }}
+              >
+                {photos[1] ? (
+                  <>
+                    <Image src={URL.createObjectURL(photos[1])} h="full" w="full" objectFit="cover" />
+                    <IconButton
+                      icon={<Text fontSize="xs">✕</Text>}
+                      size="xs"
+                      position="absolute"
+                      top={1}
+                      right={1}
+                      colorScheme="red"
+                      borderRadius="full"
+                      onClick={(e) => { e.stopPropagation(); removePhoto(1); }}
+                      aria-label="Remove"
+                    />
+                    <Badge position="absolute" bottom={1} left={1} colorScheme="green" fontSize="xs">✓ Right</Badge>
+                  </>
+                ) : (
+                  <VStack h="full" justify="center" spacing={1}>
+                    <Text fontSize="2xl">📷 →</Text>
+                    <Text fontSize="xs" fontWeight="bold" color="gray.500">RIGHT SIDE</Text>
+                  </VStack>
+                )}
+              </Box>
+
+              {/* Front/Straight Angle */}
+              <Box
+                borderWidth="2px"
+                borderColor={photos[2] ? 'green.400' : 'gray.300'}
+                borderStyle={photos[2] ? 'solid' : 'dashed'}
+                borderRadius="lg"
+                h="120px"
+                position="relative"
+                overflow="hidden"
+                cursor="pointer"
+                onClick={() => {
+                  if (!photos[2]) {
+                    setCurrentAngle(2);
+                    fileInputRef.current?.click();
+                  }
+                }}
+              >
+                {photos[2] ? (
+                  <>
+                    <Image src={URL.createObjectURL(photos[2])} h="full" w="full" objectFit="cover" />
+                    <IconButton
+                      icon={<Text fontSize="xs">✕</Text>}
+                      size="xs"
+                      position="absolute"
+                      top={1}
+                      right={1}
+                      colorScheme="red"
+                      borderRadius="full"
+                      onClick={(e) => { e.stopPropagation(); removePhoto(2); }}
+                      aria-label="Remove"
+                    />
+                    <Badge position="absolute" bottom={1} left={1} colorScheme="green" fontSize="xs">✓ Front</Badge>
+                  </>
+                ) : (
+                  <VStack h="full" justify="center" spacing={1}>
+                    <Text fontSize="2xl">↑ 📷</Text>
+                    <Text fontSize="xs" fontWeight="bold" color="gray.500">FRONT VIEW</Text>
+                  </VStack>
+                )}
+              </Box>
+
+              {/* Top/Overhead Angle */}
+              <Box
+                borderWidth="2px"
+                borderColor={photos[3] ? 'green.400' : 'gray.300'}
+                borderStyle={photos[3] ? 'solid' : 'dashed'}
+                borderRadius="lg"
+                h="120px"
+                position="relative"
+                overflow="hidden"
+                cursor="pointer"
+                onClick={() => {
+                  if (!photos[3]) {
+                    setCurrentAngle(3);
+                    fileInputRef.current?.click();
+                  }
+                }}
+              >
+                {photos[3] ? (
+                  <>
+                    <Image src={URL.createObjectURL(photos[3])} h="full" w="full" objectFit="cover" />
+                    <IconButton
+                      icon={<Text fontSize="xs">✕</Text>}
+                      size="xs"
+                      position="absolute"
+                      top={1}
+                      right={1}
+                      colorScheme="red"
+                      borderRadius="full"
+                      onClick={(e) => { e.stopPropagation(); removePhoto(3); }}
+                      aria-label="Remove"
+                    />
+                    <Badge position="absolute" bottom={1} left={1} colorScheme="green" fontSize="xs">✓ Top</Badge>
+                  </>
+                ) : (
+                  <VStack h="full" justify="center" spacing={1}>
+                    <Text fontSize="2xl">⬇ 📷</Text>
+                    <Text fontSize="xs" fontWeight="bold" color="gray.500">TOP VIEW</Text>
+                  </VStack>
+                )}
+              </Box>
+            </SimpleGrid>
+
+            <input
+              type="file"
+              accept="image/*"
+              capture="environment"
+              ref={fileInputRef}
+              style={{ display: 'none' }}
+              onChange={handlePhotoCapture}
+            />
+
+            {photos.filter(Boolean).length >= 4 && (
               <Button
                 colorScheme="green"
                 size="lg"
                 w="full"
                 onClick={uploadAndAnalyze}
                 isLoading={processing}
-                loadingText="Analyzing..."
+                loadingText="Analyzing 4 angles..."
               >
                 🔍 Analyze Photos
               </Button>
+            )}
+
+            {photos.filter(Boolean).length > 0 && photos.filter(Boolean).length < 4 && (
+              <Text fontSize="xs" color="gray.500" textAlign="center">
+                {4 - photos.filter(Boolean).length} more photo{4 - photos.filter(Boolean).length > 1 ? 's' : ''} needed — tap an empty frame
+              </Text>
             )}
           </VStack>
         )}
@@ -461,18 +592,21 @@ function ItemTrackingUpload() {
               </Alert>
             )}
 
-            {/* Add more items button (for large orders) */}
+            {/* Add next batch button */}
             <Button
               variant="outline"
               colorScheme="blue"
-              size="sm"
+              size="md"
+              w="full"
               onClick={() => {
                 setResults(null);
-                setPhotos([]);
+                setPhotos([null, null, null, null]);
               }}
             >
-              ➕ Add More Items (next batch)
+              ➕ Add Next Batch (more items on table)
             </Button>
+
+            <Divider />
 
             {/* Fold Phase: Discrepancy Handling */}
             {tokenData.phase === 'fold' && discrepancies.length > 0 && (
@@ -523,7 +657,7 @@ function ItemTrackingUpload() {
               </Alert>
             )}
 
-            {/* Confirm Button */}
+            {/* Confirm Button — only after all batches are done */}
             <Button
               colorScheme="green"
               size="lg"
@@ -536,7 +670,7 @@ function ItemTrackingUpload() {
                 (tokenData.phase === 'fold' && discrepancies.length > 0 && !allAcknowledged)
               }
             >
-              ✓ Confirm {tokenData.phase === 'intake' ? 'Intake' : 'Fold'} Count
+              ✓ All Batches Done — Confirm {tokenData.phase === 'intake' ? 'Intake' : 'Fold'}
             </Button>
           </VStack>
         )}
