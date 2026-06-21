@@ -20,7 +20,16 @@ from app.config import settings
 class SuppressPollingFilter(logging.Filter):
     def filter(self, record):
         msg = record.getMessage()
+        # Suppress frequent polling/routine endpoints
         if "/api/chat/messages" in msg:
+            return False
+        if "/api/chat/admin/conversations" in msg:
+            return False
+        if "/api/laundry/validate-laundry" in msg:
+            return False
+        if "/api/laundry/get-info" in msg:
+            return False
+        if "/health" in msg:
             return False
         # Suppress bot scanner probes
         if ".php" in msg or ".asp" in msg or "/wp-" in msg or "/.env" in msg:

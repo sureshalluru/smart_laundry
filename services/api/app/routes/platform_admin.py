@@ -512,6 +512,65 @@ async def self_service_onboard(body: dict = Body(...)):
         else:
             logger.warning(f"Agreement not signed for {laundry_name}, skipping email")
 
+        # Send welcome email to the new tenant owner
+        if owner_email:
+            try:
+                from app.services.notification_service import send_email
+                admin_url = f"https://smartlaundrybasket.ai/{next_id}/admin"
+                customer_url = f"https://smartlaundrybasket.ai/{next_id}/site"
+                welcome_html = f"""
+                <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+                    <h2 style="color: #2B6CB0;">🎉 Welcome to Smart Laundry Basket!</h2>
+                    <p>Hi {owner_first_name},</p>
+                    <p>Congratulations! Your laundry <strong>{laundry_name}</strong> is now set up on our platform. Here's everything you need to get started:</p>
+
+                    <h3 style="color: #2D3748; border-bottom: 1px solid #E2E8F0; padding-bottom: 8px;">🔑 Your Login Credentials</h3>
+                    <table style="border-collapse: collapse; width: 100%; margin: 12px 0;">
+                        <tr><td style="padding: 10px 16px; font-weight: bold; background: #F7FAFC; border: 1px solid #E2E8F0;">Employee ID</td>
+                            <td style="padding: 10px 16px; border: 1px solid #E2E8F0; font-size: 18px; font-family: monospace;">{owner_emp_id}</td></tr>
+                        <tr><td style="padding: 10px 16px; font-weight: bold; background: #F7FAFC; border: 1px solid #E2E8F0;">Passcode</td>
+                            <td style="padding: 10px 16px; border: 1px solid #E2E8F0; font-size: 18px; font-weight: bold; color: #2B6CB0;">{owner_passcode}</td></tr>
+                        <tr><td style="padding: 10px 16px; font-weight: bold; background: #F7FAFC; border: 1px solid #E2E8F0;">Device Registration Code</td>
+                            <td style="padding: 10px 16px; border: 1px solid #E2E8F0; font-size: 18px; color: #DD6B20;">{reg_code}</td></tr>
+                    </table>
+
+                    <h3 style="color: #2D3748; border-bottom: 1px solid #E2E8F0; padding-bottom: 8px;">🔗 Your Links</h3>
+                    <table style="border-collapse: collapse; width: 100%; margin: 12px 0;">
+                        <tr><td style="padding: 10px 16px; font-weight: bold; background: #F7FAFC; border: 1px solid #E2E8F0;">Admin Dashboard</td>
+                            <td style="padding: 10px 16px; border: 1px solid #E2E8F0;"><a href="{admin_url}" style="color: #2B6CB0;">{admin_url}</a></td></tr>
+                        <tr><td style="padding: 10px 16px; font-weight: bold; background: #F7FAFC; border: 1px solid #E2E8F0;">Customer Website</td>
+                            <td style="padding: 10px 16px; border: 1px solid #E2E8F0;"><a href="{customer_url}" style="color: #2B6CB0;">{customer_url}</a></td></tr>
+                    </table>
+
+                    <h3 style="color: #2D3748; border-bottom: 1px solid #E2E8F0; padding-bottom: 8px;">✅ Complete Your Setup</h3>
+                    <p>To start receiving orders, please complete these steps in your Admin Dashboard:</p>
+                    <ol style="line-height: 2;">
+                        <li><strong>Add Stripe Payment</strong> — Connect your Stripe account to accept online payments</li>
+                        <li><strong>Set Delivery Schedule</strong> — Configure your pickup/dropoff time slots</li>
+                        <li><strong>Add Services & Pricing</strong> — Set up your service menu with prices</li>
+                        <li><strong>Set Serviceable Area</strong> — Add zip codes you serve</li>
+                        <li><strong>Add Team Members</strong> — Create employee accounts for your staff</li>
+                    </ol>
+
+                    <h3 style="color: #2D3748; border-bottom: 1px solid #E2E8F0; padding-bottom: 8px;">📱 How to Log In</h3>
+                    <ol style="line-height: 2;">
+                        <li>Go to <a href="{admin_url}" style="color: #2B6CB0;">{admin_url}</a></li>
+                        <li>Enter your Employee ID and Passcode</li>
+                        <li>When prompted, enter the Device Registration Code shown above</li>
+                    </ol>
+
+                    <div style="margin-top: 24px; padding: 16px; background: #EBF8FF; border-radius: 8px; border: 1px solid #BEE3F8;">
+                        <p style="margin: 0; font-size: 14px;"><strong>Need help?</strong> Reply to this email or use the support chat in your admin dashboard. We're here to help you get set up!</p>
+                    </div>
+
+                    <p style="margin-top: 24px; font-size: 12px; color: #999;">Please keep your credentials secure. You can find them again in your admin settings or contact support.</p>
+                </div>
+                """
+                send_email(owner_email, f"Welcome to Smart Laundry Basket - {laundry_name} Setup Guide", welcome_html)
+                logger.info(f"Welcome email sent to {owner_email} for {laundry_name}")
+            except Exception as welcome_err:
+                logger.warning(f"Failed to send welcome email for {laundry_name}: {welcome_err}")
+
         return {
             "status": "success",
             "laundry": {
@@ -541,7 +600,7 @@ async def get_owner_credentials(laundry_id: str, x_platform_key: str = Header(No
     with get_db() as conn:
         cur = get_cursor(conn)
         cur.execute("""
-            SELECT emp_id, first_name, last_name, role, passcode, email, phone_number
+            SELECT emp_id, first_name, last_name, role, passcode, email, phone
             FROM shop.employees
             WHERE laundry_id = %s AND role IN ('Admin', 'Manager') AND is_active = TRUE
             ORDER BY role = 'Admin' DESC, created_at ASC
@@ -553,7 +612,7 @@ async def get_owner_credentials(laundry_id: str, x_platform_key: str = Header(No
             "role": r["role"],
             "passcode": r["passcode"],
             "email": r["email"],
-            "phone": r["phone_number"],
+            "phone": r["phone"],
         } for r in cur.fetchall()]
 
         cur.execute("SELECT device_registration_code FROM shop.laundry_shops WHERE laundry_id = %s", (laundry_id,))
