@@ -118,17 +118,8 @@ def run():
 
         # Add unique constraint on tracking_sessions if not exists
         cur.execute("""
-            DO $
-            BEGIN
-                IF NOT EXISTS (
-                    SELECT 1 FROM pg_constraint
-                    WHERE conname = 'tracking_sessions_order_id_laundry_id_phase_key'
-                ) THEN
-                    ALTER TABLE tracking.tracking_sessions
-                    ADD CONSTRAINT tracking_sessions_order_id_laundry_id_phase_key
-                    UNIQUE (order_id, laundry_id, phase);
-                END IF;
-            END $;
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_tracking_sessions_unique_order_phase
+            ON tracking.tracking_sessions (order_id, laundry_id, phase)
         """)
 
         logger.info("Migration: item tracking tables created successfully.")
