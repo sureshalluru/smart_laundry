@@ -95,16 +95,35 @@ async def analyze_photos(
 
         client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
 
-        # Build content blocks with images
+        # Build content blocks with images — fetch from S3 URLs and send as base64
+        import httpx
+        import base64
+
         content = []
         for url in image_urls:
-            content.append({
-                "type": "image",
-                "source": {
-                    "type": "url",
-                    "url": url,
-                },
-            })
+            try:
+                resp = httpx.get(url, timeout=10)
+                if resp.status_code == 200:
+                    img_base64 = base64.standard_b64encode(resp.content).decode("utf-8")
+                    # Detect media type
+                    media_type = "image/jpeg"
+                    if resp.content[:8] == b'\x89PNG\r\n\x1a\n':
+                        media_type = "image/png"
+                    content.append({
+                        "type": "image",
+                        "source": {
+                            "type": "base64",
+                            "media_type": media_type,
+                            "data": img_base64,
+                        },
+                    })
+                else:
+                    logger.warning(f"Failed to fetch image from {url}: HTTP {resp.status_code}")
+            except Exception as e:
+                logger.warning(f"Failed to fetch image from {url}: {e}")
+
+        if not content:
+            raise VisionServiceError("INVALID_IMAGE", "Could not fetch any uploaded images for analysis")
 
         content.append({
             "type": "text",
@@ -113,7 +132,7 @@ async def analyze_photos(
 
         # Call Claude Vision
         response = client.messages.create(
-            model="claude-3-5-sonnet-20241022",
+            model="claude-sonnet-4-6",
             max_tokens=1024,
             system=build_vision_prompt(categories),
             messages=[
