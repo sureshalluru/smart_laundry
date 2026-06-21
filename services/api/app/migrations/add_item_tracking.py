@@ -81,7 +81,8 @@ def run():
                 result_data JSONB,
                 expires_at TIMESTAMP NOT NULL,
                 confirmed_at TIMESTAMP,
-                created_at TIMESTAMP DEFAULT NOW()
+                created_at TIMESTAMP DEFAULT NOW(),
+                UNIQUE (order_id, laundry_id, phase)
             )
         """)
 
@@ -113,6 +114,21 @@ def run():
         cur.execute("""
             CREATE INDEX IF NOT EXISTS idx_item_categories_laundry_id
             ON tracking.item_categories (laundry_id)
+        """)
+
+        # Add unique constraint on tracking_sessions if not exists
+        cur.execute("""
+            DO $
+            BEGIN
+                IF NOT EXISTS (
+                    SELECT 1 FROM pg_constraint
+                    WHERE conname = 'tracking_sessions_order_id_laundry_id_phase_key'
+                ) THEN
+                    ALTER TABLE tracking.tracking_sessions
+                    ADD CONSTRAINT tracking_sessions_order_id_laundry_id_phase_key
+                    UNIQUE (order_id, laundry_id, phase);
+                END IF;
+            END $;
         """)
 
         logger.info("Migration: item tracking tables created successfully.")

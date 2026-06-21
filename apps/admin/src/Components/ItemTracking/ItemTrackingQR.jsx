@@ -33,6 +33,21 @@ function ItemTrackingQR({ orderId, laundryId, phase, employeeId, onResultsReceiv
 
   // Generate QR code
   const generateQR = useCallback(async () => {
+    // First check if there's already a confirmed session
+    try {
+      const statusParams = new URLSearchParams({ orderId, laundryId, phase });
+      const statusRes = await fetch(`${API_BASE}/api/admin/item-tracking/status?${statusParams}`);
+      if (statusRes.ok) {
+        const statusData = await statusRes.json();
+        if (statusData.status === 'confirmed') {
+          setSyncStatus('confirmed');
+          setResult(statusData.record);
+          if (onResultsReceived) onResultsReceived(statusData.record);
+          return; // Don't generate new QR — already done
+        }
+      }
+    } catch (e) { /* ignore, proceed to generate */ }
+
     setSyncStatus('generating');
     try {
       const params = new URLSearchParams({
@@ -91,6 +106,8 @@ function ItemTrackingQR({ orderId, laundryId, phase, employeeId, onResultsReceiv
         } else if (data.status === 'expired') {
           setSyncStatus('expired');
           stopPolling();
+        } else if (data.status === 'no_session') {
+          // No session exists yet, keep waiting
         }
       } catch (e) {
         // Silently retry on network errors

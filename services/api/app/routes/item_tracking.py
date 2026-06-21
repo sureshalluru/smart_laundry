@@ -60,7 +60,7 @@ async def generate_qr_code(
     base = baseUrl or ""
     qr_url = f"{base}/track/{token}"
 
-    # Create tracking session in DB
+    # Create tracking session in DB (or update if one already exists)
     with get_db() as conn:
         cur = get_cursor(conn)
         cur.execute(
@@ -68,7 +68,13 @@ async def generate_qr_code(
             INSERT INTO tracking.tracking_sessions
                 (order_id, laundry_id, employee_id, phase, token_hash, status, expires_at)
             VALUES (%s, %s, %s, %s, %s, 'waiting', %s)
-            ON CONFLICT DO NOTHING
+            ON CONFLICT (order_id, laundry_id, phase) DO UPDATE
+            SET token_hash = EXCLUDED.token_hash,
+                status = 'waiting',
+                expires_at = EXCLUDED.expires_at,
+                employee_id = EXCLUDED.employee_id,
+                confirmed_at = NULL,
+                result_data = NULL
             """,
             (
                 orderId,

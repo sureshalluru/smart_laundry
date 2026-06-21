@@ -29,6 +29,8 @@ class SuppressPollingFilter(logging.Filter):
             return False
         if "/api/laundry/get-info" in msg:
             return False
+        if "/api/admin/item-tracking/status" in msg:
+            return False
         if "/health" in msg:
             return False
         # Suppress bot scanner probes
