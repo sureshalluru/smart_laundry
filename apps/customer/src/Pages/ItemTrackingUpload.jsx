@@ -398,25 +398,48 @@ function ItemTrackingUpload() {
         {/* Results Section */}
         {runningTally.length > 0 && (
           <VStack spacing={3} align="stretch">
-            <Text fontWeight="bold" fontSize="md">
-              📋 Items Found:
-            </Text>
+            <HStack justify="space-between">
+              <Text fontWeight="bold" fontSize="md">📋 Items Found:</Text>
+              <Text fontSize="xs" color="gray.500">Tap count to edit</Text>
+            </HStack>
 
             {runningTally.map((item, i) => (
               <Card key={i} variant="outline" size="sm">
                 <CardBody py={2} px={3}>
                   <HStack justify="space-between">
-                    <HStack>
-                      <Text fontWeight="medium">{item.category}</Text>
+                    <HStack flex={1}>
+                      <Text fontWeight="medium" fontSize="sm">{item.category}</Text>
                       {item.confidence < 80 && (
-                        <Badge colorScheme="orange" fontSize="xs">Low confidence</Badge>
+                        <Badge colorScheme="orange" fontSize="xs">?</Badge>
                       )}
                     </HStack>
-                    <HStack>
-                      <Text fontWeight="bold" fontSize="lg">{item.count}</Text>
+                    <HStack spacing={1}>
+                      <Button
+                        size="xs"
+                        variant="ghost"
+                        onClick={() => {
+                          const updated = [...runningTally];
+                          if (updated[i].count > 0) {
+                            updated[i] = { ...updated[i], count: updated[i].count - 1 };
+                            setRunningTally(updated);
+                          }
+                        }}
+                      >−</Button>
+                      <Text fontWeight="bold" fontSize="lg" minW="30px" textAlign="center">
+                        {item.count}
+                      </Text>
+                      <Button
+                        size="xs"
+                        variant="ghost"
+                        onClick={() => {
+                          const updated = [...runningTally];
+                          updated[i] = { ...updated[i], count: updated[i].count + 1 };
+                          setRunningTally(updated);
+                        }}
+                      >+</Button>
                       {tokenData.phase === 'fold' && intakeRecord && (
-                        <Text fontSize="sm" color="gray.500">
-                          / {getExpectedCount(item.category, intakeRecord)} expected
+                        <Text fontSize="xs" color="gray.500">
+                          / {getExpectedCount(item.category, intakeRecord)}
                         </Text>
                       )}
                     </HStack>
@@ -454,9 +477,28 @@ function ItemTrackingUpload() {
             {/* Fold Phase: Discrepancy Handling */}
             {tokenData.phase === 'fold' && discrepancies.length > 0 && (
               <VStack spacing={2} align="stretch">
-                <Text fontWeight="bold" color="red.500" fontSize="sm">
-                  ⚠️ Discrepancies Found:
-                </Text>
+                <HStack justify="space-between">
+                  <Text fontWeight="bold" color="red.500" fontSize="sm">
+                    ⚠️ Discrepancies ({discrepancies.length}):
+                  </Text>
+                  <Button
+                    size="xs"
+                    colorScheme="orange"
+                    variant="outline"
+                    onClick={() => {
+                      // Accept all discrepancies as "Miscounted at intake"
+                      const allAcks = discrepancies.map(d => ({
+                        category: d.category,
+                        reason: 'Miscounted at intake',
+                        intakeCount: d.intakeCount,
+                        foldCount: d.foldCount,
+                      }));
+                      setAcknowledgements(allAcks);
+                    }}
+                  >
+                    Accept All
+                  </Button>
+                </HStack>
                 {discrepancies.map((d, i) => (
                   <DiscrepancyAck
                     key={i}
@@ -510,54 +552,102 @@ function DiscrepancyAck({ discrepancy, acknowledged, onAcknowledge }) {
   const [freeText, setFreeText] = useState(acknowledged?.freeText || '');
 
   const reasons = [
-    'Found in machine',
-    'Customer never sent',
-    'Damaged/Disposed',
-    'Miscounted at intake',
-    'Other',
+    { key: 'Found in machine', icon: '🔄' },
+    { key: 'Customer never sent', icon: '❌' },
+    { key: 'Damaged/Disposed', icon: '🗑️' },
+    { key: 'Miscounted at intake', icon: '🔢' },
+    { key: 'Other', icon: '📝' },
   ];
 
+  const diff = discrepancy.foldCount - discrepancy.intakeCount;
+  const diffText = diff > 0
+    ? `+${diff} extra`
+    : `${diff} missing`;
+
   return (
-    <Card variant="outline" borderColor="orange.300" size="sm">
-      <CardBody py={2} px={3}>
-        <VStack align="stretch" spacing={1}>
-          <HStack justify="space-between">
-            <Text fontSize="sm" fontWeight="medium">{discrepancy.category}</Text>
-            <Text fontSize="xs" color="red.500">
-              {discrepancy.foldCount} folded / {discrepancy.intakeCount} received
-            </Text>
-          </HStack>
-          <SimpleGrid columns={2} spacing={1}>
-            {reasons.map(reason => (
-              <Button
-                key={reason}
-                size="xs"
-                variant={selectedReason === reason ? 'solid' : 'outline'}
-                colorScheme={selectedReason === reason ? 'blue' : 'gray'}
-                onClick={() => {
-                  setSelectedReason(reason);
-                  onAcknowledge(reason, reason === 'Other' ? freeText : undefined);
-                }}
-              >
-                {reason}
-              </Button>
-            ))}
-          </SimpleGrid>
-          {selectedReason === 'Other' && (
-            <input
-              type="text"
-              placeholder="Explain..."
-              value={freeText}
-              onChange={(e) => {
-                setFreeText(e.target.value);
-                onAcknowledge('Other', e.target.value);
+    <Box
+      bg="white"
+      borderWidth="2px"
+      borderColor={selectedReason ? 'green.300' : 'orange.300'}
+      borderRadius="lg"
+      p={3}
+      mb={1}
+    >
+      {/* Header — category and counts */}
+      <HStack justify="space-between" mb={2}>
+        <Text fontSize="md" fontWeight="bold">{discrepancy.category}</Text>
+        <Badge
+          colorScheme={Math.abs(diff) >= 2 ? 'red' : 'orange'}
+          fontSize="sm"
+          px={2}
+          py={1}
+          borderRadius="md"
+        >
+          {discrepancy.foldCount} folded / {discrepancy.intakeCount} received ({diffText})
+        </Badge>
+      </HStack>
+
+      {/* Reason selection — vertical list with large tap targets */}
+      {!selectedReason ? (
+        <VStack spacing={2} align="stretch">
+          <Text fontSize="xs" color="gray.500" fontWeight="semibold">Why is there a difference?</Text>
+          {reasons.map(({ key, icon }) => (
+            <Button
+              key={key}
+              size="md"
+              w="full"
+              variant="outline"
+              colorScheme="gray"
+              justifyContent="flex-start"
+              leftIcon={<Text>{icon}</Text>}
+              onClick={() => {
+                setSelectedReason(key);
+                onAcknowledge(key, key === 'Other' ? freeText : undefined);
               }}
-              style={{ padding: '4px 8px', border: '1px solid #ccc', borderRadius: '4px', fontSize: '12px' }}
-            />
-          )}
+            >
+              <Text fontSize="sm">{key}</Text>
+            </Button>
+          ))}
         </VStack>
-      </CardBody>
-    </Card>
+      ) : (
+        <HStack justify="space-between" bg="green.50" p={2} borderRadius="md">
+          <Text fontSize="sm" color="green.700">
+            ✓ {selectedReason}
+          </Text>
+          <Button
+            size="xs"
+            variant="ghost"
+            colorScheme="gray"
+            onClick={() => {
+              setSelectedReason('');
+            }}
+          >
+            Change
+          </Button>
+        </HStack>
+      )}
+
+      {selectedReason === 'Other' && (
+        <Box mt={2}>
+          <input
+            type="text"
+            placeholder="Explain briefly..."
+            value={freeText}
+            onChange={(e) => {
+              setFreeText(e.target.value);
+              onAcknowledge('Other', e.target.value);
+            }}
+            style={{
+              padding: '10px 12px',
+              border: '1px solid #ccc',
+              borderRadius: '8px',
+              fontSize: '14px',
+              width: '100%',
+            }}
+          />
+        </Box>
+      )}
+    </Box>
   );
 }
 
