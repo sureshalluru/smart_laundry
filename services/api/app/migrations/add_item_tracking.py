@@ -117,6 +117,15 @@ def run():
         """)
 
         # Add unique constraint on tracking_sessions if not exists
+        # First, remove duplicates keeping only the most recent per (order_id, laundry_id, phase)
+        cur.execute("""
+            DELETE FROM tracking.tracking_sessions a
+            USING tracking.tracking_sessions b
+            WHERE a.session_id < b.session_id
+              AND a.order_id = b.order_id
+              AND a.laundry_id = b.laundry_id
+              AND a.phase = b.phase
+        """)
         cur.execute("""
             CREATE UNIQUE INDEX IF NOT EXISTS idx_tracking_sessions_unique_order_phase
             ON tracking.tracking_sessions (order_id, laundry_id, phase)
