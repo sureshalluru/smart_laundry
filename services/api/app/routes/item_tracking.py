@@ -287,16 +287,16 @@ async def upload_photos(request: PhotoUploadRequest):
         try:
             s3 = get_s3_client()
             s3.put_object(
-                Bucket=settings.s3_tracking_bucket,
+                Bucket=DELIVERY_IMAGES_BUCKET,
                 Key=s3_key,
                 Body=image_bytes,
                 ContentType=content_type,
             )
-            image_url = f"https://{settings.s3_tracking_bucket}.s3.amazonaws.com/{s3_key}"
+            image_url = f"https://{DELIVERY_IMAGES_BUCKET}.s3.amazonaws.com/{s3_key}"
             image_urls.append(image_url)
         except Exception as e:
             logger.error(f"S3 upload failed for tracking photo: {e}")
-            raise HTTPException(status_code=500, detail="Failed to upload photo")
+            raise HTTPException(status_code=500, detail=f"Failed to upload photo to storage: {str(e)}")
 
     # Get active categories for this laundry
     with get_db() as conn:
@@ -324,6 +324,9 @@ async def upload_photos(request: PhotoUploadRequest):
         if e.code == "RATE_LIMIT":
             raise HTTPException(status_code=429, detail=e.message)
         raise HTTPException(status_code=503, detail=e.message)
+    except Exception as e:
+        logger.error(f"Vision analysis failed: {e}")
+        raise HTTPException(status_code=503, detail=f"AI vision analysis failed: {str(e)}")
 
     # Flag low-confidence items
     flagged_items = flag_low_confidence(vision_result.items)

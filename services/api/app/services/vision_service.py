@@ -90,6 +90,9 @@ async def analyze_photos(
     start_time = time.time()
 
     try:
+        if not settings.anthropic_api_key:
+            raise VisionServiceError("VISION_UNAVAILABLE", "Anthropic API key not configured. Set ANTHROPIC_API_KEY in environment.")
+
         client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
 
         # Build content blocks with images
