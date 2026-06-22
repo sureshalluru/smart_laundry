@@ -156,15 +156,41 @@ def run():
 
 # Default categories to seed for new laundries
 DEFAULT_CATEGORIES = [
-    "Shirts",
+    # Tops
+    "T-shirts",
+    "Dress Shirts",
+    "Casual Shirts",
+    "Blouses",
+    "Tank Tops",
+    "Sweaters",
+    "Hoodies",
+    # Bottoms
+    "Jeans",
     "Pants",
     "Shorts",
-    "Socks (pairs)",
+    "Skirts",
+    "Leggings",
+    # Dresses & One-Piece
+    "Dresses",
+    "Jumpsuits",
+    # Outerwear
+    "Jackets",
+    "Coats",
+    # Underwear
     "Underwear",
+    "Bras",
+    "Socks (pairs)",
+    # Sleepwear
+    "Pajamas",
+    # Athletic
+    "Athletic Wear",
+    # Household Linens
     "Towels",
     "Sheets",
+    "Pillowcases",
+    "Blankets",
     "Comforters",
-    "Delicates",
+    # Other
     "Other",
 ]
 

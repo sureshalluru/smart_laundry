@@ -250,14 +250,16 @@ async def update_products_services(
                       svc.get("categoryId") or None))
 
             for svc in services_to_update:
+                new_name = svc.get("newServiceName") or svc.get("serviceName")
+                original_name = svc.get("originalServiceName") or svc.get("serviceName")
                 cur.execute("""
                     UPDATE shop.laundry_services
-                    SET price = %s, description = %s, input_weight = %s, customer_access = %s, category_id = %s
+                    SET service_name = %s, price = %s, description = %s, input_weight = %s, customer_access = %s, category_id = %s
                     WHERE laundry_id = %s AND service_name = %s
-                """, (float(svc.get("price", 0)), svc.get("description", ""),
+                """, (new_name, float(svc.get("price", 0)), svc.get("description", ""),
                       svc.get("inputWeight", True), svc.get("customerAccess", True),
                       svc.get("categoryId") or None,
-                      laundryId, svc.get("serviceName")))
+                      laundryId, original_name))
 
             for svc_name in services_to_remove:
                 cur.execute("""
@@ -1094,9 +1096,22 @@ async def delete_service_category(
     laundryId: str = Query(...),
     current_user: dict = Depends(get_current_user),
 ):
-    """Delete a service category. Services with this category will become uncategorized (FK ON DELETE SET NULL)."""
+    """Delete a service category. Blocks if services are still assigned to it."""
     with get_db() as conn:
         cur = get_cursor(conn)
+
+        # Check if any active services are assigned to this category
+        cur.execute("""
+            SELECT COUNT(*) as cnt FROM shop.laundry_services
+            WHERE category_id = %s AND laundry_id = %s AND is_active = TRUE
+        """, (categoryId, laundryId))
+        row = cur.fetchone()
+        if row and row["cnt"] > 0:
+            return {
+                "status": "error",
+                "message": f"Cannot delete — {row['cnt']} service(s) still assigned to this category. Unassign them first."
+            }
+
         cur.execute("""
             DELETE FROM shop.service_categories
             WHERE category_id = %s AND laundry_id = %s

@@ -755,16 +755,21 @@ const LaundryInfoManagement = ({ validateEmpCredentials, type, empPrefix }) => {
     };
 
     const handleDeleteCategory = async (categoryId) => {
-        if (!window.confirm("Delete this category? Services in this category will become uncategorized.")) return;
+        if (!window.confirm("Delete this category? Make sure no services are assigned to it first.")) return;
         try {
-            await axios.delete(`${process.env.REACT_APP_AWS_API_URL}/api/admin/service-categories`, {
+            const res = await axios.delete(`${process.env.REACT_APP_AWS_API_URL}/api/admin/service-categories`, {
                 params: { categoryId, laundryId },
                 headers: { Authorization: `Bearer ${authToken}` },
             });
+            if (res.data?.status === "error") {
+                toast({ title: "Cannot Delete", description: res.data.message, status: "warning", duration: 5000, isClosable: true });
+                return;
+            }
             setCategories(prev => prev.filter(c => c.categoryId !== categoryId));
             toast({ title: "Category deleted", status: "success", duration: 2000 });
         } catch (err) {
-            toast({ title: "Error deleting category", status: "error", duration: 3000 });
+            const msg = err.response?.data?.message || "Error deleting category";
+            toast({ title: msg, status: "error", duration: 4000, isClosable: true });
         }
     };
 
@@ -945,8 +950,9 @@ const LaundryInfoManagement = ({ validateEmpCredentials, type, empPrefix }) => {
             })),
             servicesToUpdate: (servicesData || [])
                 .filter((service) => service.isModified)
-                .map(({ serviceName, price, description, customerAccess, inputWeight, categoryId }) => ({
+                .map(({ serviceName, originalServiceName, price, description, customerAccess, inputWeight, categoryId }) => ({
                     serviceName,
+                    originalServiceName: originalServiceName || serviceName,
                     price: parseFloat(price) || 0,
                     description: description || "N/A",
                     customerAccess: customerAccess ?? false,
@@ -1024,7 +1030,13 @@ const LaundryInfoManagement = ({ validateEmpCredentials, type, empPrefix }) => {
         setServicesData((prev) =>
             prev.map((service, i) =>
                 i === index
-                    ? { ...service, [field]: field === "price" ? parseFloat(value) : value, isModified: true }
+                    ? {
+                        ...service,
+                        [field]: field === "price" ? parseFloat(value) : value,
+                        isModified: true,
+                        // Track original name for rename support
+                        originalServiceName: service.originalServiceName || service.serviceName,
+                      }
                     : service
             )
         );
@@ -1632,7 +1644,32 @@ const LaundryInfoManagement = ({ validateEmpCredentials, type, empPrefix }) => {
                                 <Tbody>
                                     {categories.map((cat, idx) => (
                                         <Tr key={cat.categoryId}>
-                                            <Td fontSize="sm" fontWeight="500">{cat.categoryName}</Td>
+                                            <Td fontSize="sm" fontWeight="500">
+                                                <Input
+                                                    size="sm"
+                                                    variant="flushed"
+                                                    value={cat.categoryName}
+                                                    fontWeight="500"
+                                                    onChange={(e) => {
+                                                        const updated = [...categories];
+                                                        updated[idx] = { ...updated[idx], categoryName: e.target.value };
+                                                        setCategories(updated);
+                                                    }}
+                                                    onBlur={async () => {
+                                                        if (cat.categoryName.trim()) {
+                                                            try {
+                                                                await axios.put(`${process.env.REACT_APP_AWS_API_URL}/api/admin/service-categories`, {
+                                                                    categoryId: cat.categoryId,
+                                                                    laundryId,
+                                                                    categoryName: cat.categoryName.trim(),
+                                                                }, { headers: { Authorization: `Bearer ${authToken}` } });
+                                                            } catch (err) {
+                                                                toast({ title: "Error renaming category", status: "error", duration: 3000 });
+                                                            }
+                                                        }
+                                                    }}
+                                                />
+                                            </Td>
                                             <Td fontSize="sm">{cat.displayOrder}</Td>
                                             <Td>
                                                 <Flex gap={1}>
@@ -1751,7 +1788,18 @@ const LaundryInfoManagement = ({ validateEmpCredentials, type, empPrefix }) => {
   {/* Existing services second */}
   {servicesData.slice(0, currentServiceLimit).map((service, index) => (
     <Tr key={index} _hover={{ bg: "blue.50" }} borderBottom="1px solid" borderColor="gray.200">
-      <Td fontSize="sm">{service.serviceName}</Td>
+      <Td fontSize="sm">
+        {isServiceEditMode ? (
+          <Input
+            size="sm"
+            value={service.serviceName || ""}
+            placeholder="Service Name"
+            onChange={(e) => handleEditService(index, "serviceName", e.target.value)}
+          />
+        ) : (
+          service.serviceName
+        )}
+      </Td>
       <Td fontSize="sm" isNumeric>
         {isServiceEditMode ? (
           <Input

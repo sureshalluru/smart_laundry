@@ -686,6 +686,7 @@ function DiscrepancyAck({ discrepancy, acknowledged, onAcknowledge }) {
   const [freeText, setFreeText] = useState(acknowledged?.freeText || '');
 
   const reasons = [
+    { key: 'Misclassified at intake', icon: '🏷️' },
     { key: 'Found in machine', icon: '🔄' },
     { key: 'Customer never sent', icon: '❌' },
     { key: 'Damaged/Disposed', icon: '🗑️' },
