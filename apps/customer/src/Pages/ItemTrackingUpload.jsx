@@ -295,8 +295,18 @@ function ItemTrackingUpload() {
             {tokenData.phase === 'intake' ? 'Intake Recorded' : 'Fold Complete'}
           </Heading>
           <Text color="gray.600">
-            You can close this page. Results are synced to the POS.
+            Results are synced to the POS.
           </Text>
+          <Button
+            colorScheme="gray"
+            size="md"
+            borderRadius="full"
+            onClick={() => {
+              try { window.close(); } catch (e) { /* ignore */ }
+            }}
+          >
+            ✕ Close This Tab
+          </Button>
         </VStack>
       </Box>
     );

@@ -10,13 +10,16 @@ const API_BASE = process.env.REACT_APP_API_URL || '';
  * ItemTrackingPanel — Inline panel that manages the full item tracking
  * workflow for a single order. Renders within the order detail view.
  *
- * Always shows an "Upload Photos" button so admin can scan QR at any time.
- * Also shows existing results if tracking data exists.
+ * On desktop: shows QR code for employee to scan with phone.
+ * On mobile: shows "Upload Photos" button that opens the upload page directly.
  */
 function ItemTrackingPanel({ orderId, laundryId, orderStatus, employeeId, onSkip }) {
   const [trackingRecord, setTrackingRecord] = useState(null);
   const [loading, setLoading] = useState(true);
   const [showQR, setShowQR] = useState(null); // null, 'intake', or 'fold'
+
+  // Detect mobile device
+  const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
 
   // Fetch existing tracking record on mount
   useEffect(() => {
@@ -42,6 +45,27 @@ function ItemTrackingPanel({ orderId, laundryId, orderStatus, employeeId, onSkip
     fetchTrackingRecord();
   };
 
+  // Open upload page directly (for mobile admin)
+  const openUploadDirect = async (phase) => {
+    try {
+      const params = new URLSearchParams({
+        orderId,
+        laundryId,
+        phase,
+        employeeId: employeeId || 'EMP',
+        baseUrl: window.location.origin,
+      });
+      const res = await fetch(`${API_BASE}/api/admin/item-tracking/qr-code?${params}`);
+      if (res.ok) {
+        const data = await res.json();
+        // Open the upload page in same browser
+        window.open(data.qrUrl, '_blank');
+      }
+    } catch (e) {
+      console.error('Failed to generate upload link:', e);
+    }
+  };
+
   if (loading) return null;
 
   const hasIntakeRecord = trackingRecord?.intakeRecord != null;
@@ -50,35 +74,58 @@ function ItemTrackingPanel({ orderId, laundryId, orderStatus, employeeId, onSkip
   return (
     <Box mt={3} mb={3} p={3} borderWidth="1px" borderRadius="md" bg="gray.50">
       <VStack spacing={3} align="stretch">
-        {/* Header with Upload Photos buttons */}
-        <HStack justify="space-between" align="center">
+        {/* Header with action buttons */}
+        <HStack justify="space-between" align="center" flexWrap="wrap" gap={2}>
           <HStack>
             <Text fontSize="sm" fontWeight="bold">📷 Item Tracking</Text>
             {hasIntakeRecord && <Badge colorScheme="blue" fontSize="xs">Intake ✓</Badge>}
             {hasFoldRecord && <Badge colorScheme="green" fontSize="xs">Fold ✓</Badge>}
           </HStack>
-          <HStack spacing={2}>
-            <Button
-              size="xs"
-              colorScheme="blue"
-              variant={showQR === 'intake' ? 'solid' : 'outline'}
-              onClick={() => setShowQR(showQR === 'intake' ? null : 'intake')}
-            >
-              {hasIntakeRecord ? 'Re-scan Intake' : 'Scan Intake'}
-            </Button>
-            <Button
-              size="xs"
-              colorScheme="green"
-              variant={showQR === 'fold' ? 'solid' : 'outline'}
-              onClick={() => setShowQR(showQR === 'fold' ? null : 'fold')}
-            >
-              {hasFoldRecord ? 'Re-scan Fold' : 'Scan Fold'}
-            </Button>
+          <HStack spacing={2} flexWrap="wrap">
+            {isMobile ? (
+              <>
+                {/* Mobile: direct upload buttons */}
+                <Button
+                  size="xs"
+                  colorScheme="blue"
+                  onClick={() => openUploadDirect('intake')}
+                >
+                  📷 {hasIntakeRecord ? 'Redo Intake' : 'Upload Intake'}
+                </Button>
+                <Button
+                  size="xs"
+                  colorScheme="green"
+                  onClick={() => openUploadDirect('fold')}
+                >
+                  📷 {hasFoldRecord ? 'Redo Fold' : 'Upload Fold'}
+                </Button>
+              </>
+            ) : (
+              <>
+                {/* Desktop: QR code buttons */}
+                <Button
+                  size="xs"
+                  colorScheme="blue"
+                  variant={showQR === 'intake' ? 'solid' : 'outline'}
+                  onClick={() => setShowQR(showQR === 'intake' ? null : 'intake')}
+                >
+                  {hasIntakeRecord ? 'Re-scan Intake' : 'Scan Intake'}
+                </Button>
+                <Button
+                  size="xs"
+                  colorScheme="green"
+                  variant={showQR === 'fold' ? 'solid' : 'outline'}
+                  onClick={() => setShowQR(showQR === 'fold' ? null : 'fold')}
+                >
+                  {hasFoldRecord ? 'Re-scan Fold' : 'Scan Fold'}
+                </Button>
+              </>
+            )}
           </HStack>
         </HStack>
 
-        {/* QR Code (shown when button clicked) */}
-        {showQR && (
+        {/* QR Code (shown when button clicked — desktop only) */}
+        {showQR && !isMobile && (
           <ItemTrackingQR
             orderId={orderId}
             laundryId={laundryId}
@@ -116,7 +163,9 @@ function ItemTrackingPanel({ orderId, laundryId, orderStatus, employeeId, onSkip
         {/* No data yet message */}
         {!hasIntakeRecord && !hasFoldRecord && !showQR && (
           <Text fontSize="xs" color="gray.500" textAlign="center">
-            Click "Scan Intake" to start counting items for this order.
+            {isMobile
+              ? 'Tap "Upload Intake" to take photos and count items.'
+              : 'Click "Scan Intake" to generate QR code for phone upload.'}
           </Text>
         )}
       </VStack>
