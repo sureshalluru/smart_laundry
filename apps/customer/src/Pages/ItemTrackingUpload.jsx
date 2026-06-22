@@ -62,6 +62,11 @@ function ItemTrackingUpload() {
   // Fold acknowledgements
   const [acknowledgements, setAcknowledgements] = useState([]);
 
+  // Add missing item state
+  const [showAddItem, setShowAddItem] = useState(false);
+  const [addItemCategory, setAddItemCategory] = useState('');
+  const [addItemCount, setAddItemCount] = useState(1);
+
   // Validate token on mount
   useEffect(() => {
     validateToken();
@@ -616,6 +621,78 @@ function ItemTrackingUpload() {
               ➕ Add Next Batch (more items on table)
             </Button>
 
+            {/* Add Missing Item (for when AI misses something) */}
+            {tokenData.phase === 'fold' && (
+              <Box>
+                {!showAddItem ? (
+                  <Button
+                    variant="ghost"
+                    colorScheme="orange"
+                    size="sm"
+                    w="full"
+                    onClick={() => setShowAddItem(true)}
+                  >
+                    ➕ Add Missing Item (AI didn't detect)
+                  </Button>
+                ) : (
+                  <Box bg="orange.50" p={3} borderRadius="md" border="1px solid" borderColor="orange.200">
+                    <Text fontSize="sm" fontWeight="bold" mb={2}>Add item AI missed:</Text>
+                    <VStack spacing={2} align="stretch">
+                      <select
+                        value={addItemCategory}
+                        onChange={(e) => setAddItemCategory(e.target.value)}
+                        style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid #ccc', fontSize: '14px', width: '100%' }}
+                      >
+                        <option value="">— Select category —</option>
+                        {(intakeRecord?.items || []).map((item) => (
+                          <option key={item.category} value={item.category}>{item.category}</option>
+                        ))}
+                        {/* Also show all default categories not in intake */}
+                        {['T-shirts', 'Dress Shirts', 'Casual Shirts', 'Blouses', 'Tank Tops', 'Sweaters', 'Hoodies',
+                          'Jeans', 'Pants', 'Shorts', 'Skirts', 'Leggings', 'Dresses', 'Jumpsuits',
+                          'Jackets', 'Coats', 'Underwear', 'Bras', 'Socks (pairs)', 'Pajamas',
+                          'Athletic Wear', 'Towels', 'Sheets', 'Pillowcases', 'Blankets', 'Comforters', 'Other'
+                        ].filter(c => !(intakeRecord?.items || []).some(i => i.category === c) && !runningTally.some(i => i.category === c))
+                        .map((cat) => (
+                          <option key={cat} value={cat}>{cat}</option>
+                        ))}
+                      </select>
+                      <HStack>
+                        <Button size="sm" variant="outline" onClick={() => setAddItemCount(Math.max(1, addItemCount - 1))}>−</Button>
+                        <Text fontWeight="bold" minW="30px" textAlign="center">{addItemCount}</Text>
+                        <Button size="sm" variant="outline" onClick={() => setAddItemCount(addItemCount + 1)}>+</Button>
+                        <Button
+                          size="sm"
+                          colorScheme="orange"
+                          isDisabled={!addItemCategory}
+                          onClick={() => {
+                            if (!addItemCategory) return;
+                            // Add to running tally
+                            const existing = runningTally.find(i => i.category === addItemCategory);
+                            if (existing) {
+                              setRunningTally(runningTally.map(i =>
+                                i.category === addItemCategory
+                                  ? { ...i, count: i.count + addItemCount }
+                                  : i
+                              ));
+                            } else {
+                              setRunningTally([...runningTally, { category: addItemCategory, count: addItemCount, confidence: 100, note: 'Manually added' }]);
+                            }
+                            setShowAddItem(false);
+                            setAddItemCategory('');
+                            setAddItemCount(1);
+                          }}
+                        >
+                          Add
+                        </Button>
+                        <Button size="sm" variant="ghost" onClick={() => setShowAddItem(false)}>Cancel</Button>
+                      </HStack>
+                    </VStack>
+                  </Box>
+                )}
+              </Box>
+            )}
+
             <Divider />
 
             {/* Fold Phase: Discrepancy Handling */}
@@ -697,6 +774,7 @@ function DiscrepancyAck({ discrepancy, acknowledged, onAcknowledge }) {
 
   const reasons = [
     { key: 'Misclassified at intake', icon: '🏷️' },
+    { key: 'Misclassified during fold', icon: '🔀' },
     { key: 'Found in machine', icon: '🔄' },
     { key: 'Customer never sent', icon: '❌' },
     { key: 'Damaged/Disposed', icon: '🗑️' },

@@ -327,6 +327,17 @@ function OrderTrackingPhotos() {
             </Text>
           </Box>
         )}
+
+        {/* Close tab button */}
+        <Button
+          variant="ghost"
+          colorScheme="gray"
+          size="sm"
+          w="full"
+          onClick={() => { try { window.close(); } catch (e) { /* ignore */ } }}
+        >
+          ✕ Close This Tab
+        </Button>
       </VStack>
     </Box>
   );
