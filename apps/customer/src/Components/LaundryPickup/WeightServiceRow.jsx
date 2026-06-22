@@ -88,29 +88,19 @@ export default function WeightServiceRow({ service, cartItem, dispatch }) {
       </Flex>
 
       {/* Weight input with +/- buttons */}
-      <Flex align="center" justify="center" gap={3} mb={3}>
-        <HStack spacing={1}>
-          <IconButton
-            icon={<Text fontSize="lg" fontWeight="bold">−5</Text>}
-            size="sm"
-            variant="outline"
-            borderRadius="full"
-            colorScheme="gray"
-            onClick={() => decrement(5)}
-            isDisabled={weight <= 0}
-            aria-label="Decrease 5"
-          />
-          <IconButton
-            icon={<Text fontSize="xl" fontWeight="bold">−</Text>}
-            size="md"
-            variant="outline"
-            borderRadius="full"
-            colorScheme="blue"
-            onClick={() => decrement(1)}
-            isDisabled={weight <= 0}
-            aria-label="Decrease 1"
-          />
-        </HStack>
+      <Flex align="center" justify="center" gap={4} mb={3}>
+        <IconButton
+          icon={<Text fontSize="xl" fontWeight="bold">−</Text>}
+          size="lg"
+          variant="outline"
+          borderRadius="xl"
+          colorScheme="blue"
+          onClick={() => decrement(1)}
+          isDisabled={weight <= 0}
+          aria-label="Decrease"
+          minW="50px"
+          h="50px"
+        />
 
         <VStack spacing={0}>
           <Input
@@ -122,9 +112,9 @@ export default function WeightServiceRow({ service, cartItem, dispatch }) {
             }}
             textAlign="center"
             fontWeight="800"
-            fontSize="xl"
-            w="90px"
-            h="48px"
+            fontSize="2xl"
+            w="100px"
+            h="54px"
             borderRadius="xl"
             border="2px solid"
             borderColor="blue.200"
@@ -133,26 +123,17 @@ export default function WeightServiceRow({ service, cartItem, dispatch }) {
           <Text fontSize="xs" color="gray.500" mt={1}>lbs</Text>
         </VStack>
 
-        <HStack spacing={1}>
-          <IconButton
-            icon={<Text fontSize="xl" fontWeight="bold">+</Text>}
-            size="md"
-            variant="outline"
-            borderRadius="full"
-            colorScheme="blue"
-            onClick={() => increment(1)}
-            aria-label="Increase 1"
-          />
-          <IconButton
-            icon={<Text fontSize="lg" fontWeight="bold">+5</Text>}
-            size="sm"
-            variant="outline"
-            borderRadius="full"
-            colorScheme="gray"
-            onClick={() => increment(5)}
-            aria-label="Increase 5"
-          />
-        </HStack>
+        <IconButton
+          icon={<Text fontSize="xl" fontWeight="bold">+</Text>}
+          size="lg"
+          variant="outline"
+          borderRadius="xl"
+          colorScheme="blue"
+          onClick={() => increment(1)}
+          aria-label="Increase"
+          minW="50px"
+          h="50px"
+        />
       </Flex>
 
       {/* Cost preview + action button */}
