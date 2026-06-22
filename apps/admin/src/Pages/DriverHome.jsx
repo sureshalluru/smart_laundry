@@ -94,6 +94,10 @@ const DriverHome = ({ laundryId }) => {
   const [currentPage, setCurrentPage] = useState(1); // each page = 10 orders
   const pageSize = 10;
 
+  /* Route assignment state */
+  const [routeAssignments, setRouteAssignments] = useState(null); // {orderId: sequencePosition}
+  const [assignedOrderIds, setAssignedOrderIds] = useState(null); // Set of assigned order IDs or null
+
   const [photoUploaded, setPhotoUploaded] = useState({});
   const [loadingOrderIds, setLoadingOrderIds] = useState({}); // spinner per-button
 
@@ -120,6 +124,49 @@ const DriverHome = ({ laundryId }) => {
   const selectedDateValues = useMemo(() => selectedDates.map((d) => d.value), [selectedDates]);
 
   /* ───────────── Effects ───────────── */
+
+  /* Check for route assignments for the current driver + date */
+  useEffect(() => {
+    const checkRouteAssignments = async () => {
+      if (!selectedDateValues.length) return;
+      const dateStr = selectedDateValues[0]; // Use the primary selected date
+      const empId = localStorage.getItem('empId');
+      if (!empId) return;
+
+      try {
+        const response = await axios.get(
+          `${process.env.REACT_APP_AWS_API_URL}/api/routes/assignments`,
+          {
+            params: { laundryId, date: dateStr, driverId: empId },
+            headers: { Authorization: `Bearer ${authToken}` },
+          }
+        );
+        const assignments = response.data?.assignments || {};
+        const driverStops = assignments[empId];
+        if (driverStops && driverStops.length > 0) {
+          // Build lookup maps
+          const seqMap = {};
+          const idSet = new Set();
+          driverStops.forEach((s) => {
+            seqMap[s.orderId] = s.sequencePosition;
+            idSet.add(s.orderId);
+          });
+          setRouteAssignments(seqMap);
+          setAssignedOrderIds(idSet);
+        } else {
+          setRouteAssignments(null);
+          setAssignedOrderIds(null);
+        }
+      } catch (err) {
+        // If route assignments not available, just ignore and show all orders
+        console.log('No route assignments found or API unavailable');
+        setRouteAssignments(null);
+        setAssignedOrderIds(null);
+      }
+    };
+    checkRouteAssignments();
+  }, [laundryId, selectedDateValues, authToken]);
+
   useEffect(() => {
     const loadOrders = async () => {
       setLoading(true);
@@ -205,9 +252,16 @@ const DriverHome = ({ laundryId }) => {
     })
   : [];
 
+        // If route assignments exist, filter to only assigned stops and sort by sequence
+        let finalOrders = filtered;
+        if (assignedOrderIds && assignedOrderIds.size > 0) {
+          finalOrders = filtered
+            .filter((o) => assignedOrderIds.has(o.orderId))
+            .sort((a, b) => (routeAssignments[a.orderId] || 999) - (routeAssignments[b.orderId] || 999));
+        }
 
-        setOrders(filtered);
-        setHasMore(filtered.length > pageSize * currentPage);
+        setOrders(finalOrders);
+        setHasMore(finalOrders.length > pageSize * currentPage);
       } catch (err) {
         console.error(err);
         toast({
@@ -223,7 +277,7 @@ const DriverHome = ({ laundryId }) => {
     };
 
     loadOrders();
-  }, [laundryId, selectedDateValues, currentPage]);
+  }, [laundryId, selectedDateValues, currentPage, assignedOrderIds, routeAssignments]);
 
   /* ───────────── Upload helper ───────────── */
   const handleUpload = async (orderId, file, action) => {
@@ -401,6 +455,27 @@ const DriverHome = ({ laundryId }) => {
           >
             Optimized Route
           </Button>
+          {/* Navigate button for route assignments */}
+          {assignedOrderIds && assignedOrderIds.size > 0 && (
+            <Button
+              colorScheme="blue"
+              size="sm"
+              onClick={() => {
+                const assignedStops = orders
+                  .filter((o) => assignedOrderIds.has(o.orderId) && o.customerAddress)
+                  .sort((a, b) => (routeAssignments[a.orderId] || 999) - (routeAssignments[b.orderId] || 999));
+                if (assignedStops.length === 0) {
+                  toast({ title: 'No addresses', status: 'warning', duration: 3000 });
+                  return;
+                }
+                const waypoints = assignedStops.map((o) => encodeURIComponent(o.customerAddress)).join('|');
+                const url = `https://www.google.com/maps/dir/?api=1&travelmode=driving&waypoints=${waypoints}`;
+                window.open(url, '_blank');
+              }}
+            >
+              🧭 Navigate
+            </Button>
+          )}
         </Flex>
 
         {/* Orders list */}

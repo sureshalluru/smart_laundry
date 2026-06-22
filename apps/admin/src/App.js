@@ -7,6 +7,8 @@ import axios from 'axios';
 import {validateEmpCredentials, fetchPrefix} from "./Pages/ValidateEmployeeDetails";
 import {fetchLaundryServices} from './Pages/LaundryInfoManagement';
 import {LoadScript} from '@react-google-maps/api';
+import ProtectedRoute from './utils/ProtectedRoute';
+import { FEATURES } from './utils/permissions';
 
 // Lazy-load pages
 const AdminHomeLayout = lazy(() => import('./Components/AdminHome/AdminHomeLayout'));
@@ -28,6 +30,7 @@ const FAQPage = lazy(() => import('./Pages/FAQPage'));
 const EngagementPage = lazy(() => import('./Pages/EngagementPage'));
 const QuickPOSPage = lazy(() => import('./Pages/QuickPOSPage'));
 const SupportChatPage = lazy(() => import('./Pages/SupportChatPage'));
+const RoutePlannerPage = lazy(() => import('./Pages/RoutePlannerPage'));
 
 // ── Shared Components ────────────────────────────────────────────────────────
 
@@ -188,6 +191,7 @@ function App() {
     const WrappedEngagementPage = withLaundryValidation(EngagementPage);
     const WrappedQuickPOSPage = withLaundryValidation(QuickPOSPage);
     const WrappedSupportChatPage = withLaundryValidation(SupportChatPage);
+    const WrappedRoutePlannerPage = withLaundryValidation(RoutePlannerPage);
 
     return (
         <ChakraProvider>
@@ -204,27 +208,37 @@ function App() {
                             </Suspense>
                         </LaundryValidationProvider>
                     }>
-                        <Route index element={<Navigate to="active-orders" replace/>}/>
+                        <Route index element={
+                            <ProtectedRoute feature={FEATURES.ORDERS}>
+                                <Navigate to="active-orders" replace/>
+                            </ProtectedRoute>
+                        }/>
                         <Route path="home" element={
                             <Suspense fallback={<LoadingSpinner/>}>
                                 <WrappedAdminHomePage/>
                             </Suspense>
                         }/>
                         <Route path="active-orders" element={
+                            <ProtectedRoute feature={FEATURES.ORDERS}>
                             <Suspense fallback={<LoadingSpinner/>}>
                                 <WrappedOrderInfoManagement orderOperation="active"
                                                             validateEmpCredentials={validateEmpCredentials}/>
                             </Suspense>
+                            </ProtectedRoute>
                         }/>
                         <Route path="completed-orders" element={
+                            <ProtectedRoute feature={FEATURES.ORDERS}>
                             <Suspense fallback={<LoadingSpinner/>}>
                                 <WrappedOrderInfoManagement orderOperation="completed"/>
                             </Suspense>
+                            </ProtectedRoute>
                         }/>
                         <Route path="canceled-orders" element={
+                            <ProtectedRoute feature={FEATURES.ORDERS}>
                             <Suspense fallback={<LoadingSpinner/>}>
                                 <WrappedOrderInfoManagement orderOperation="canceled"/>
                             </Suspense>
+                            </ProtectedRoute>
                         }/>
                         <Route path="create-order" element={
                             <Suspense fallback={<LoadingSpinner/>}>
@@ -237,9 +251,11 @@ function App() {
                             </Suspense>
                         }/>
                         <Route path="services" element={
+                            <ProtectedRoute feature={FEATURES.PRICING}>
                             <Suspense fallback={<LoadingSpinner/>}>
                                 <WrappedLaundryInfoManagement validateEmpCredentials={validateEmpCredentials} type="services"/>
                             </Suspense>
+                            </ProtectedRoute>
                         }/>
                         <Route path="products" element={
                             <Suspense fallback={<LoadingSpinner/>}>
@@ -294,9 +310,11 @@ function App() {
                             </Suspense>
                         }/>
                         <Route path="dashboard" element={
+                            <ProtectedRoute feature={FEATURES.DASHBOARD}>
                             <Suspense fallback={<LoadingSpinner/>}>
                                 <WrappedDashboardPage/>
                             </Suspense>
+                            </ProtectedRoute>
                         }/>
                         <Route path="faq" element={
                             <Suspense fallback={<LoadingSpinner/>}>
@@ -317,6 +335,13 @@ function App() {
                             <Suspense fallback={<LoadingSpinner/>}>
                                 <WrappedSupportChatPage/>
                             </Suspense>
+                        }/>
+                        <Route path="route-planner" element={
+                            <ProtectedRoute feature={FEATURES.ROUTE_PLANNING}>
+                            <Suspense fallback={<LoadingSpinner/>}>
+                                <WrappedRoutePlannerPage/>
+                            </Suspense>
+                            </ProtectedRoute>
                         }/>
                     </Route>
 

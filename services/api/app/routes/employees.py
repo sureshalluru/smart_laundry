@@ -24,10 +24,14 @@ async def list_employees(
         cur = get_cursor(conn)
         cur.execute("""
             SELECT emp_id, laundry_id, first_name, last_name, joining_date,
-                   role, email, phone, avg_rating
+                   role, email, phone, avg_rating, passcode
             FROM shop.employees WHERE laundry_id = %s AND is_active = TRUE
         """, (laundryId,))
         rows = cur.fetchall()
+
+        # Only include passcode if requester is Admin
+        is_admin = current_user.get("role") == "Admin"
+
         employees = [
             {
                 "employeeId": r["emp_id"],
@@ -40,6 +44,7 @@ async def list_employees(
                     "phone": r["phone"],
                 },
                 "avgRating": float(r["avg_rating"] or 0),
+                **({"passcode": r["passcode"]} if is_admin else {}),
             }
             for r in rows
         ]

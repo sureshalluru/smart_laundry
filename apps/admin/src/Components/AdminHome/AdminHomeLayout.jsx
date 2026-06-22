@@ -43,6 +43,7 @@ import {
 import { Outlet, useNavigate, useParams } from 'react-router-dom';
 import { fetchLaundryInfo } from '../../Pages/LaundryInfoManagement';
 import { useAuth } from '../../Context/AuthContext';
+import { getUserRole, hasPermission, FEATURES } from '../../utils/permissions';
 import axios from 'axios';
 
 // Unread badge for support chat
@@ -360,6 +361,8 @@ const SidebarContent = ({
     isProductsExpanded, setIsProductsExpanded,}) => {
     const toast = useToast();
     const auth = useAuth();
+    // Get user role for permission checks
+    const role = localStorage.getItem('empRole') || getUserRole();
     // Function to handle right-click and open link in a new tab
     const handleRightClick = (event, path) => {
         event.preventDefault(); // Prevent default context menu
@@ -368,12 +371,15 @@ const SidebarContent = ({
     const handleSignOut = () => {
         auth.logout();
         localStorage.removeItem('idToken');
+        localStorage.removeItem('empRole');
         window.location.href = '/admin';
     };
 
     return (
     
     <VStack spacing={4} align="stretch" mt={["0px", "0px", "40px", "50px"]} >
+        {/* Home - visible to Employee, Manager, Admin */}
+        {hasPermission(role, FEATURES.ORDERS) && (
         <Button as="a" href={`/${laundryId}/admin/active-orders`}
             leftIcon={<FaHome />}
             variant="ghost"
@@ -383,7 +389,11 @@ const SidebarContent = ({
         >
             Home
         </Button>
-        {/* Place Order Button */}
+        )}
+
+        {/* Orders - visible to Employee, Manager, Admin */}
+        {hasPermission(role, FEATURES.ORDERS) && (
+        <>
         <Button
                 leftIcon={<FaClipboardList />}
                 variant="ghost"
@@ -394,7 +404,6 @@ const SidebarContent = ({
                 Orders
         </Button>
 
-        {/* Collapsible Section for Create Order and Other */}
         <Collapse in={isOrdersExpanded} animateOpacity>
             <VStack spacing={2} align="stretch" pl={6} maxWidth="100%">
             <Button as="a" href={`/${laundryId}/admin/active-orders`}
@@ -417,16 +426,6 @@ const SidebarContent = ({
                 Completed Orders
             </Button>
 
-            {/* {/* <Button as="a" href={`/${laundryId}/admin/view-commercial-orders`}
-                leftIcon={<FaClipboardList />}
-                variant="ghost"
-                colorScheme="blue"
-                justifyContent="flex-start"
-                onClick={() => navigate(`/${laundryId}/admin/view-commercial-orders`)}
-            >
-                Commercial Orders
-            </Button> */}
-
             <Button as="a" href={`/${laundryId}/admin/canceled-orders`}
                 leftIcon={<FaClipboardList />}
                 variant="ghost"
@@ -438,22 +437,24 @@ const SidebarContent = ({
             </Button>
                     </VStack>
         </Collapse>
+        </>
+        )}
 
-        {/* Place Order Button */}
+        {/* Place Order - visible to Employee, Manager, Admin */}
+        {hasPermission(role, FEATURES.ORDERS) && (
+        <>
         <Button
                 leftIcon={<FaPlus />}
                 variant="ghost"
                 colorScheme="purple"
                 justifyContent="flex-start"
-                onClick={() => setIsPlaceOrderExpanded(!isPlaceOrderExpanded)} // Toggle collapse
+                onClick={() => setIsPlaceOrderExpanded(!isPlaceOrderExpanded)}
             >
                 Place Order
             </Button>
 
-            {/* Collapsible Section for Create Order and Other */}
             <Collapse in={isPlaceOrderExpanded} animateOpacity>
                 <VStack spacing={2} align="stretch" pl={6} maxWidth="100%">
-                    {/* Create Order Option */}
                     <Button as="a" href={`/${laundryId}/admin/create-order`}
                         leftIcon={<FaPlus />}
                         variant="ghost"
@@ -466,7 +467,6 @@ const SidebarContent = ({
                         Laundry Orders
                     </Button>
 
-                    {/* Other Option */}
                     <Button as="a" href={`/${laundryId}/admin/order-products`}
                         leftIcon={<FaShoppingCart />}
                         variant="ghost"
@@ -490,22 +490,14 @@ const SidebarContent = ({
                     >
                         Quick POS
                     </Button>
-                    {/* Other Option */}
-                    {/* <Button as="a" href={`/${laundryId}/admin/commercial-order-invoice`}
-                        leftIcon={<FaShoppingCart />}
-                        variant="ghost"
-                        colorScheme="blue"
-                        justifyContent="flex-start"
-                        size="sm"
-                        maxWidth="100%"
-                        onClick={() => navigate(`/${laundryId}/admin/commercial-order-invoice`)} 
-                    >
-                        Commercial Orders
-                    </Button> */}
                 </VStack>
             </Collapse>
+        </>
+        )}
 
-
+        {/* Products & Services - visible to Admin only (PRICING) */}
+        {hasPermission(role, FEATURES.PRICING) && (
+        <>
         <Button
             leftIcon={<FaShoppingCart />}
             variant="ghost"
@@ -585,6 +577,11 @@ const SidebarContent = ({
                 </Button>
             </VStack>
         </Collapse>
+        </>
+        )}
+
+        {/* Promotions - visible to Manager, Admin */}
+        {hasPermission(role, FEATURES.PROMOTIONS) && (
         <Button as="a" href={`/${laundryId}/admin/promotions`}
             leftIcon={<FaClipboardList />}
             variant="ghost"
@@ -595,6 +592,23 @@ const SidebarContent = ({
         >
             Promotions
         </Button>
+        )}
+
+        {/* Route Planner - visible to Manager, Admin */}
+        {hasPermission(role, FEATURES.ROUTE_PLANNING) && (
+        <Button as="a" href={`/${laundryId}/admin/route-planner`}
+            leftIcon={<FaClipboardList />}
+            variant="ghost"
+            colorScheme="teal"
+            justifyContent="flex-start"
+            onClick={() => navigate(`/${laundryId}/admin/route-planner`)}
+        >
+            Route Planner
+        </Button>
+        )}
+
+        {/* Employees / Manager Access - visible to Manager, Admin */}
+        {hasPermission(role, FEATURES.ADD_EMPLOYEES) && (
         <Button
             leftIcon={<FaUsers />}
             variant="ghost"
@@ -604,15 +618,23 @@ const SidebarContent = ({
         >
             Manager Access Only
         </Button>
+        )}
+
+        {/* Driver Access - visible to Driver, Manager, Admin */}
+        {hasPermission(role, FEATURES.DRIVER_ROUTE) && (
         <Button
             leftIcon={<FaUsers />}
             variant="ghost"
             colorScheme="teal"
             justifyContent="flex-start"
-            onClick={handleDriverAccessOpen} // Open modal for Driver Access
+            onClick={handleDriverAccessOpen}
         >
             Driver Access Only
         </Button>
+        )}
+
+        {/* Employee Reviews - visible to Manager, Admin */}
+        {hasPermission(role, FEATURES.ADD_EMPLOYEES) && (
         <Button as="a" href={`/${laundryId}/admin/employee-reviews`}
                 leftIcon={<FaClipboardList />}
                 variant="ghost"
@@ -622,6 +644,10 @@ const SidebarContent = ({
         >
             Employee Reviews
         </Button>
+        )}
+
+        {/* Chat - visible to Employee, Manager, Admin */}
+        {hasPermission(role, FEATURES.CHAT) && (
         <Button as="a" href={`/${laundryId}/admin/chat`}
                 leftIcon={<FaComments />}
                 variant="ghost"
@@ -631,6 +657,11 @@ const SidebarContent = ({
         >
             Chat
         </Button>
+        )}
+
+        {/* Dashboard - visible to Admin only */}
+        {hasPermission(role, FEATURES.DASHBOARD) && (
+        <>
         <Button as="a" href={`/${laundryId}/admin/zip-interest`}
                 leftIcon={<FaClipboardList />}
                 variant="ghost"
@@ -658,6 +689,11 @@ const SidebarContent = ({
         >
             FAQ
         </Button>
+        </>
+        )}
+
+        {/* Engagement - visible to Admin only */}
+        {hasPermission(role, FEATURES.ENGAGEMENT) && (
         <Button as="a" href={`/${laundryId}/admin/engagement`}
                 leftIcon={<FaClipboardList />}
                 variant="ghost"
@@ -667,6 +703,10 @@ const SidebarContent = ({
         >
             Engagement
         </Button>
+        )}
+
+        {/* Support Chat - visible to Admin only (LAUNDRY_SETTINGS) */}
+        {hasPermission(role, FEATURES.LAUNDRY_SETTINGS) && (
         <Button as="a" href={`/${laundryId}/admin/support-chat`}
                 leftIcon={<FaClipboardList />}
                 variant="ghost"
@@ -678,12 +718,27 @@ const SidebarContent = ({
             💬 Support
             <SupportUnreadBadge laundryId={laundryId} />
         </Button>
+        )}
+
+        {/* My Route - for Driver role specifically */}
+        {role === 'Driver' && (
+        <Button as="a" href={`/${laundryId}/driver/home`}
+            leftIcon={<FaHome />}
+            variant="ghost"
+            colorScheme="blue"
+            justifyContent="flex-start"
+            onClick={() => navigate(`/${laundryId}/driver/home`)}
+        >
+            My Route
+        </Button>
+        )}
+
         <Button
             leftIcon={<FaSignOutAlt />}
             variant="ghost"
             colorScheme="red"
             justifyContent="flex-start"
-            mt="auto" // Pushes to bottom if flex layout
+            mt="auto"
             onClick={handleSignOut}
         >
             Sign Out

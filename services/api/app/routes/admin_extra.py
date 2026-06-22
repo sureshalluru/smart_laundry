@@ -174,10 +174,13 @@ async def show_all_employees(
         cur = get_cursor(conn)
         cur.execute("""
             SELECT emp_id, laundry_id, first_name, last_name, role, email, phone,
-                   joining_date, is_active, avg_rating, total_reviews
+                   joining_date, is_active, avg_rating, total_reviews, passcode
             FROM shop.employees WHERE laundry_id = %s AND is_active = TRUE
             ORDER BY created_at DESC
         """, (laundryId,))
+
+        is_admin = current_user.get("role") == "Admin"
+
         employees = [{
             "employeeId": r["emp_id"],
             "laundryId": r["laundry_id"],
@@ -191,6 +194,7 @@ async def show_all_employees(
             "joiningDate": str(r["joining_date"]) if r["joining_date"] else None,
             "avgRating": float(r["avg_rating"]) if r["avg_rating"] is not None else 0.0,
             "totalReviews": r["total_reviews"] or 0,
+            **({"passcode": r["passcode"]} if is_admin else {}),
         } for r in cur.fetchall()]
     return {"statusCode": 200, "body": {"employees": employees}}
 

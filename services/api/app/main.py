@@ -62,6 +62,7 @@ from app.routes import (
     engagement,
     export,
     item_tracking,
+    route_planning,
 )
 
 app = FastAPI(
@@ -113,6 +114,7 @@ app.include_router(engagement.router, prefix="/api/engagement", tags=["Customer 
 app.include_router(export.router, prefix="/api/admin", tags=["Export"])
 app.include_router(item_tracking.router, prefix="/api/admin", tags=["Item Tracking"])
 app.include_router(item_tracking.track_router, prefix="/api", tags=["Item Tracking Mobile"])
+app.include_router(route_planning.router, prefix="/api/routes", tags=["Route Planning"])
 
 
 # Block bot scanners probing for PHP/WordPress/exploit files

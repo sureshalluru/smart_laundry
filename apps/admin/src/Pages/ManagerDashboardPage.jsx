@@ -75,10 +75,12 @@ const ManagerDashboardPage = () => {
     const roles = [
         "Admin",
         "Manager",
-        "Attendant",
-        "LaundryCare Specialist",
-        "Delivery Driver",
+        "Employee",
+        "Driver",
     ];
+    // Filter roles based on current user's role — Manager can only add Employee and Driver
+    const currentUserRole = localStorage.getItem('empRole') || 'Employee';
+    const availableRoles = currentUserRole === 'Admin' ? roles : roles.filter(r => r === 'Employee' || r === 'Driver');
     const [isAdding, setIsAdding] = useState(false);
     const [isDeleting, setIsDeleting] = useState(false);
     const [loadingNotifications, setLoadingNotifications] = useState({});
@@ -1162,7 +1164,7 @@ const ManagerDashboardPage = () => {
                                     {newEmp.role || "Select role"}
                                     </MenuButton>
                                     <MenuList maxH="200px" overflowY="auto">
-                                    {roles.map((r) => (
+                                    {availableRoles.map((r) => (
                                         <MenuItem key={r} onClick={() => handleChange("role", r)}>
                                         {r}
                                         </MenuItem>

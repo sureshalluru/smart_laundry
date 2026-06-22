@@ -87,6 +87,7 @@ export function AuthProvider({ children }) {
         setIsAuthenticated(false);
         localStorage.removeItem('auth');
         localStorage.removeItem('idToken');
+        localStorage.removeItem('empRole');
         delete axios.defaults.headers.common['Authorization'];
     }, []);
 

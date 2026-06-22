@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { getUserRole } from "../utils/permissions";
 
 const SESSION_STORAGE_KEY = "adminSession";
 
@@ -8,11 +9,12 @@ export const useAdminSession = () => {
     validatedAt: null,
     lastActivity: null,
     empId: null,
+    role: null,
   });
 
   const INACTIVITY_LIMIT = 5 * 60 * 1000; // 5 mins
 
-  // 🔄 Load from sessionStorage on mount
+  // 🔄 Load from sessionStorage on mount, and resolve role from JWT or localStorage
   useEffect(() => {
     const storedSession = sessionStorage.getItem(SESSION_STORAGE_KEY);
     if (storedSession) {
@@ -24,6 +26,9 @@ export const useAdminSession = () => {
         sessionStorage.removeItem(SESSION_STORAGE_KEY);
       }
     }
+    // Ensure role is resolved even if session isn't active yet
+    const resolvedRole = localStorage.getItem('empRole') || getUserRole();
+    setAdminSession((prev) => ({ ...prev, role: prev.role || resolvedRole }));
   }, []);
 
   const isSessionValid = () => {
@@ -41,13 +46,15 @@ export const useAdminSession = () => {
     sessionStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(updated));
   };
 
-  const startSession = (empId) => {
+  const startSession = (empId, role) => {
     const now = Date.now();
+    const resolvedRole = role || localStorage.getItem('empRole') || getUserRole();
     const newSession = {
       isActive: true,
       validatedAt: now,
       lastActivity: now,
       empId: empId,
+      role: resolvedRole,
     };
     setAdminSession(newSession);
     sessionStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(newSession));
@@ -58,7 +65,8 @@ export const useAdminSession = () => {
       isActive: false,
       validatedAt: null,
       lastActivity: null,
-      empId: null
+      empId: null,
+      role: null,
     });
     sessionStorage.removeItem(SESSION_STORAGE_KEY);
     // if (!silent) {
@@ -86,12 +94,20 @@ export const useAdminSession = () => {
   const getEmpId = () => {
     return adminSession.empId;
   };
+
+  // Get role from session state, falling back to localStorage or JWT
+  const getRole = () => {
+    return adminSession.role || localStorage.getItem('empRole') || getUserRole();
+  };
+
   return {
     isSessionValid,
     refreshAdminActivity,
     startSession,
     endSession,
     getEmpId,
+    getRole,
+    role: adminSession.role || localStorage.getItem('empRole') || getUserRole(),
     sessionActive: adminSession.isActive,
     timeLeftInMs: adminSession.isActive
       ? Math.max(0, INACTIVITY_LIMIT - (Date.now() - adminSession.lastActivity))

@@ -22,16 +22,20 @@ import {
     FiTruck,
     FiLogOut,
     FiShoppingBag,
-    FiMenu
+    FiMenu,
+    FiMap
   } from "react-icons/fi";
   import {
       FaHome
   } from 'react-icons/fa';
   import { useNavigate } from "react-router-dom";
   import { fetchLaundryInfo } from "./LaundryInfoManagement"; 
+  import { getUserRole, hasPermission, FEATURES } from '../utils/permissions';
 
   
-  const SidebarContent = ({ onSelect, onSignOut, laundryInfo, isMobile, onOpenDrawer, laundryId, navigate }) => (
+  const SidebarContent = ({ onSelect, onSignOut, laundryInfo, isMobile, onOpenDrawer, laundryId, navigate }) => {
+    const role = localStorage.getItem('empRole') || getUserRole();
+    return (
     
     <VStack align="stretch" spacing={4} px={5} mt={5}>
         
@@ -46,7 +50,20 @@ import {
             Driver Home
         </Button>
 
-      {/* ✅ Admin Home Button */}
+        {hasPermission(role, FEATURES.ROUTE_PLANNING) && (
+        <Button as="a" href={`/${laundryId}/admin/route-planner`}
+            leftIcon={<FiMap />}
+            variant="ghost"
+            colorScheme="blue"
+            justifyContent="flex-start"
+            onClick={() => navigate(`/${laundryId}/admin/route-planner`)}
+        >
+            Route Planner
+        </Button>
+        )}
+
+      {/* Admin Home Button - only for Employee, Manager, Admin */}
+      {hasPermission(role, FEATURES.ORDERS) && (
     <Button as="a" href={`/${laundryId}/admin/active-orders`}
       leftIcon={<FiHome />}
       variant="ghost"
@@ -56,6 +73,7 @@ import {
     >
       Admin Home
     </Button>
+      )}
               
       <ChakraLink onClick={onSignOut}>
         <Text color="red"><Icon as={FiLogOut} mr={2} /> Sign Out</Text>
@@ -64,6 +82,7 @@ import {
     </VStack>
     
   );
+  };
   
   const SidebarLayout = ({ children, setFilter, laundryId }) => {
     const navigate = useNavigate();

@@ -41,7 +41,10 @@ const AddEmployeePage = () => {
   const [employees, setEmployees] = useState([]);
   const [loading, setLoading] = useState(false);
   const [employeeToDelete, setEmployeeToDelete] = useState(null);
-  const roles = ["Admin", "Manager", "Attendant", "LaundryCare Specialist", "Delivery Driver"];
+  const roles = ["Admin", "Manager", "Employee", "Driver"];
+  // Filter roles based on current user's role — Manager can only add Employee and Driver
+  const currentUserRole = localStorage.getItem('empRole') || 'Employee';
+  const availableRoles = currentUserRole === 'Admin' ? roles : roles.filter(r => r === 'Employee' || r === 'Driver');
   const [isAdding, setIsAdding] = useState(false); // Employee add status state
   const [isDeleting, setIsDeleting] = useState(false); // Employee delete status state
   const [loadingNotifications, setLoadingNotifications] = useState({}); // Employee notifications status state
@@ -98,6 +101,7 @@ const AddEmployeePage = () => {
           laundryId: emp.laundryId,
           joiningDate: emp.joiningDate,
           role: emp.role,
+          passcode: emp.passcode || null,
         }));
 
         setEmployees(employeesData);
@@ -425,6 +429,7 @@ const AddEmployeePage = () => {
             <Th>Laundry ID</Th>
             <Th>Joining Date</Th>
             <Th>Role</Th>
+            <Th>Passcode</Th>
             <Th>Action</Th>
           </Tr>
         </Thead>
@@ -442,6 +447,7 @@ const AddEmployeePage = () => {
               <Td>{emp.laundryId}</Td>
               <Td>{emp.joiningDate}</Td>
               <Td>{emp.role}</Td>
+              <Td>{emp.passcode || '—'}</Td>
               <Td>
               <HStack spacing={2}>
                 <IconButton
@@ -654,7 +660,7 @@ const AddEmployeePage = () => {
                     {newEmp.role || "Select Role"}
                   </MenuButton>
                   <MenuList>
-                    {roles.map((role, index) => (
+                    {availableRoles.map((role, index) => (
                       <MenuItem key={index} onClick={() => handleChange("role", role)}>
                         {role}
                       </MenuItem>

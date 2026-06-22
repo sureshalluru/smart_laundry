@@ -8,6 +8,7 @@ import { FiShield, FiMonitor } from 'react-icons/fi';
 import { useAuth } from '../Context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
+import { getUserRole } from '../utils/permissions';
 
 // Generate a stable device fingerprint (persists in localStorage)
 function getDeviceFingerprint() {
@@ -72,9 +73,28 @@ export default function StoreAdminLoginPage() {
                 passcode,
                 deviceFingerprint,
             });
+            // Store role in localStorage for quick access
+            const role = getUserRole(); // decodes JWT that was just stored
+            localStorage.setItem('empRole', role);
+
             const laundryId = data.user?.laundryId;
             if (laundryId) {
-                navigate(`/${laundryId}/admin/active-orders`);
+                // Redirect based on role
+                switch (role) {
+                    case 'Driver':
+                        navigate(`/${laundryId}/driver/home`);
+                        break;
+                    case 'Employee':
+                        navigate(`/${laundryId}/admin/active-orders`);
+                        break;
+                    case 'Manager':
+                        navigate(`/${laundryId}/admin/active-orders`);
+                        break;
+                    case 'Admin':
+                    default:
+                        navigate(`/${laundryId}/admin/active-orders`);
+                        break;
+                }
             } else {
                 navigate('/');
             }
