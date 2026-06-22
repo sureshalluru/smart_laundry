@@ -584,15 +584,16 @@ async def employee_tip_info(
     endDate: Optional[str] = None,
     current_user: dict = Depends(get_current_user),
 ):
-    """Get tip information for employees."""
+    """Get tip information for employees — returns individual tip records."""
     with get_db() as conn:
         cur = get_cursor(conn)
         query = """
-            SELECT ot.tip_receiver_id, e.first_name, e.last_name,
-                   SUM(ot.tip_amount) as total_tips, COUNT(*) as tip_count
+            SELECT ot.tip_receiver_id, ot.tip_amount, ot.tip_percentage,
+                   ot.tip_type, ot.tip_method, ot.order_id,
+                   o.created_at,
+                   o.total_cost, o.grand_total
             FROM orders.order_tips ot
             JOIN orders.orders o ON o.order_id = ot.order_id
-            LEFT JOIN shop.employees e ON e.emp_id = ot.tip_receiver_id
             WHERE o.laundry_id = %s AND ot.tip_amount > 0
         """
         params = [laundryId]
@@ -605,16 +606,21 @@ async def employee_tip_info(
         if endDate:
             query += " AND o.created_at::date <= %s"
             params.append(endDate)
-        query += " GROUP BY ot.tip_receiver_id, e.first_name, e.last_name"
+        query += " ORDER BY o.created_at DESC"
 
         cur.execute(query, params)
         tips = [{
-            "empId": r["tip_receiver_id"],
-            "employeeName": f"{r['first_name'] or ''} {r['last_name'] or ''}".strip() or r["tip_receiver_id"],
-            "totalTips": float(r["total_tips"]),
-            "tipCount": r["tip_count"],
+            "tipReceiverId": r["tip_receiver_id"],
+            "tipAmount": float(r["tip_amount"] or 0),
+            "tipPercentage": float(r["tip_percentage"]) if r["tip_percentage"] else None,
+            "tipType": r["tip_type"],
+            "tipMethod": r["tip_method"],
+            "orderId": r["order_id"],
+            "createdAt": r["created_at"].isoformat() if r["created_at"] else None,
+            "totalCost": float(r["total_cost"] or 0),
+            "grandTotal": float(r["grand_total"] or 0),
         } for r in cur.fetchall()]
-    return {"statusCode": 200, "body": {"tips": tips}}
+    return {"statusCode": 200, "body": tips}
 
 
 @router.get("/get-employee-reviews")
