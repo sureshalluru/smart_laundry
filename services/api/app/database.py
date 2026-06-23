@@ -18,7 +18,17 @@ def get_pool():
             conninfo = settings.database_url
         else:
             conninfo = f"host={settings.db_host} port={settings.db_port} dbname={settings.db_name} user={settings.db_user} password={settings.db_password} sslmode=prefer"
-        _pool = ConnectionPool(conninfo=conninfo, min_size=2, max_size=20)
+        _pool = ConnectionPool(
+            conninfo=conninfo,
+            min_size=2,
+            max_size=20,
+            # Check connection health before handing it to the app
+            check=ConnectionPool.check_connection,
+            # Recycle idle connections after 5 minutes (before server drops them)
+            max_idle=300,
+            # Reconnect stale connections automatically
+            reconnect_timeout=5,
+        )
     return _pool
 
 
@@ -31,7 +41,10 @@ def get_db():
             yield conn
             conn.commit()
         except Exception:
-            conn.rollback()
+            try:
+                conn.rollback()
+            except Exception:
+                pass  # Connection already lost, pool will discard it
             raise
 
 
