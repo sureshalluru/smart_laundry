@@ -13,7 +13,11 @@ _pool = None
 def get_pool():
     global _pool
     if _pool is None:
-        conninfo = f"host={settings.db_host} port={settings.db_port} dbname={settings.db_name} user={settings.db_user} password={settings.db_password} sslmode=prefer"
+        # Prefer DATABASE_URL if set (Render provides this), otherwise build from parts
+        if settings.database_url and settings.database_url != "postgresql://localhost:5432/smart_laundry":
+            conninfo = settings.database_url
+        else:
+            conninfo = f"host={settings.db_host} port={settings.db_port} dbname={settings.db_name} user={settings.db_user} password={settings.db_password} sslmode=prefer"
         _pool = ConnectionPool(conninfo=conninfo, min_size=2, max_size=20)
     return _pool
 
