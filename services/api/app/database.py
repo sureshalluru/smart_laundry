@@ -22,12 +22,14 @@ def get_pool():
             conninfo=conninfo,
             min_size=2,
             max_size=20,
-            # Check connection health before handing it to the app
-            check=ConnectionPool.check_connection,
-            # Recycle idle connections after 5 minutes (before server drops them)
-            max_idle=300,
-            # Reconnect stale connections automatically
+            # Recycle idle connections after 3 minutes
+            max_idle=180,
+            # Timeout waiting for a connection from the pool (fail fast)
+            timeout=10,
+            # Reconnect broken connections
             reconnect_timeout=5,
+            # Max lifetime of a connection (force refresh every 10 min)
+            max_lifetime=600,
         )
     return _pool
 
