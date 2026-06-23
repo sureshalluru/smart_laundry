@@ -179,9 +179,9 @@ const OnboardingPage = () => {
                                     <Text fontWeight="bold">Name:</Text>
                                     <Text>{result.laundry?.laundryName}</Text>
                                     <Text fontWeight="bold">Admin URL:</Text>
-                                    <Text color="blue.500">{window.location.origin}{result.laundry?.adminUrl}</Text>
+                                    <Text color="blue.500">{result.laundry?.adminUrl}</Text>
                                     <Text fontWeight="bold">Customer Site:</Text>
-                                    <Text color="blue.500">{window.location.origin}{result.laundry?.customerUrl}</Text>
+                                    <Text color="blue.500">{result.laundry?.customerUrl}</Text>
                                     <Text fontWeight="bold">Device Registration Code:</Text>
                                     <Badge colorScheme="purple" fontSize="md" p={1}>{result.laundry?.deviceRegistrationCode}</Badge>
                                 </SimpleGrid>

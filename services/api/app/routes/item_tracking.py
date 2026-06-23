@@ -43,7 +43,7 @@ def get_laundry_base_url(laundry_id: str) -> str:
     except Exception as e:
         logger.warning(f"Failed to lookup laundry domain for {laundry_id}: {e}")
 
-    return "https://www.roundrocklaundry.com"  # fallback
+    return "https://www.smartlaundrybasket.ai"  # fallback
 
 
 # ── Models ────────────────────────────────────────────────────────────────────

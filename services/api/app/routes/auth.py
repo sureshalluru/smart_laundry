@@ -333,6 +333,13 @@ async def send_otp(body: dict = Body(...)):
     if not phone:
         raise HTTPException(status_code=400, detail="Phone number required")
 
+    # Test mode: phone numbers starting with +1555 bypass real OTP
+    # OTP is always 123456 for test numbers
+    if phone.startswith("+1555"):
+        _otp_store[phone] = {"otp": "123456", "attempts": 0}
+        logger.info("🧪 TEST MODE OTP for %s: 123456", phone)
+        return {"status": "success", "message": "OTP sent (test mode)", "testMode": True}
+
     from app.config import settings
     try:
         if settings.twilio_account_sid and settings.twilio_verify_service_sid:
@@ -383,7 +390,15 @@ async def verify_otp(body: dict = Body(...)):
     verified = False
 
     try:
-        if settings.twilio_account_sid and settings.twilio_verify_service_sid:
+        # Test mode: +1555 numbers always use in-memory store (bypasses Twilio)
+        if phone.startswith("+1555"):
+            stored = _otp_store.get(phone)
+            if stored and stored["otp"] == otp_code:
+                verified = True
+                del _otp_store[phone]
+            else:
+                raise HTTPException(status_code=401, detail="Invalid OTP")
+        elif settings.twilio_account_sid and settings.twilio_verify_service_sid:
             # Production: Verify using Twilio Verify
             from twilio.rest import Client
             client = Client(settings.twilio_account_sid, settings.twilio_auth_token)

@@ -687,7 +687,7 @@ async def update_order_endpoint(
                         # Get user domain for this laundry
                         cur.execute("SELECT user_domain FROM shop.laundry_shops WHERE laundry_id = %s", (laundryId,))
                         domain_row = cur.fetchone()
-                        base_url = domain_row["user_domain"] if domain_row and domain_row["user_domain"] else "https://www.roundrocklaundry.com"
+                        base_url = domain_row["user_domain"] if domain_row and domain_row["user_domain"] else "https://www.smartlaundrybasket.ai"
                         if not is_paid:
                             payment_link = f"\n\nPay Now: {base_url}/{laundryId}/user/my-orders/?order_id={orderId}&is_open=true"
 
@@ -819,7 +819,7 @@ async def update_order_endpoint(
 
                     if cust and shop:
                         laundry_name = shop["laundry_name"]
-                        base_url = shop["user_domain"] or "https://www.roundrocklaundry.com"
+                        base_url = shop["user_domain"] or "https://www.smartlaundrybasket.ai"
                         first_name = cust["first_name"] or "Customer"
                         review_url = f"{base_url}/{laundryId}/user/my-orders/?order_id={orderId}&is_open=true"
 

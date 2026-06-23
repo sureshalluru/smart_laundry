@@ -170,8 +170,8 @@ async def create_laundry(body: dict = Body(...), x_platform_key: str = Header(No
             "laundryId": next_id,
             "laundryName": laundry_name,
             "deviceRegistrationCode": reg_code,
-            "adminUrl": f"/{next_id}/admin",
-            "customerUrl": f"/{next_id}/site",
+            "adminUrl": f"https://smartlaundrybasket.ai/{next_id}/admin",
+            "customerUrl": f"https://smartlaundrybasket.ai/{next_id}/site",
         },
         "owner": {
             "employeeId": owner_emp_id,
@@ -577,8 +577,8 @@ async def self_service_onboard(body: dict = Body(...)):
                 "laundryId": next_id,
                 "laundryName": laundry_name,
                 "deviceRegistrationCode": reg_code,
-                "adminUrl": f"/{next_id}/admin",
-                "customerUrl": f"/{next_id}/site",
+                "adminUrl": f"https://smartlaundrybasket.ai/{next_id}/admin",
+                "customerUrl": f"https://smartlaundrybasket.ai/{next_id}/site",
             },
             "owner": {
                 "employeeId": owner_emp_id,
