@@ -10,6 +10,7 @@ from app.migrations import add_customer_pricing
 from app.migrations import add_order_services_columns
 from app.migrations import add_item_tracking
 from app.migrations import add_route_assignments
+from app.migrations import add_performance_indexes
 
 logger = logging.getLogger(__name__)
 
@@ -24,4 +25,5 @@ def run_all():
     add_order_services_columns.run()
     add_item_tracking.run()
     add_route_assignments.run()
+    add_performance_indexes.run()
     logger.info("All migrations complete.")
