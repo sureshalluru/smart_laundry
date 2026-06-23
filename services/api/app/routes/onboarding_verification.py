@@ -64,7 +64,7 @@ async def verify_email(body: dict = Body(...)):
 
         # Check employees table for Admin with same email
         cur.execute(
-            "SELECT employee_id FROM shop.employees WHERE LOWER(TRIM(email)) = %s AND role = 'Admin' LIMIT 1",
+            "SELECT emp_id FROM shop.employees WHERE LOWER(TRIM(email)) = %s AND role = 'Admin' LIMIT 1",
             (email,)
         )
         if cur.fetchone():

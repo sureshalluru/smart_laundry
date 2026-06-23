@@ -362,7 +362,7 @@ async def self_service_onboard(body: dict = Body(...)):
             check_email = owner_email.strip().lower() if owner_email else ""
             if check_email:
                 cur.execute(
-                    "SELECT employee_id FROM shop.employees WHERE LOWER(TRIM(email)) = %s AND role = 'Admin' LIMIT 1",
+                    "SELECT emp_id FROM shop.employees WHERE LOWER(TRIM(email)) = %s AND role = 'Admin' LIMIT 1",
                     (check_email,)
                 )
                 if cur.fetchone():
