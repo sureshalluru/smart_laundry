@@ -69,6 +69,7 @@ function App() {
                         <Route path="/invalid" element={<Navigate to="/" replace />} />
                         <Route path="/platform-admin" element={<PlatformAdminPage />} />
                         <Route path="/onboard" element={<OnboardingPage />} />
+                        <Route path="/onboard-test" element={<OnboardingPage />} />
                         <Route path="/saree-rolling" element={<SareeRollingPage />} />
                         <Route path="/:laundryId/saree-rolling" element={<SareeRollingPage />} />
                         <Route path="/track/:token" element={<ItemTrackingUpload />} />

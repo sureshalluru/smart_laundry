@@ -4,6 +4,7 @@ Protected by platform admin secret key.
 """
 from fastapi import APIRouter, Body, Header, HTTPException, Query
 from app.database import get_db, get_cursor
+from app.services.verification_store import verification_store, normalize_address
 import logging
 import uuid
 import random
@@ -336,10 +337,74 @@ async def self_service_onboard(body: dict = Body(...)):
     # Serviceable zip codes
     serviceable_zip_codes = body.get("serviceableZipCodes", [])
 
+    # Verification fields
+    email_verification_token = body.get("emailVerificationToken", "")
+    address_proof_id = body.get("addressProofId", "")
+
     if not laundry_name:
         return {"status": "error", "message": "Laundry name is required"}
     if not owner_phone:
         return {"status": "error", "message": "Owner phone number is required"}
+
+    # --- Verification enforcement (only when verification token is provided) ---
+    # This allows the old /onboard flow to work without verification during testing
+    address_verified = False
+    address_verified_at = None
+    if email_verification_token:
+        # 1. Validate email verification token
+        token_email = verification_store.validate_token(email_verification_token)
+        if token_email is None:
+            raise HTTPException(status_code=400, detail="Email verification expired. Please re-verify.")
+
+        # 2. Re-check email duplicate (defense in depth)
+        with get_db() as conn:
+            cur = get_cursor(conn)
+            check_email = owner_email.strip().lower() if owner_email else ""
+            if check_email:
+                cur.execute(
+                    "SELECT employee_id FROM shop.employees WHERE LOWER(TRIM(email)) = %s AND role = 'Admin' LIMIT 1",
+                    (check_email,)
+                )
+                if cur.fetchone():
+                    raise HTTPException(status_code=400, detail="Email already registered")
+                cur.execute(
+                    "SELECT laundry_id FROM shop.laundry_shops WHERE LOWER(TRIM(contact_email)) = %s LIMIT 1",
+                    (check_email,)
+                )
+                if cur.fetchone():
+                    raise HTTPException(status_code=400, detail="Email already registered")
+
+        # 3. Re-check address duplicate (defense in depth)
+        if street and city and state and zip_code:
+            normalized_addr = normalize_address(street, city, state, zip_code)
+            with get_db() as conn:
+                cur = get_cursor(conn)
+                cur.execute(
+                    """SELECT laundry_id FROM shop.laundry_shops
+                       WHERE LOWER(TRIM(street)) = %s
+                       AND LOWER(TRIM(city)) = %s
+                       AND LOWER(TRIM(state)) = %s
+                       AND TRIM(zip_code) = %s
+                       LIMIT 1""",
+                    (normalized_addr["street"], normalized_addr["city"],
+                     normalized_addr["state"], normalized_addr["zip_code"])
+                )
+                if cur.fetchone():
+                    raise HTTPException(status_code=400, detail="Address already registered")
+
+        # 4. Determine address_verified status from proof
+        if address_proof_id:
+            proof = verification_store.get_proof_status(address_proof_id)
+            if proof and proof.get("status") == "verified":
+                address_verified = True
+                from datetime import datetime, timezone
+                address_verified_at = datetime.now(timezone.utc)
+    if address_proof_id:
+        proof = verification_store.get_proof_status(address_proof_id)
+        if proof and proof.get("status") == "verified":
+            address_verified = True
+            from datetime import datetime, timezone
+            address_verified_at = datetime.now(timezone.utc)
 
     try:
         import json as json_mod
@@ -394,8 +459,9 @@ async def self_service_onboard(body: dict = Body(...)):
                     device_registration_code, bag_price,
                     stripe_public_key, stripe_private_key,
                     delivery_time_interval, emp_prefix,
-                    serviceable_zip_codes, user_domain, site_content
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    serviceable_zip_codes, user_domain, site_content,
+                    address_verified, address_verified_at
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """, (
                 next_id, laundry_name, timezone,
                 street, city, state, zip_code, country,
@@ -406,6 +472,8 @@ async def self_service_onboard(body: dict = Body(...)):
                 json_mod.dumps(serviceable_zip_codes) if serviceable_zip_codes else json_mod.dumps([zip_code] if zip_code else []),
                 custom_domain or None,
                 json_mod.dumps(site_content),
+                address_verified,
+                address_verified_at,
             ))
 
             # Upload logo if provided

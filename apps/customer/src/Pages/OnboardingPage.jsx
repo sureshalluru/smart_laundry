@@ -1,11 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
     Box, Container, Heading, Text, VStack, HStack, Button, Input, Textarea,
     FormControl, FormLabel, Select, SimpleGrid, Badge, Divider,
     useToast, Stepper, Step, StepIndicator, StepStatus, StepTitle,
     StepDescription, StepSeparator, StepIcon, StepNumber, useSteps,
     IconButton, Table, Thead, Tbody, Tr, Th, Td, Checkbox, Card, CardBody,
-    Alert, AlertIcon, InputGroup, InputLeftAddon
+    Alert, AlertIcon, InputGroup, InputLeftAddon, Spinner
 } from '@chakra-ui/react';
 import { AddIcon, DeleteIcon } from '@chakra-ui/icons';
 import axios from 'axios';
@@ -50,6 +50,25 @@ const OnboardingPage = () => {
         ownerFirstName: '', ownerLastName: '', ownerPhone: '', ownerEmail: '',
     });
 
+    // Email verification state
+    const [emailVerified, setEmailVerified] = useState(false);
+    const [emailVerificationToken, setEmailVerificationToken] = useState('');
+    const [verificationCodeSent, setVerificationCodeSent] = useState(false);
+    const [verificationCode, setVerificationCode] = useState('');
+    const [emailError, setEmailError] = useState('');
+    const [emailVerifying, setEmailVerifying] = useState(false);
+    const [codeSubmitting, setCodeSubmitting] = useState(false);
+
+    // Address duplicate check state
+    const [addressDuplicate, setAddressDuplicate] = useState(false);
+    const [addressError, setAddressError] = useState('');
+
+    // Address proof upload state
+    const [proofId, setProofId] = useState('');
+    const [proofStatus, setProofStatus] = useState('');
+    const [proofUploading, setProofUploading] = useState(false);
+    const proofPollingRef = useRef(null);
+
     // Step 2: Branding
     const [themeColor, setThemeColor] = useState('blue');
     const [logoBase64, setLogoBase64] = useState('');
@@ -81,7 +100,115 @@ const OnboardingPage = () => {
     const [signatureDate] = useState(new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }));
 
     // Handlers
-    const updateBusiness = (field, value) => setBusinessInfo(prev => ({ ...prev, [field]: value }));
+    const updateBusiness = (field, value) => {
+        setBusinessInfo(prev => ({ ...prev, [field]: value }));
+        // Reset email verification if email changes
+        if (field === 'ownerEmail') {
+            setEmailVerified(false);
+            setVerificationCodeSent(false);
+            setVerificationCode('');
+            setEmailError('');
+            setEmailVerificationToken('');
+        }
+    };
+
+    // Email verification handlers
+    const handleVerifyEmail = async () => {
+        setEmailVerifying(true); setEmailError('');
+        try {
+            const res = await axios.post(`${process.env.REACT_APP_AWS_API_URL}/api/platform/onboard/verify-email`, { email: businessInfo.ownerEmail });
+            if (res.data.status === 'success') { setVerificationCodeSent(true); }
+            else { setEmailError(res.data.message); }
+        } catch (err) { setEmailError(err.response?.data?.detail || 'Failed to send code'); }
+        finally { setEmailVerifying(false); }
+    };
+
+    const handleConfirmCode = async (code) => {
+        setCodeSubmitting(true); setEmailError('');
+        try {
+            const res = await axios.post(`${process.env.REACT_APP_AWS_API_URL}/api/platform/onboard/confirm-code`, { email: businessInfo.ownerEmail.trim().toLowerCase(), code });
+            if (res.data.status === 'success') { setEmailVerified(true); setEmailVerificationToken(res.data.token); setVerificationCodeSent(false); }
+            else { setEmailError(res.data.message); }
+        } catch (err) { setEmailError(err.response?.data?.detail || 'Verification failed'); }
+        finally { setCodeSubmitting(false); }
+    };
+
+    const handleVerificationCodeChange = (e) => {
+        const val = e.target.value.replace(/\D/g, '').slice(0, 6);
+        setVerificationCode(val);
+        if (val.length === 6) {
+            handleConfirmCode(val);
+        }
+    };
+
+    // Address duplicate check handler
+    const handleZipBlur = async () => {
+        if (!businessInfo.street || !businessInfo.city || !businessInfo.state || !businessInfo.zipCode) return;
+        try {
+            const res = await axios.post(`${process.env.REACT_APP_AWS_API_URL}/api/platform/onboard/check-address`, {
+                street: businessInfo.street, city: businessInfo.city, state: businessInfo.state, zipCode: businessInfo.zipCode
+            });
+            if (res.data.code === 'ADDRESS_DUPLICATE') { setAddressDuplicate(true); setAddressError(res.data.message); }
+            else { setAddressDuplicate(false); setAddressError(''); }
+        } catch (err) { /* silent fail for UX */ }
+    };
+
+    // Address proof upload handler
+    const handleProofUpload = async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        if (file.size > 10 * 1024 * 1024) {
+            toast({ title: 'File too large', description: 'Maximum file size is 10MB', status: 'error', duration: 3000 });
+            return;
+        }
+        const validTypes = ['image/jpeg', 'image/png', 'application/pdf'];
+        if (!validTypes.includes(file.type)) {
+            toast({ title: 'Invalid file type', description: 'Please upload a JPEG, PNG, or PDF file', status: 'error', duration: 3000 });
+            return;
+        }
+        setProofUploading(true);
+        try {
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('street', businessInfo.street);
+            formData.append('city', businessInfo.city);
+            formData.append('state', businessInfo.state);
+            formData.append('zipCode', businessInfo.zipCode);
+            const res = await axios.post(`${process.env.REACT_APP_AWS_API_URL}/api/platform/onboard/upload-proof`, formData, {
+                headers: { 'Content-Type': 'multipart/form-data' }
+            });
+            if (res.data.status === 'success') {
+                setProofId(res.data.proofId);
+                setProofStatus('processing');
+                startProofPolling(res.data.proofId);
+            }
+        } catch (err) {
+            toast({ title: 'Upload failed', description: err.response?.data?.detail || 'Please try again', status: 'error', duration: 3000 });
+        } finally {
+            setProofUploading(false);
+        }
+    };
+
+    const startProofPolling = (id) => {
+        if (proofPollingRef.current) clearInterval(proofPollingRef.current);
+        proofPollingRef.current = setInterval(async () => {
+            try {
+                const res = await axios.get(`${process.env.REACT_APP_AWS_API_URL}/api/platform/onboard/proof-status/${id}`);
+                if (res.data.status === 'verified' || res.data.status === 'review_required') {
+                    setProofStatus(res.data.status);
+                    clearInterval(proofPollingRef.current);
+                    proofPollingRef.current = null;
+                }
+            } catch (err) { /* continue polling */ }
+        }, 3000);
+    };
+
+    // Cleanup polling on unmount
+    useEffect(() => {
+        return () => {
+            if (proofPollingRef.current) clearInterval(proofPollingRef.current);
+        };
+    }, []);
 
     const addService = () => {
         setServices(prev => [...prev, { serviceName: '', price: '', inputWeight: true, customerAccess: true }]);
@@ -115,6 +242,8 @@ const OnboardingPage = () => {
                 stripePublicKey,
                 stripePrivateKey,
                 serviceableZipCodes: businessInfo.zipCode ? [businessInfo.zipCode] : [],
+                emailVerificationToken,
+                addressProofId: proofId,
                 agreement: {
                     signed: agreementSigned,
                     signatureName: signatureName,
@@ -136,7 +265,26 @@ const OnboardingPage = () => {
                 toast({ title: 'Error', description: response.data.message, status: 'error', duration: 5000 });
             }
         } catch (err) {
-            toast({ title: 'Error', description: err.response?.data?.message || err.message, status: 'error', duration: 5000 });
+            const errorDetail = err.response?.data?.detail || err.response?.data?.message || err.message;
+            const errorCode = err.response?.data?.code;
+            if (err.response?.status === 400) {
+                if (errorCode === 'EMAIL_VERIFICATION_REQUIRED' || errorCode === 'EMAIL_TOKEN_EXPIRED') {
+                    setEmailError(errorDetail);
+                    setEmailVerified(false);
+                    setActiveStep(0);
+                } else if (errorCode === 'EMAIL_DUPLICATE') {
+                    setEmailError(errorDetail);
+                    setActiveStep(0);
+                } else if (errorCode === 'ADDRESS_DUPLICATE') {
+                    setAddressDuplicate(true);
+                    setAddressError(errorDetail);
+                    setActiveStep(0);
+                } else {
+                    toast({ title: 'Error', description: errorDetail, status: 'error', duration: 5000 });
+                }
+            } else {
+                toast({ title: 'Error', description: errorDetail, status: 'error', duration: 5000 });
+            }
         } finally {
             setIsSubmitting(false);
         }
@@ -144,7 +292,7 @@ const OnboardingPage = () => {
 
     const canProceed = () => {
         switch (activeStep) {
-            case 0: return businessInfo.laundryName && businessInfo.ownerPhone && businessInfo.street;
+            case 0: return businessInfo.laundryName && businessInfo.ownerPhone && businessInfo.street && emailVerified && !addressDuplicate;
             case 1: return true; // Branding is optional
             case 2: return services.some(s => s.serviceName.trim());
             case 3: return schedule.some(s => s.enabled);
@@ -283,9 +431,39 @@ const OnboardingPage = () => {
                             </FormControl>
                             <FormControl isRequired>
                                 <FormLabel>Zip Code</FormLabel>
-                                <Input placeholder="78664" value={businessInfo.zipCode} onChange={e => updateBusiness('zipCode', e.target.value)} />
+                                <Input placeholder="78664" value={businessInfo.zipCode} onChange={e => updateBusiness('zipCode', e.target.value)} onBlur={handleZipBlur} />
+                                {addressError && (
+                                    <Text color="red.500" fontSize="sm" mt={1}>{addressError}</Text>
+                                )}
                             </FormControl>
                         </SimpleGrid>
+
+                        {/* Address Proof Upload */}
+                        <FormControl mt={2}>
+                            <FormLabel>Proof of Address</FormLabel>
+                            <Text fontSize="xs" color="gray.500" mb={2}>
+                                Upload a utility bill, bank statement, or driving license showing your business address. We don't store this document — it's only used to verify your address.
+                            </Text>
+                            <Input
+                                type="file"
+                                accept="image/jpeg,image/png,application/pdf"
+                                p={1}
+                                onChange={handleProofUpload}
+                                isDisabled={proofUploading || proofStatus === 'verified'}
+                            />
+                            {proofUploading && (
+                                <HStack mt={2}><Spinner size="sm" /><Text fontSize="sm" color="gray.600">Uploading...</Text></HStack>
+                            )}
+                            {proofStatus === 'processing' && (
+                                <HStack mt={2}><Spinner size="sm" color="blue.500" /><Text fontSize="sm" color="blue.600">Verifying...</Text></HStack>
+                            )}
+                            {proofStatus === 'verified' && (
+                                <Badge colorScheme="green" mt={2} fontSize="sm" px={2} py={1}>✓ Address Verified</Badge>
+                            )}
+                            {proofStatus === 'review_required' && (
+                                <Badge colorScheme="orange" mt={2} fontSize="sm" px={2} py={1}>Pending Review</Badge>
+                            )}
+                        </FormControl>
 
                         <FormControl>
                             <FormLabel>Time Zone</FormLabel>
@@ -326,6 +504,52 @@ const OnboardingPage = () => {
                                 <Input placeholder="owner@laundry.com" value={businessInfo.ownerEmail} onChange={e => updateBusiness('ownerEmail', e.target.value)} />
                             </FormControl>
                         </SimpleGrid>
+
+                        {/* Email Verification UI */}
+                        <Box>
+                            <HStack spacing={3} mt={2}>
+                                <Button
+                                    size="sm"
+                                    colorScheme="blue"
+                                    onClick={handleVerifyEmail}
+                                    isLoading={emailVerifying}
+                                    loadingText="Sending..."
+                                    isDisabled={!businessInfo.ownerEmail || emailVerified}
+                                >
+                                    Verify Email
+                                </Button>
+                                {emailVerified && (
+                                    <Badge colorScheme="green" fontSize="sm" px={2} py={1}>✓ Email Verified</Badge>
+                                )}
+                            </HStack>
+
+                            {verificationCodeSent && !emailVerified && (
+                                <Box mt={3}>
+                                    <Text fontSize="sm" color="gray.600" mb={1}>Enter the 6-digit code sent to your email:</Text>
+                                    <HStack>
+                                        <Input
+                                            maxW="160px"
+                                            placeholder="000000"
+                                            value={verificationCode}
+                                            onChange={handleVerificationCodeChange}
+                                            isDisabled={codeSubmitting}
+                                            maxLength={6}
+                                            textAlign="center"
+                                            letterSpacing="0.3em"
+                                            fontWeight="bold"
+                                        />
+                                        {codeSubmitting && <Spinner size="sm" />}
+                                    </HStack>
+                                </Box>
+                            )}
+
+                            {emailError && (
+                                <Alert status="error" mt={2} borderRadius="md" size="sm">
+                                    <AlertIcon />
+                                    <Text fontSize="sm">{emailError}</Text>
+                                </Alert>
+                            )}
+                        </Box>
                     </VStack>
                 )}
 
