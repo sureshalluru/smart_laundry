@@ -55,9 +55,9 @@ export default function StoreAdminLoginPage() {
 
     const deviceFingerprint = getDeviceFingerprint();
 
-    // Extract laundryId from URL path (e.g., /2/admin -> "2")
+    // Extract laundryId from URL path (e.g., /2/admin -> "2", /2/driver/home -> "2")
     const pathParts = window.location.pathname.split('/').filter(Boolean);
-    const urlLaundryId = pathParts.length > 0 && pathParts[1] === 'admin' ? pathParts[0] : null;
+    const urlLaundryId = pathParts.length > 0 && !isNaN(pathParts[0]) ? pathParts[0] : null;
 
     useEffect(() => {
         // On mount, just mark checking as done (we'll verify on login)
