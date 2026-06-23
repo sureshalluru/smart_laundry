@@ -5,7 +5,7 @@ category management, and polling for POS sync.
 import logging
 from datetime import datetime, timezone
 from typing import Optional
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel
 
 from app.database import get_db, get_cursor
