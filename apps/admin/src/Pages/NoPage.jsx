@@ -19,6 +19,17 @@ const NoPage = () => {
     const auth = useAuth();
     const toast = useToast();
 
+    // If not authenticated or no valid token, redirect to login immediately
+    React.useEffect(() => {
+        const token = localStorage.getItem('idToken');
+        if (!token || !auth.isAuthenticated) {
+            // Clear stale data and redirect to login
+            localStorage.removeItem('idToken');
+            localStorage.removeItem('empRole');
+            window.location.href = '/admin';
+        }
+    }, [auth.isAuthenticated]);
+
     const handleGoToHome = () => {
         if (laundryId) {
             navigate(`/${laundryId}/admin`);
