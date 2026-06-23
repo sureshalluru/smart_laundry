@@ -226,8 +226,9 @@ def _validate_address(cur, laundry_id, address):
     if not zip_code:
         return {"status": "error", "message": "Could not determine zip code from address"}
 
-    # Demo zip code: 00000 is always serviceable (for demos/testing)
-    if zip_code == "00000":
+    # Demo zip code: 78664 is always serviceable for all laundries (for demos/testing)
+    # This is Round Rock's zip — use any real address in 78664 during demos
+    if zip_code == "78664":
         return {"status": "success", "serviceable": True}
 
     cur.execute("SELECT serviceable_zip_codes FROM shop.laundry_shops WHERE laundry_id = %s", (laundry_id,))
