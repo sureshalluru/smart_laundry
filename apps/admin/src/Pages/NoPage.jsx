@@ -24,10 +24,12 @@ const NoPage = () => {
     React.useEffect(() => {
         const token = localStorage.getItem('idToken');
         if (token && !auth.isAuthenticated) {
-            // Stale token — clear and redirect
+            // Stale token — clear and redirect to same laundry's login
             localStorage.removeItem('idToken');
             localStorage.removeItem('empRole');
-            window.location.href = '/admin';
+            const pathParts = window.location.pathname.split('/').filter(Boolean);
+            const currentLaundryId = pathParts.length > 0 && !isNaN(pathParts[0]) ? pathParts[0] : null;
+            window.location.href = currentLaundryId ? `/${currentLaundryId}/admin` : '/slb';
         }
     }, []);
 
@@ -53,7 +55,10 @@ const NoPage = () => {
     const signOutRedirect = () => {
         auth.logout();
         localStorage.removeItem('idToken');
-        window.location.href = '/admin';
+        // Stay on the same laundry's login page
+        const pathParts = window.location.pathname.split('/').filter(Boolean);
+        const currentLaundryId = pathParts.length > 0 && !isNaN(pathParts[0]) ? pathParts[0] : null;
+        window.location.href = currentLaundryId ? `/${currentLaundryId}/admin` : '/slb';
     };
 
     return (

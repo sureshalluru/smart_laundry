@@ -202,6 +202,14 @@ def _employee_login(body: dict):
             """, (laundry_id or '', device_fingerprint, emp_id))
             raise HTTPException(status_code=401, detail="Invalid credentials")
 
+        # Verify employee belongs to the laundry they're trying to access
+        if laundry_id and str(emp["laundry_id"]) != str(laundry_id):
+            cur.execute("""
+                INSERT INTO shop.login_attempts (laundry_id, device_fingerprint, emp_id, success)
+                VALUES (%s, %s, %s, FALSE)
+            """, (laundry_id, device_fingerprint, emp_id))
+            raise HTTPException(status_code=401, detail="Invalid credentials")
+
         # Check if device is registered for the employee's laundry
         # Only enforce if at least one device is registered (skip for fresh laundries)
         cur.execute("""

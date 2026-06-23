@@ -156,6 +156,17 @@ function withLaundryValidation(Component) {
 
 // ── Main App Component ───────────────────────────────────────────────────────
 
+// Redirect bare /admin (no laundryId) to SLB product page
+// Admin requires /:laundryId/admin format — each laundry has isolated credentials
+function AdminRedirect() {
+    // Clear any stale session since there's no laundry context
+    localStorage.removeItem('auth');
+    localStorage.removeItem('idToken');
+    localStorage.removeItem('empRole');
+    window.location.href = '/slb';
+    return null;
+}
+
 function App() {
     const auth = useAuth();
 
@@ -353,6 +364,10 @@ function App() {
                             </Suspense>
                         </LaundryValidationProvider>
                     }/>
+
+                    {/* Bare /admin redirect — find user's laundry and redirect */}
+                    <Route path="/admin" element={<AdminRedirect />} />
+                    <Route path="/admin/*" element={<AdminRedirect />} />
 
                     <Route path="/invalid" element={<NoPage/>}/>
                     <Route path="*" element={<NoPage/>}/>

@@ -372,7 +372,7 @@ const SidebarContent = ({
         auth.logout();
         localStorage.removeItem('idToken');
         localStorage.removeItem('empRole');
-        window.location.href = '/admin';
+        window.location.href = `/${laundryId}/admin`;
     };
 
     return (

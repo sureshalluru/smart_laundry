@@ -38,6 +38,24 @@ function DomainRedirect() {
     return <Navigate to={`/${laundryId}/site`} replace />;
 }
 
+// Set page title immediately based on domain (before API loads)
+// For tenants on smartlaundrybasket.ai/{laundryId}/site, the LaundryContext
+// will set the correct title from the database once data loads.
+(function setDomainTitle() {
+    const host = window.location.hostname.toLowerCase();
+    if (host.includes('spinandshine')) {
+        document.title = 'Spin and Shine Laundromat - Free Pickup & Delivery';
+    } else if (host.includes('roundrock')) {
+        document.title = 'EcoSpin Round Rock Laundry - Free Pickup & Delivery';
+    } else if (host.includes('clean-rite') || host.includes('cleanrite')) {
+        document.title = 'Clean-Rite Hays - Free Pickup & Delivery';
+    } else if (host.includes('smartlaundrybasket')) {
+        document.title = 'Smart Laundry Basket';
+    }
+    // For custom domains not listed here, title stays as default
+    // until LaundryContext sets it from the database
+})();
+
 function App() {
     return (
         <ChakraProvider theme={theme}>

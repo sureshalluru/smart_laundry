@@ -54,8 +54,10 @@ export default function StoreAdminLoginPage() {
     const [checkingDevice, setCheckingDevice] = useState(true);
 
     const deviceFingerprint = getDeviceFingerprint();
-    // We don't know laundryId yet until they enter employee ID and we get it from the response
-    // So we'll check device registration after a failed login attempt returns DEVICE_NOT_REGISTERED
+
+    // Extract laundryId from URL path (e.g., /2/admin -> "2")
+    const pathParts = window.location.pathname.split('/').filter(Boolean);
+    const urlLaundryId = pathParts.length > 0 && pathParts[1] === 'admin' ? pathParts[0] : null;
 
     useEffect(() => {
         // On mount, just mark checking as done (we'll verify on login)
@@ -72,6 +74,7 @@ export default function StoreAdminLoginPage() {
                 employeeId,
                 passcode,
                 deviceFingerprint,
+                laundryId: urlLaundryId,
             });
             // Store role in localStorage for quick access
             const role = getUserRole(); // decodes JWT that was just stored
