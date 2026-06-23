@@ -226,6 +226,10 @@ def _validate_address(cur, laundry_id, address):
     if not zip_code:
         return {"status": "error", "message": "Could not determine zip code from address"}
 
+    # Demo zip code: 00000 is always serviceable (for demos/testing)
+    if zip_code == "00000":
+        return {"status": "success", "serviceable": True}
+
     cur.execute("SELECT serviceable_zip_codes FROM shop.laundry_shops WHERE laundry_id = %s", (laundry_id,))
     row = cur.fetchone()
     if not row:
