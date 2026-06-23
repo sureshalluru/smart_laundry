@@ -8,12 +8,16 @@ from datetime import datetime
 from typing import Optional
 
 import httpx
-from fastapi import APIRouter, Depends, Query, Body
+from fastapi import APIRouter, Depends, Query, Body, Request
 from app.database import get_db, get_cursor
 from app.auth import get_current_user
 from app.config import settings
 from app.services.clustering_service import cluster_stops
 from app.services.route_optimizer import optimize_route_order
+
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+limiter = Limiter(key_func=get_remote_address)
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -193,7 +197,9 @@ async def get_drivers(
 # ── POST /optimize ─────────────────────────────────────────────────────────────
 
 @router.post("/optimize")
+@limiter.limit("20/minute")
 async def optimize_clusters(
+    request: Request,
     body: dict = Body(...),
     current_user: dict = Depends(get_current_user),
 ):

@@ -13,6 +13,11 @@ from app.services.token_service import generate_token, validate_token, hash_toke
 
 logger = logging.getLogger(__name__)
 
+# Import rate limiter from main app
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+limiter = Limiter(key_func=get_remote_address)
+
 router = APIRouter()
 track_router = APIRouter()  # Public endpoints for mobile upload page (token auth, no admin auth)
 
@@ -262,7 +267,8 @@ class PhotoUploadResponse(BaseModel):
 
 
 @track_router.post("/track/upload", response_model=PhotoUploadResponse)
-async def upload_photos(request: PhotoUploadRequest):
+@limiter.limit("10/minute")
+async def upload_photos(request: PhotoUploadRequest, req: Request):
     """
     Accept photos from the mobile upload page, upload to S3,
     call Claude Vision, and return structured results.

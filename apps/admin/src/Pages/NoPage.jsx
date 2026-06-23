@@ -19,16 +19,17 @@ const NoPage = () => {
     const auth = useAuth();
     const toast = useToast();
 
-    // If not authenticated or no valid token, redirect to login immediately
+    // If there's a stale/invalid token, clear it and redirect to login
+    // But if there's NO token at all, don't redirect (the auth flow will show login)
     React.useEffect(() => {
         const token = localStorage.getItem('idToken');
-        if (!token || !auth.isAuthenticated) {
-            // Clear stale data and redirect to login
+        if (token && !auth.isAuthenticated) {
+            // Stale token — clear and redirect
             localStorage.removeItem('idToken');
             localStorage.removeItem('empRole');
             window.location.href = '/admin';
         }
-    }, [auth.isAuthenticated]);
+    }, []);
 
     const handleGoToHome = () => {
         if (laundryId) {

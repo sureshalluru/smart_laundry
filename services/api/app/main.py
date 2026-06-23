@@ -14,7 +14,13 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 from app.config import settings
+
+# Rate limiter — per IP address
+limiter = Limiter(key_func=get_remote_address, default_limits=["120/minute"])
 
 # Suppress noisy access logs for polling endpoints and bot probes
 class SuppressPollingFilter(logging.Filter):
@@ -70,6 +76,8 @@ app = FastAPI(
     version="1.0.0",
     description="Unified backend + frontend for Smart Laundry platform",
 )
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 
 # Start background scheduler and run migrations on app startup
