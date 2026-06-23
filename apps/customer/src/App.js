@@ -28,6 +28,8 @@ import theme from './theme';
 // Domain-to-laundry mapping for multi-tenant root redirect
 function DomainRedirect() {
     const host = window.location.hostname.toLowerCase();
+    // SLB product website domain
+    if (host.includes('smartlaundrybasket')) return <Navigate to="/slb" replace />;
     let laundryId = '1'; // default
     if (host.includes('spinandshine')) laundryId = '2';
     else if (host.includes('roundrock')) laundryId = '1';
