@@ -222,9 +222,12 @@ const DeliveryScheduleSection = ({ laundryId }) => {
     const toast = useToast();
     const [slots, setSlots] = useState([]);
     const [deliveryTimeInterval, setDeliveryTimeInterval] = useState(2);
+    const [frequencyIntervals, setFrequencyIntervals] = useState([]);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const authToken = localStorage.getItem('idToken');
+
+    const FREQUENCY_OPTIONS = ['Weekly', 'Bi-weekly', 'Monthly'];
 
     useEffect(() => {
         const fetchSchedule = async () => {
@@ -239,6 +242,9 @@ const DeliveryScheduleSection = ({ laundryId }) => {
                 }
                 if (data.deliveryTimeInterval) {
                     setDeliveryTimeInterval(data.deliveryTimeInterval);
+                }
+                if (data.frequencyIntervals) {
+                    setFrequencyIntervals(data.frequencyIntervals);
                 }
             } catch (err) {
                 console.error(err);
@@ -276,6 +282,7 @@ const DeliveryScheduleSection = ({ laundryId }) => {
                 laundryId,
                 deliveryTimeSlots: slots,
                 deliveryTimeInterval,
+                frequencyIntervals,
             }, {
                 headers: { Authorization: `Bearer ${authToken}` }
             });
@@ -305,6 +312,36 @@ const DeliveryScheduleSection = ({ laundryId }) => {
                     <option value={3}>3 hours</option>
                     <option value={4}>4 hours</option>
                 </Select>
+            </Box>
+
+            <Box mb={6} p={4} bg="blue.50" borderRadius="md" border="1px solid" borderColor="blue.100">
+                <Text fontWeight="semibold" mb={2}>Recurring Pickup Frequency</Text>
+                <Text fontSize="xs" color="gray.600" mb={3}>
+                    Enable which frequencies customers can choose for Subscribe & Save recurring orders.
+                </Text>
+                <Flex gap={4} flexWrap="wrap">
+                    {FREQUENCY_OPTIONS.map(freq => (
+                        <label key={freq} style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
+                            <input
+                                type="checkbox"
+                                checked={frequencyIntervals.includes(freq)}
+                                onChange={(e) => {
+                                    if (e.target.checked) {
+                                        setFrequencyIntervals(prev => [...prev, freq]);
+                                    } else {
+                                        setFrequencyIntervals(prev => prev.filter(f => f !== freq));
+                                    }
+                                }}
+                            />
+                            <Text fontSize="sm" fontWeight="500">{freq}</Text>
+                        </label>
+                    ))}
+                </Flex>
+                {frequencyIntervals.length === 0 && (
+                    <Text fontSize="xs" color="orange.600" mt={2}>
+                        No frequencies enabled — "Subscribe & Save" won't appear for customers.
+                    </Text>
+                )}
             </Box>
 
             <Table variant="simple" size="sm" border="1px solid" borderColor="gray.200">

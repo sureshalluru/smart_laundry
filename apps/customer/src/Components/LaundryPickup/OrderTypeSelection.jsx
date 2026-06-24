@@ -131,7 +131,7 @@ export default function OrderTypeSelection({
                 )}
 
                 {/* Card 3: Subscribe & Save */}
-                {hasPerBagServices && (
+                {hasPerBagServices && hasFrequencyOptions && (
                     <Box {...cardStyles} onClick={() => onSelect('subscribe-save')}>
                         <HStack spacing={4} align="flex-start">
                             <Text fontSize="2xl">💰</Text>

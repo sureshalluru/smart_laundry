@@ -148,6 +148,7 @@ async def update_delivery_schedule(
     delivery_time_interval = body.get("deliveryTimeInterval")
     tax_rate = body.get("taxRate")
     subscription_discount = body.get("subscriptionDiscount")
+    frequency_intervals = body.get("frequencyIntervals")  # e.g. ["Weekly", "Bi-Weekly", "Monthly"]
 
     if not laundry_id:
         return {"statusCode": 400, "body": {"status": "error", "message": "Missing laundryId"}}
@@ -185,6 +186,25 @@ async def update_delivery_schedule(
                     VALUES (%s, %s, %s, %s)
                 """, (laundry_id, day, start_time, end_time))
 
+        # Update frequency intervals if provided
+        if frequency_intervals is not None:
+            # First, get valid enum values to match casing
+            cur.execute("""
+                SELECT unnest(enum_range(NULL::orders.frequency_enum))::text AS val
+            """)
+            valid_enums = {r["val"] for r in cur.fetchall()}
+
+            cur.execute("DELETE FROM shop.frequency_intervals WHERE laundry_id = %s", (laundry_id,))
+            for interval in frequency_intervals:
+                # Match against valid enum values (case-insensitive lookup)
+                matched = next((v for v in valid_enums if v.lower().replace('-', '').replace(' ', '') == interval.lower().replace('-', '').replace(' ', '')), None)
+                if matched:
+                    cur.execute("""
+                        INSERT INTO shop.frequency_intervals (laundry_id, interval)
+                        VALUES (%s, %s)
+                        ON CONFLICT DO NOTHING
+                    """, (laundry_id, matched))
+
     return {"statusCode": 200, "body": {"status": "success", "message": "Delivery schedule updated"}}
 
 
@@ -206,6 +226,10 @@ async def get_delivery_schedule(
         """, (laundryId,))
         slots = [{"day": r["day"], "startTime": str(r["startTime"])[:5], "endTime": str(r["endTime"])[:5]} for r in cur.fetchall()]
 
+        # Fetch frequency intervals
+        cur.execute("SELECT interval FROM shop.frequency_intervals WHERE laundry_id = %s", (laundryId,))
+        frequency_intervals = [r["interval"] for r in cur.fetchall()]
+
     return {
         "statusCode": 200,
         "body": {
@@ -214,5 +238,6 @@ async def get_delivery_schedule(
             "taxRate": float(shop["tax_rate"]) if shop and shop.get("tax_rate") else 0,
             "subscriptionDiscount": float(shop["subscription_discount"]) if shop and shop.get("subscription_discount") else 0,
             "deliveryTimeSlots": slots,
+            "frequencyIntervals": frequency_intervals,
         }
     }
