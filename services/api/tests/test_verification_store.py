@@ -353,41 +353,12 @@ class TestVerificationStoreUnit:
         assert "expired-token" not in self.store._tokens
         assert "fresh-token" in self.store._tokens
 
-    def test_cleanup_removes_expired_proofs(self):
-        """cleanup_expired removes proofs older than TOKEN_TTL."""
-        # Store an expired proof
-        with self.store._lock:
-            self.store._proofs["old-proof"] = {
-                "proof_id": "old-proof",
-                "s3_key": "proof-docs/old.pdf",
-                "status": "verified",
-                "entered_address": {},
-                "address_verified": True,
-                "created_at": time.time() - (TOKEN_TTL + 60),
-            }
-            # Store a fresh proof
-            self.store._proofs["fresh-proof"] = {
-                "proof_id": "fresh-proof",
-                "s3_key": "proof-docs/new.pdf",
-                "status": "processing",
-                "entered_address": {},
-                "address_verified": False,
-                "created_at": time.time(),
-            }
-
-        self.store.cleanup_expired()
-
-        assert "old-proof" not in self.store._proofs
-        assert "fresh-proof" in self.store._proofs
-
     def test_cleanup_does_not_remove_fresh_entries(self):
         """cleanup_expired leaves non-expired entries intact."""
         self.store.store_code("active@test.com", "444444")
         token = self.store.create_token("active@test.com")
-        self.store.store_proof("active-proof", "proof-docs/doc.pdf", {"street": "123 Main"})
 
         self.store.cleanup_expired()
 
         assert "active@test.com" in self.store._codes
         assert token in self.store._tokens
-        assert "active-proof" in self.store._proofs

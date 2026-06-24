@@ -1,5 +1,5 @@
 """
-In-memory verification store for onboarding email codes, tokens, and address proofs.
+In-memory verification store for onboarding email codes and tokens.
 
 Thread-safe dict-based storage with TTL enforcement and periodic cleanup.
 """
@@ -40,12 +40,11 @@ def normalize_address(street: str, city: str, state: str, zip_code: str) -> dict
 
 
 class VerificationStore:
-    """Thread-safe in-memory store for email verification codes, tokens, and proofs."""
+    """Thread-safe in-memory store for email verification codes and tokens."""
 
     def __init__(self):
         self._codes: dict = {}      # email -> {code, created_at, attempts}
         self._tokens: dict = {}     # token -> {email, created_at}
-        self._proofs: dict = {}     # proof_id -> {s3_key, status, entered_address, address_verified, created_at}
         self._lock = threading.Lock()
         self._cleanup_thread: Optional[threading.Thread] = None
         self._start_cleanup_thread()
@@ -167,63 +166,12 @@ class VerificationStore:
 
             return entry["email"]
 
-    def store_proof(self, proof_id: str, s3_key: str, entered_address: dict) -> None:
-        """
-        Store a proof record with initial "processing" status.
-
-        Args:
-            proof_id: Unique identifier for the proof
-            s3_key: S3 object key where the document is stored
-            entered_address: Dict with street, city, state, zip_code
-        """
-        with self._lock:
-            self._proofs[proof_id] = {
-                "proof_id": proof_id,
-                "s3_key": s3_key,
-                "status": "processing",
-                "entered_address": entered_address,
-                "address_verified": False,
-                "created_at": time.time(),
-            }
-
-    def update_proof_status(self, proof_id: str, status: str, verified: bool) -> None:
-        """
-        Update the status of a proof record after Claude validation.
-
-        Args:
-            proof_id: Unique identifier for the proof
-            status: New status ("verified", "review_required", "error")
-            verified: Whether the address was verified
-        """
-        with self._lock:
-            entry = self._proofs.get(proof_id)
-            if entry is not None:
-                entry["status"] = status
-                entry["address_verified"] = verified
-
-    def get_proof_status(self, proof_id: str) -> Optional[dict]:
-        """
-        Get the current status of a proof record.
-
-        Args:
-            proof_id: Unique identifier for the proof
-
-        Returns:
-            Dict with proof details or None if not found
-        """
-        with self._lock:
-            entry = self._proofs.get(proof_id)
-            if entry is None:
-                return None
-            return dict(entry)
-
     def cleanup_expired(self) -> None:
         """
-        Evict expired codes, tokens, and proofs from the store.
+        Evict expired codes and tokens from the store.
 
         - Codes older than CODE_TTL are removed
         - Tokens older than TOKEN_TTL are removed
-        - Proofs older than TOKEN_TTL are removed (completed proofs don't need to persist long)
         """
         now = time.time()
         with self._lock:
@@ -242,14 +190,6 @@ class VerificationStore:
             ]
             for token in expired_tokens:
                 del self._tokens[token]
-
-            # Clean expired proofs (use TOKEN_TTL as reasonable lifetime)
-            expired_proofs = [
-                proof_id for proof_id, entry in self._proofs.items()
-                if now - entry["created_at"] > TOKEN_TTL
-            ]
-            for proof_id in expired_proofs:
-                del self._proofs[proof_id]
 
 
 # Module-level singleton instance

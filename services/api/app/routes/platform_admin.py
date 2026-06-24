@@ -339,7 +339,6 @@ async def self_service_onboard(body: dict = Body(...)):
 
     # Verification fields
     email_verification_token = body.get("emailVerificationToken", "")
-    address_proof_id = body.get("addressProofId", "")
 
     if not laundry_name:
         return {"status": "error", "message": "Laundry name is required"}
@@ -348,8 +347,6 @@ async def self_service_onboard(body: dict = Body(...)):
 
     # --- Verification enforcement (only when verification token is provided) ---
     # This allows the old /onboard flow to work without verification during testing
-    address_verified = False
-    address_verified_at = None
     if email_verification_token:
         # 1. Validate email verification token
         token_email = verification_store.validate_token(email_verification_token)
@@ -391,20 +388,6 @@ async def self_service_onboard(body: dict = Body(...)):
                 )
                 if cur.fetchone():
                     raise HTTPException(status_code=400, detail="Address already registered")
-
-        # 4. Determine address_verified status from proof
-        if address_proof_id:
-            proof = verification_store.get_proof_status(address_proof_id)
-            if proof and proof.get("status") == "verified":
-                address_verified = True
-                from datetime import datetime, timezone
-                address_verified_at = datetime.now(timezone.utc)
-    if address_proof_id:
-        proof = verification_store.get_proof_status(address_proof_id)
-        if proof and proof.get("status") == "verified":
-            address_verified = True
-            from datetime import datetime, timezone
-            address_verified_at = datetime.now(timezone.utc)
 
     try:
         import json as json_mod
@@ -459,9 +442,8 @@ async def self_service_onboard(body: dict = Body(...)):
                     device_registration_code, bag_price,
                     stripe_public_key, stripe_private_key,
                     delivery_time_interval, emp_prefix,
-                    serviceable_zip_codes, user_domain, site_content,
-                    address_verified, address_verified_at
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    serviceable_zip_codes, user_domain, site_content
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """, (
                 next_id, laundry_name, timezone,
                 street, city, state, zip_code, country,
@@ -472,8 +454,6 @@ async def self_service_onboard(body: dict = Body(...)):
                 json_mod.dumps(serviceable_zip_codes) if serviceable_zip_codes else json_mod.dumps([zip_code] if zip_code else []),
                 custom_domain or None,
                 json_mod.dumps(site_content),
-                address_verified,
-                address_verified_at,
             ))
 
             # Upload logo if provided

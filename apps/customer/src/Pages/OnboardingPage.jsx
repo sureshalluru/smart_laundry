@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState } from 'react';
 import {
     Box, Container, Heading, Text, VStack, HStack, Button, Input, Textarea,
     FormControl, FormLabel, Select, SimpleGrid, Badge, Divider,
@@ -62,12 +62,6 @@ const OnboardingPage = () => {
     // Address duplicate check state
     const [addressDuplicate, setAddressDuplicate] = useState(false);
     const [addressError, setAddressError] = useState('');
-
-    // Address proof upload state
-    const [proofId, setProofId] = useState('');
-    const [proofStatus, setProofStatus] = useState('');
-    const [proofUploading, setProofUploading] = useState(false);
-    const proofPollingRef = useRef(null);
 
     // Step 2: Branding
     const [themeColor, setThemeColor] = useState('blue');
@@ -153,63 +147,6 @@ const OnboardingPage = () => {
         } catch (err) { /* silent fail for UX */ }
     };
 
-    // Address proof upload handler
-    const handleProofUpload = async (e) => {
-        const file = e.target.files[0];
-        if (!file) return;
-        if (file.size > 10 * 1024 * 1024) {
-            toast({ title: 'File too large', description: 'Maximum file size is 10MB', status: 'error', duration: 3000 });
-            return;
-        }
-        const validTypes = ['image/jpeg', 'image/png', 'application/pdf'];
-        if (!validTypes.includes(file.type)) {
-            toast({ title: 'Invalid file type', description: 'Please upload a JPEG, PNG, or PDF file', status: 'error', duration: 3000 });
-            return;
-        }
-        setProofUploading(true);
-        try {
-            const formData = new FormData();
-            formData.append('file', file);
-            formData.append('street', businessInfo.street);
-            formData.append('city', businessInfo.city);
-            formData.append('state', businessInfo.state);
-            formData.append('zipCode', businessInfo.zipCode);
-            const res = await axios.post(`${process.env.REACT_APP_AWS_API_URL}/api/platform/onboard/upload-proof`, formData, {
-                headers: { 'Content-Type': 'multipart/form-data' }
-            });
-            if (res.data.status === 'success') {
-                setProofId(res.data.proofId);
-                setProofStatus('processing');
-                startProofPolling(res.data.proofId);
-            }
-        } catch (err) {
-            toast({ title: 'Upload failed', description: err.response?.data?.detail || 'Please try again', status: 'error', duration: 3000 });
-        } finally {
-            setProofUploading(false);
-        }
-    };
-
-    const startProofPolling = (id) => {
-        if (proofPollingRef.current) clearInterval(proofPollingRef.current);
-        proofPollingRef.current = setInterval(async () => {
-            try {
-                const res = await axios.get(`${process.env.REACT_APP_AWS_API_URL}/api/platform/onboard/proof-status/${id}`);
-                if (res.data.status === 'verified' || res.data.status === 'review_required') {
-                    setProofStatus(res.data.status);
-                    clearInterval(proofPollingRef.current);
-                    proofPollingRef.current = null;
-                }
-            } catch (err) { /* continue polling */ }
-        }, 3000);
-    };
-
-    // Cleanup polling on unmount
-    useEffect(() => {
-        return () => {
-            if (proofPollingRef.current) clearInterval(proofPollingRef.current);
-        };
-    }, []);
-
     const addService = () => {
         setServices(prev => [...prev, { serviceName: '', price: '', inputWeight: true, customerAccess: true }]);
     };
@@ -243,7 +180,6 @@ const OnboardingPage = () => {
                 stripePrivateKey,
                 serviceableZipCodes: businessInfo.zipCode ? [businessInfo.zipCode] : [],
                 emailVerificationToken,
-                addressProofId: proofId,
                 agreement: {
                     signed: agreementSigned,
                     signatureName: signatureName,
@@ -437,33 +373,6 @@ const OnboardingPage = () => {
                                 )}
                             </FormControl>
                         </SimpleGrid>
-
-                        {/* Address Proof Upload */}
-                        <FormControl mt={2}>
-                            <FormLabel>Proof of Address</FormLabel>
-                            <Text fontSize="xs" color="gray.500" mb={2}>
-                                Upload a utility bill, bank statement, or driving license showing your business address. We don't store this document — it's only used to verify your address.
-                            </Text>
-                            <Input
-                                type="file"
-                                accept="image/jpeg,image/png,application/pdf"
-                                p={1}
-                                onChange={handleProofUpload}
-                                isDisabled={proofUploading || proofStatus === 'verified'}
-                            />
-                            {proofUploading && (
-                                <HStack mt={2}><Spinner size="sm" /><Text fontSize="sm" color="gray.600">Uploading...</Text></HStack>
-                            )}
-                            {proofStatus === 'processing' && (
-                                <HStack mt={2}><Spinner size="sm" color="blue.500" /><Text fontSize="sm" color="blue.600">Verifying...</Text></HStack>
-                            )}
-                            {proofStatus === 'verified' && (
-                                <Badge colorScheme="green" mt={2} fontSize="sm" px={2} py={1}>✓ Address Verified</Badge>
-                            )}
-                            {proofStatus === 'review_required' && (
-                                <Badge colorScheme="orange" mt={2} fontSize="sm" px={2} py={1}>Pending Review</Badge>
-                            )}
-                        </FormControl>
 
                         <FormControl>
                             <FormLabel>Time Zone</FormLabel>
