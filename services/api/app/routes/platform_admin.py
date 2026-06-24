@@ -340,6 +340,10 @@ async def self_service_onboard(body: dict = Body(...)):
     # Verification fields
     email_verification_token = body.get("emailVerificationToken", "")
 
+    # Referral fields
+    referred_by_name = body.get("referredByName", "").strip()
+    referred_by_email = body.get("referredByEmail", "").strip().lower()
+
     if not laundry_name:
         return {"status": "error", "message": "Laundry name is required"}
     if not owner_phone:
@@ -442,8 +446,9 @@ async def self_service_onboard(body: dict = Body(...)):
                     device_registration_code, bag_price,
                     stripe_public_key, stripe_private_key,
                     delivery_time_interval, emp_prefix,
-                    serviceable_zip_codes, user_domain, site_content
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    serviceable_zip_codes, user_domain, site_content,
+                    referred_by_name, referred_by_email
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """, (
                 next_id, laundry_name, timezone,
                 street, city, state, zip_code, country,
@@ -454,6 +459,8 @@ async def self_service_onboard(body: dict = Body(...)):
                 json_mod.dumps(serviceable_zip_codes) if serviceable_zip_codes else json_mod.dumps([zip_code] if zip_code else []),
                 custom_domain or None,
                 json_mod.dumps(site_content),
+                referred_by_name or None,
+                referred_by_email or None,
             ))
 
             # Upload logo if provided

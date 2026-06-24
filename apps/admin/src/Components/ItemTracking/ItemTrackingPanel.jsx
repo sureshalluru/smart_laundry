@@ -102,7 +102,7 @@ function ItemTrackingPanel({ orderId, laundryId, orderStatus, employeeId, onSkip
               </>
             ) : (
               <>
-                {/* Desktop: QR code buttons */}
+                {/* Desktop: QR code buttons + direct upload */}
                 <Button
                   size="xs"
                   colorScheme="blue"
@@ -113,11 +113,27 @@ function ItemTrackingPanel({ orderId, laundryId, orderStatus, employeeId, onSkip
                 </Button>
                 <Button
                   size="xs"
+                  colorScheme="blue"
+                  variant="ghost"
+                  onClick={() => openUploadDirect('intake')}
+                >
+                  📁 Upload Intake
+                </Button>
+                <Button
+                  size="xs"
                   colorScheme="green"
                   variant={showQR === 'fold' ? 'solid' : 'outline'}
                   onClick={() => setShowQR(showQR === 'fold' ? null : 'fold')}
                 >
                   {hasFoldRecord ? 'Re-scan Fold' : 'Scan Fold'}
+                </Button>
+                <Button
+                  size="xs"
+                  colorScheme="green"
+                  variant="ghost"
+                  onClick={() => openUploadDirect('fold')}
+                >
+                  📁 Upload Fold
                 </Button>
               </>
             )}
@@ -165,7 +181,7 @@ function ItemTrackingPanel({ orderId, laundryId, orderStatus, employeeId, onSkip
           <Text fontSize="xs" color="gray.500" textAlign="center">
             {isMobile
               ? 'Tap "Upload Intake" to take photos and count items.'
-              : 'Click "Scan Intake" to generate QR code for phone upload.'}
+              : 'Click "Scan Intake" for QR code or "Upload Intake" to upload photos from this computer.'}
           </Text>
         )}
       </VStack>

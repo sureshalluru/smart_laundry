@@ -128,10 +128,21 @@ function ItemTrackingUpload() {
 
   const uploadAndAnalyze = async () => {
     const validPhotos = photos.filter(Boolean);
-    if (validPhotos.length < 4) {
+    // Front (index 2) and Top (index 3) are mandatory
+    if (!photos[2] || !photos[3]) {
       toast({
-        title: 'Need 4 photos',
-        description: 'Take photos from Left, Right, Front, and Top angles.',
+        title: 'Front & Top photos required',
+        description: 'Front view and Top view are mandatory. Side views are optional.',
+        status: 'warning',
+        duration: 3000,
+      });
+      return;
+    }
+
+    if (validPhotos.length < 2) {
+      toast({
+        title: 'Need at least 2 photos',
+        description: 'Take Front and Top views at minimum.',
         status: 'warning',
         duration: 3000,
       });
@@ -329,7 +340,9 @@ function ItemTrackingUpload() {
   const hasLowConfidence = runningTally.some(item => item.flagged || item.confidence < 80);
   const discrepancies = getDiscrepancies(runningTally, intakeRecord);
   const allAcknowledged = discrepancies.length === 0 ||
-    discrepancies.every(d => acknowledgements.some(a => a.category === d.category));
+    discrepancies.every(d => acknowledgements.some(a => 
+      a.category.trim().toLowerCase() === d.category.trim().toLowerCase()
+    ));
 
   return (
     <Box minH="100vh" bg="gray.50" p={4} maxW="500px" mx="auto">
@@ -527,22 +540,22 @@ function ItemTrackingUpload() {
               onChange={handlePhotoCapture}
             />
 
-            {photos.filter(Boolean).length >= 4 && (
+            {photos[2] && photos[3] && (
               <Button
                 colorScheme="green"
                 size="lg"
                 w="full"
                 onClick={uploadAndAnalyze}
                 isLoading={processing}
-                loadingText="Analyzing 4 angles..."
+                loadingText={`Analyzing ${photos.filter(Boolean).length} photos...`}
               >
-                🔍 Analyze Photos
+                🔍 Analyze Photos ({photos.filter(Boolean).length})
               </Button>
             )}
 
-            {photos.filter(Boolean).length > 0 && photos.filter(Boolean).length < 4 && (
+            {(!photos[2] || !photos[3]) && (
               <Text fontSize="xs" color="gray.500" textAlign="center">
-                {4 - photos.filter(Boolean).length} more photo{4 - photos.filter(Boolean).length > 1 ? 's' : ''} needed — tap an empty frame
+                📷 Front and Top views are required{!photos[2] && !photos[3] ? '' : !photos[2] ? ' — need Front view' : ' — need Top view'}. Side views are optional for better accuracy.
               </Text>
             )}
           </VStack>
@@ -731,10 +744,10 @@ function ItemTrackingUpload() {
                   <DiscrepancyAck
                     key={i}
                     discrepancy={d}
-                    acknowledged={acknowledgements.find(a => a.category === d.category)}
+                    acknowledged={acknowledgements.find(a => a.category.trim().toLowerCase() === d.category.trim().toLowerCase())}
                     onAcknowledge={(reason, freeText) => {
                       setAcknowledgements(prev => [
-                        ...prev.filter(a => a.category !== d.category),
+                        ...prev.filter(a => a.category.trim().toLowerCase() !== d.category.trim().toLowerCase()),
                         { category: d.category, reason, freeText, intakeCount: d.intakeCount, foldCount: d.foldCount },
                       ]);
                     }}

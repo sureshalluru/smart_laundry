@@ -48,6 +48,7 @@ const OnboardingPage = () => {
         laundryName: '', street: '', city: '', state: '', zipCode: '', country: 'USA',
         timezone: 'America/Chicago', contactPhone: '', contactEmail: '',
         ownerFirstName: '', ownerLastName: '', ownerPhone: '', ownerEmail: '',
+        referredByName: '', referredByEmail: '',
     });
 
     // Email verification state
@@ -458,6 +459,25 @@ const OnboardingPage = () => {
                                     <Text fontSize="sm">{emailError}</Text>
                                 </Alert>
                             )}
+                        </Box>
+
+                        {/* Referral Section */}
+                        <Box bg="blue.50" p={4} borderRadius="md" border="1px" borderColor="blue.100">
+                            <Text fontWeight="bold" fontSize="sm" mb={1}>Referred by someone?</Text>
+                            <Text fontSize="xs" color="gray.600" mb={3}>
+                                If someone referred you to Smart Laundry, enter their name and email below. 
+                                We pay 10% of your monthly subscription to the person who referred you — as long as you remain an active subscriber.
+                            </Text>
+                            <SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
+                                <FormControl>
+                                    <FormLabel fontSize="sm">Referrer Name (optional)</FormLabel>
+                                    <Input size="sm" placeholder="John Doe" value={businessInfo.referredByName} onChange={e => updateBusiness('referredByName', e.target.value)} />
+                                </FormControl>
+                                <FormControl>
+                                    <FormLabel fontSize="sm">Referrer Email (optional)</FormLabel>
+                                    <Input size="sm" placeholder="referrer@email.com" type="email" value={businessInfo.referredByEmail} onChange={e => updateBusiness('referredByEmail', e.target.value)} />
+                                </FormControl>
+                            </SimpleGrid>
                         </Box>
                     </VStack>
                 )}
