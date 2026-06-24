@@ -159,21 +159,18 @@ function OrderTrackingPhotos() {
               <Badge colorScheme="blue" alignSelf="start" fontSize="xs">RECEIVED</Badge>
 
               {data.intakePhotos && data.intakePhotos.length > 0 && (
-                <SimpleGrid columns={{ base: 2, md: 3 }} spacing={2}>
-                  {data.intakePhotos.map((url, i) => (
-                    <Image
-                      key={i}
-                      src={url}
-                      borderRadius="md"
-                      h="120px"
-                      w="full"
-                      objectFit="cover"
-                      cursor="pointer"
-                      onClick={() => window.open(url, '_blank')}
-                      alt={`Intake photo ${i + 1}`}
-                    />
-                  ))}
-                </SimpleGrid>
+                <Box>
+                  <Image
+                    src={data.intakePhotos[2] || data.intakePhotos[0]}
+                    borderRadius="md"
+                    h="180px"
+                    w="full"
+                    objectFit="cover"
+                    cursor="pointer"
+                    onClick={() => window.open(data.intakePhotos[2] || data.intakePhotos[0], '_blank')}
+                    alt="Intake photo"
+                  />
+                </Box>
               )}
 
               <Divider />
@@ -203,21 +200,18 @@ function OrderTrackingPhotos() {
               <Badge colorScheme="green" alignSelf="start" fontSize="xs">FOLDED & READY</Badge>
 
               {data.foldPhotos && data.foldPhotos.length > 0 && (
-                <SimpleGrid columns={{ base: 2, md: 3 }} spacing={2}>
-                  {data.foldPhotos.map((url, i) => (
-                    <Image
-                      key={i}
-                      src={url}
-                      borderRadius="md"
-                      h="120px"
-                      w="full"
-                      objectFit="cover"
-                      cursor="pointer"
-                      onClick={() => window.open(url, '_blank')}
-                      alt={`Fold photo ${i + 1}`}
-                    />
-                  ))}
-                </SimpleGrid>
+                <Box>
+                  <Image
+                    src={data.foldPhotos[2] || data.foldPhotos[0]}
+                    borderRadius="md"
+                    h="180px"
+                    w="full"
+                    objectFit="cover"
+                    cursor="pointer"
+                    onClick={() => window.open(data.foldPhotos[2] || data.foldPhotos[0], '_blank')}
+                    alt="Fold photo"
+                  />
+                </Box>
               )}
 
               <Divider />

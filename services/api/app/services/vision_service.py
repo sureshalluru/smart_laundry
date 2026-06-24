@@ -52,19 +52,21 @@ def build_vision_prompt(categories: list[str], phase: str = "intake") -> str:
 
 def _build_intake_prompt(categories_str: str) -> str:
     """Prompt for dirty laundry spread out on a table."""
-    return f"""You are a laundry garment inventory assistant at a laundromat. You are analyzing 4 photos of DIRTY laundry items spread out on a table, taken from 4 specific angles:
+    return f"""You are a laundry garment inventory assistant at a laundromat. You are analyzing 4 photos of the EXACT SAME SET of dirty laundry items spread out on a table. The photos are taken from 4 different angles:
 - Photo 1: LEFT side view
 - Photo 2: RIGHT side view  
 - Photo 3: FRONT/STRAIGHT view
 - Photo 4: TOP/OVERHEAD view
 
+CRITICAL: All 4 photos show the SAME PHYSICAL ITEMS. These are NOT 4 separate loads of laundry. You are seeing the same garments from 4 different camera positions. Use the multiple angles to improve your count accuracy, but count each physical item ONLY ONCE.
+
 Your goal is to identify and count every visible garment by cross-referencing all 4 angles.
 
 RULES:
 1. Classify every garment using ONLY one of the categories listed below. Do NOT invent new garment categories.
-2. Count only garments that are actually visible across the photos.
-3. Cross-reference ALL 4 angles — the same items appear in all photos. Use left+right to see items hidden from one side. Use top view for overall layout. Use front view for depth.
-4. Do NOT double-count — each physical item should be counted exactly once regardless of how many photos show it.
+2. ALL 4 PHOTOS SHOW THE SAME ITEMS — a shirt visible in the left view is the SAME shirt in the right view, front view, and top view. DO NOT add counts from different angles together.
+3. Use the multiple angles to VERIFY your count, not to ADD counts. If you see 5 shirts from the front and 5 shirts from the top, the answer is 5 shirts (not 10).
+4. Cross-reference angles to catch items that are hidden from one view but visible from another.
 5. Do NOT guess hidden garments inside bunches or folds.
 6. Treat matching socks as 1 pair only when both socks are visible.
 7. Ignore hangers, bags, tables, laundry carts, baskets, and background objects.
@@ -102,22 +104,24 @@ Remember: Every piece of fabric that is a wearable garment should be counted. TO
 
 def _build_fold_prompt(categories_str: str) -> str:
     """Prompt for folded/clean laundry stacked on a table."""
-    return f"""You are analyzing 4 photos of FOLDED clean laundry on a table, taken from 4 specific angles:
+    return f"""You are analyzing 4 photos of the EXACT SAME SET of folded clean laundry on a table, taken from 4 different angles:
 - Photo 1: LEFT side view (reveals stack layers from the left)
 - Photo 2: RIGHT side view (reveals stack layers from the right)
 - Photo 3: FRONT/STRAIGHT view (shows stack height and item edges)
 - Photo 4: TOP/OVERHEAD view (shows the top items and stack layout)
 
+CRITICAL: All 4 photos show the SAME PHYSICAL ITEMS. These are NOT 4 separate stacks of laundry. You are seeing the same folded garments from 4 different camera positions. Use the multiple angles to improve your count accuracy, but count each physical item ONLY ONCE.
+
 Your goal is to estimate the number of individual garments in the folded stacks by cross-referencing all angles.
 
 RULES:
 1. Classify every garment using ONLY one of the categories listed below. Do NOT invent new garment categories.
-2. Count only garments whose boundaries can be visually distinguished across the 4 angles.
-3. Use LEFT and RIGHT views to count visible layers in each stack.
+2. ALL 4 PHOTOS SHOW THE SAME ITEMS — layers visible from the left are the SAME layers visible from the right. DO NOT add counts from different angles together.
+3. Use LEFT and RIGHT views to count visible layers in each stack, but these are the SAME layers seen from opposite sides.
 4. Use FRONT view to see stack height and identify separate folded items by their edges.
 5. Use TOP view to identify item types by their visible surface (collar = shirt, waistband = pants, etc.).
 6. Do NOT assume garments hidden deep inside a stack — only count what you can see evidence of from any angle.
-7. Cross-reference all angles to get the most accurate count — side views reveal layers that top views miss.
+7. Cross-reference all angles to VERIFY your count — side views reveal layers that top views miss, but they are still the SAME items.
 8. Folded items typically show distinct edges for each item — count the layers.
 9. Be conservative but not overly so — if you can see distinct fold lines, count them.
 10. If unsure about an item type, use the CLOSEST matching category. Only use "Other" as a last resort.
