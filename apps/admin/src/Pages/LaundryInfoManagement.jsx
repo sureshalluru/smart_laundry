@@ -3,6 +3,7 @@ import { useDisclosure,Tooltip } from "@chakra-ui/react";
 import axios from "axios";
 import { useParams, useNavigate } from "react-router-dom";
 import { DeleteIcon, AddIcon } from "@chakra-ui/icons";
+import ServiceCatalogManager from "../Components/ServiceCatalog/ServiceCatalogManager";
 import {
     Box,
     Spinner,
@@ -1621,6 +1622,11 @@ const LaundryInfoManagement = ({ validateEmpCredentials, type, empPrefix }) => {
             {/* System Settings */}
             {type === "systemSettings" && (
                 <SystemSettingsSection laundryId={laundryId} />
+            )}
+
+            {/* Website Services */}
+            {type === "websiteServices" && (
+                <ServiceCatalogManager laundryId={laundryId} />
             )}
 
             {/* Table for Services */}

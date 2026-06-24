@@ -1191,3 +1191,111 @@ async def delete_customer_pricing(
         cur = get_cursor(conn)
         cur.execute("DELETE FROM shop.customer_pricing WHERE id = %s AND laundry_id = %s", (id, laundryId))
     return {"status": "success", "message": "Pricing rule removed"}
+
+
+# ── Service Catalog Endpoints ─────────────────────────────────────────────────
+
+VALID_ICON_KEYS = ["package", "droplet", "truck", "sun", "bag"]
+VALID_COLORS = ["blue", "green", "orange", "purple", "red", "teal", "cyan", "pink", "yellow"]
+
+
+@router.get("/service-catalog")
+async def get_service_catalog(
+    current_user: dict = Depends(get_current_user),
+):
+    """Return all active entries from the shared service catalog."""
+    with get_db() as conn:
+        cur = get_cursor(conn)
+        cur.execute("""
+            SELECT id, title, description, icon_key, color, source_type, source_id
+            FROM shop.service_catalog
+            WHERE is_active = TRUE
+            ORDER BY id
+        """)
+        catalog = [{
+            "id": r["id"],
+            "title": r["title"],
+            "description": r["description"],
+            "iconKey": r["icon_key"],
+            "color": r["color"],
+            "sourceType": r["source_type"],
+            "sourceId": r["source_id"],
+        } for r in cur.fetchall()]
+    return {"statusCode": 200, "body": {"catalog": catalog}}
+
+
+@router.post("/service-catalog")
+async def create_service_catalog_entry(
+    body: dict = Body({}),
+    current_user: dict = Depends(get_current_user),
+):
+    """Create a custom service in the shared catalog."""
+    laundry_id = body.get("laundryId")
+    title = (body.get("title") or "").strip()
+    description = body.get("description", "")
+    icon_key = body.get("iconKey", "package")
+    color = body.get("color", "blue")
+
+    # Validation
+    if not title or len(title) > 100:
+        return {"statusCode": 400, "body": {"error": "Title is required and must be 100 characters or fewer"}}
+
+    if icon_key not in VALID_ICON_KEYS:
+        return {"statusCode": 400, "body": {"error": f"Invalid icon_key: must be one of {VALID_ICON_KEYS}"}}
+
+    if color not in VALID_COLORS:
+        return {"statusCode": 400, "body": {"error": f"Invalid color: must be one of {VALID_COLORS}"}}
+
+    with get_db() as conn:
+        cur = get_cursor(conn)
+        try:
+            cur.execute("""
+                INSERT INTO shop.service_catalog (title, description, icon_key, color, source_type, source_id)
+                VALUES (%s, %s, %s, %s, 'tenant', %s)
+                RETURNING id, title, description, icon_key, color, source_type, source_id
+            """, (title, description, icon_key, color, laundry_id))
+            row = cur.fetchone()
+        except Exception as e:
+            if "unique" in str(e).lower() or "duplicate" in str(e).lower():
+                conn.rollback()
+                return {"statusCode": 409, "body": {"error": "A service with this title already exists"}}
+            raise
+
+    return {"statusCode": 200, "body": {
+        "id": row["id"],
+        "title": row["title"],
+        "description": row["description"],
+        "iconKey": row["icon_key"],
+        "color": row["color"],
+        "sourceType": row["source_type"],
+        "sourceId": row["source_id"],
+    }}
+
+
+@router.put("/service-catalog/config")
+async def save_service_catalog_config(
+    body: dict = Body({}),
+    current_user: dict = Depends(get_current_user),
+):
+    """Save a tenant's selected services configuration to site_content."""
+    laundry_id = body.get("laundryId")
+    services = body.get("services", [])
+
+    if not laundry_id:
+        return {"statusCode": 400, "body": {"error": "laundryId is required"}}
+
+    services_json = json.dumps(services)
+
+    with get_db() as conn:
+        cur = get_cursor(conn)
+        cur.execute("""
+            UPDATE shop.laundry_shops
+            SET site_content = jsonb_set(
+                COALESCE(site_content, '{}'::jsonb),
+                '{services}',
+                %s::jsonb
+            )
+            WHERE laundry_id = %s
+        """, (services_json, laundry_id))
+
+    return {"statusCode": 200, "body": {"message": "Service configuration saved successfully"}}

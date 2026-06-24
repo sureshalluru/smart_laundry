@@ -564,6 +564,17 @@ const SidebarContent = ({
                 >
                     Delivery Schedule
                 </Button>
+                <Button as="a" href={`/${laundryId}/admin/websiteServices`}
+                    leftIcon={<Icon as={FaCogs} />}
+                    variant="ghost"
+                    colorScheme="green"
+                    justifyContent="start"
+                    size="sm"
+                    maxWidth="100%"
+                    onClick={() => navigate(`/${laundryId}/admin/websiteServices`)}
+                >
+                    Website Services
+                </Button>
                 <Button as="a" href={`/${laundryId}/admin/settings`}
                     leftIcon={<Icon as={FaCogs} />}
                     variant="ghost"

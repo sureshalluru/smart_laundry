@@ -33,7 +33,9 @@ const SiteLandingPage = ({ laundryConfig }) => {
         <Box bg="white" minH="100vh">
             <SiteNavbar config={laundryConfig} />
             <SiteHero config={laundryConfig} />
-            <SiteServices config={laundryConfig} />
+            {laundryConfig?.siteContent?.services?.length > 0 && (
+                <SiteServices config={laundryConfig} />
+            )}
             <SiteHowItWorks />
             <SitePricing config={laundryConfig} />
             <SiteLocation config={laundryConfig} />
