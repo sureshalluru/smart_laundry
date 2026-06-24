@@ -87,6 +87,7 @@ import {useAdminSession} from "../hooks/useAdminSession";
 import InvoiceModal from './InvoiceModal';
 import InvoicePreview from './InvoicePreview';
 import {roundToTwo} from "../utils/decimalUtils";
+import {printViaIframe} from "../utils/printUtils";
 import { toZonedTime, format, zonedTimeToUtc, utcToZonedTime} from 'date-fns-tz';
 import { addMinutes } from "date-fns";
 import { Autocomplete } from "@react-google-maps/api";
@@ -3399,13 +3400,6 @@ const handleAssignLaundryDriver = async (customAddress) => {
             // Start the spinner
             setTicketLoading(true);
 
-            // Open a new ticket window
-            const ticketWindow = window.open("", "_blank");
-            if (!ticketWindow) {
-                alert("Failed to open ticket window. Please check your pop-up blocker.");
-                return;
-            }
-
             const totalBags = order.laundryBags;
 
             const generateTicketContent = (bagNumber, totalBags) => {
@@ -3470,7 +3464,7 @@ const handleAssignLaundryDriver = async (customAddress) => {
                 `;
             };
 
-            ticketWindow.document.write(`
+            const htmlContent = `
                 <html>
                     <head>
                         <style>
@@ -3534,30 +3528,28 @@ const handleAssignLaundryDriver = async (customAddress) => {
             ).join("<hr>")}
                         <script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js"></script>
                         <script>
+                            // QR code generation only - printing is handled by the iframe utility
                             ${Array.from({length: totalBags})
                 .map(
                     (_, i) => `QRCode.toDataURL('${order.orderId}', { width: 100, height: 100 }, (err, url) => {
-                                        const qrContainer${i + 1} = document.getElementById('qrcode-${i + 1}');
+                                        const qrContainer = document.getElementById('qrcode-${i + 1}');
                                         if (err) {
                                             console.error('QR Code generation failed:', err);
-                                            qrContainer${i + 1}.innerHTML = '<p>QR Code unavailable</p>';
+                                            if (qrContainer) qrContainer.innerHTML = '<p>QR Code unavailable</p>';
                                         } else {
                                             const img = document.createElement('img');
                                             img.src = url;
-                                            qrContainer${i + 1}.appendChild(img);
+                                            if (qrContainer) qrContainer.appendChild(img);
                                         }
                                     });`
                 )
                 .join("\n")}
-                            window.onload = () => {
-                                window.print();
-                                window.close(); /* Automatically close the window after printing */
-                            };
                         </script>
                     </body>
                 </html>
-            `);
-            ticketWindow.document.close();
+            `;
+
+            await printViaIframe(htmlContent, { delay: 800 });
         } catch (error) {
             console.error("Error printing ticket:", error);
             alert("Failed to print ticket. Please try again.");
@@ -3567,18 +3559,15 @@ const handleAssignLaundryDriver = async (customAddress) => {
         }
     };
 
-    const handleGenerateInvoice = (order) => {
+    const handleGenerateInvoice = async (order) => {
         const invoiceDate = new Date().toLocaleDateString();
-
-        const invoiceWindow = window.open('', 'PRINT', 'height=800,width=600');
-        if (!invoiceWindow) return alert("Please allow popups for this site.");
 
         const grandTotal = order.grandTotal || 0;
         const paidAmount = order.paidAmount || 0;
         const dueAmount = roundToTwo(grandTotal - paidAmount);
 
         console.log(order);
-        invoiceWindow.document.write(`
+        const htmlContent = `
           <html>
             <head>
               <title>Invoice - ${order.orderId}</title>
@@ -3755,12 +3744,14 @@ const handleAssignLaundryDriver = async (customAddress) => {
       
             </body>
           </html>
-        `);
+        `;
 
-        invoiceWindow.document.close();
-        invoiceWindow.focus();
-        invoiceWindow.print();
-        invoiceWindow.close();
+        try {
+            await printViaIframe(htmlContent, { delay: 500 });
+        } catch (error) {
+            console.error("Error printing invoice:", error);
+            alert("Failed to print invoice. Please try again.");
+        }
     };
 
     const handlePrintReceipt = async (order) => {
@@ -3790,15 +3781,7 @@ const handleAssignLaundryDriver = async (customAddress) => {
             const grandTotal = order?.grandTotal || "0.00";
             const subTotal = order?.subTotal || "0.00";
 
-            // Open a new receipt window
-            const receiptWindow = window.open("", "_blank");
-            if (!receiptWindow) {
-                alert("Failed to open receipt window. Please check your pop-up blocker.");
-                setPrintLoading(false); // Stop the spinner
-                return;
-            }
-
-            receiptWindow.document.write(`
+            const htmlContent = `
                 <html>
                     <head>
                         <title>Order Receipt</title>
@@ -3904,14 +3887,11 @@ const handleAssignLaundryDriver = async (customAddress) => {
                             <div class="center">Thank you for your order!</div>
                             <div class="line"></div>
                         </div>
-                        <script>
-                            window.print();
-                            window.close(); /* Close window immediately after print dialog is triggered */
-                        </script>
                     </body>
                 </html>
-            `);
-            receiptWindow.document.close();
+            `;
+
+            await printViaIframe(htmlContent, { delay: 500 });
         } catch (error) {
             console.error("Error fetching shop details:", error);
             alert("Failed to fetch shop details. Please try again.");

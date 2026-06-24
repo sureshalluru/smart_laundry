@@ -36,6 +36,7 @@ import { useParams, useNavigate  } from 'react-router-dom';
 import { Elements, CardElement, useStripe, useElements } from '@stripe/react-stripe-js';
 import { loadStripe } from '@stripe/stripe-js';
 import axios from 'axios';
+import { printViaIframe } from '../utils/printUtils';
 
 const OrderProductsComponent = () => {
     const navigate = useNavigate();
@@ -571,18 +572,14 @@ const OrderProductsComponent = () => {
         }
     };
 
-    const handlePrintReceipt = () => {
-        const receiptWindow = window.open("", "_blank");
+    const handlePrintReceipt = async () => {
+        // Check if the orderPrintDetails and its properties exist before proceeding
+        if (!orderPrintDetails || !orderPrintDetails.items || orderPrintDetails.items.length === 0) {
+            alert("No order details available for printing.");
+            return;
+        }
 
-        if (receiptWindow) {
-            // Check if the orderPrintDetails and its properties exist before proceeding
-            if (!orderPrintDetails || !orderPrintDetails.items || orderPrintDetails.items.length === 0) {
-                alert("No order details available for printing.");
-                return;
-            }
-
-            // Start the receipt window generation
-            receiptWindow.document.write(`
+        const htmlContent = `
                 <html>
                     <head>
                         <title>Order Receipt</title>
@@ -696,31 +693,29 @@ const OrderProductsComponent = () => {
                             <p>Thank you for your order!</p>
                             <p>Visit us again!</p>
                         </div>
+                        <div id="qr-container" class="center"></div>
                         <script>
-                            window.onload = () => {
-                                // Generate QR code after window is fully loaded
-                                QRCode.toDataURL('${orderPrintDetails.orderId}', { width: 100, height: 100 }, (err, url) => {
-                                    if (err) {
-                                        console.error('QR Code generation failed:', err);
-                                    } else {
-                                        const img = document.createElement('img');
-                                        img.src = url;
-                                        const qrContainer = document.createElement('div');
-                                        qrContainer.className = 'qr-code';
-                                        qrContainer.appendChild(img);
-                                        document.body.appendChild(qrContainer);
-                                    }
-                                });
-    
-                                window.print();
-                                window.close(); /* Automatically close the window after printing */
-                            };
+                            // QR code generation only - printing is handled by the iframe utility
+                            QRCode.toDataURL('${orderPrintDetails.orderId}', { width: 100, height: 100 }, (err, url) => {
+                                if (err) {
+                                    console.error('QR Code generation failed:', err);
+                                } else {
+                                    const img = document.createElement('img');
+                                    img.src = url;
+                                    const qrContainer = document.getElementById('qr-container');
+                                    if (qrContainer) qrContainer.appendChild(img);
+                                }
+                            });
                         </script>
                     </body>
                 </html>
-            `);
+            `;
 
-            receiptWindow.document.close();
+        try {
+            await printViaIframe(htmlContent, { delay: 800 });
+        } catch (error) {
+            console.error("Error printing receipt:", error);
+            alert("Failed to print receipt. Please try again.");
         }
     };
 
