@@ -239,6 +239,17 @@ const OnboardingPage = () => {
         }
     };
 
+    const getMissingFields = () => {
+        if (activeStep !== 0) return [];
+        const missing = [];
+        if (!businessInfo.laundryName) missing.push('Laundry Name');
+        if (!businessInfo.ownerPhone) missing.push('Owner Phone');
+        if (!businessInfo.street) missing.push('Street Address');
+        if (!emailVerified) missing.push('Email Verification');
+        if (addressDuplicate) missing.push('Address is already registered');
+        return missing;
+    };
+
     // Results page (after successful onboarding)
     if (result) {
         return (
@@ -807,16 +818,26 @@ const OnboardingPage = () => {
 
                 {/* Navigation */}
                 {activeStep < 7 && (
-                    <HStack justify="space-between" pt={4}>
-                        <Button variant="ghost" onClick={() => setActiveStep(Math.max(0, activeStep - 1))} isDisabled={activeStep === 0}>
-                            Back
-                        </Button>
-                        {activeStep < 6 && (
-                            <Button colorScheme="blue" onClick={() => setActiveStep(activeStep + 1)} isDisabled={!canProceed()}>
-                                Next
-                            </Button>
+                    <VStack spacing={2} pt={4}>
+                        {!canProceed() && activeStep === 0 && (
+                            <Alert status="info" borderRadius="md" size="sm">
+                                <AlertIcon />
+                                <Text fontSize="xs">
+                                    To continue, complete: {getMissingFields().join(', ')}
+                                </Text>
+                            </Alert>
                         )}
-                    </HStack>
+                        <HStack justify="space-between" w="full">
+                            <Button variant="ghost" onClick={() => setActiveStep(Math.max(0, activeStep - 1))} isDisabled={activeStep === 0}>
+                                Back
+                            </Button>
+                            {activeStep < 6 && (
+                                <Button colorScheme="blue" onClick={() => setActiveStep(activeStep + 1)} isDisabled={!canProceed()}>
+                                    Next
+                                </Button>
+                            )}
+                        </HStack>
+                    </VStack>
                 )}
             </VStack>
         </Container>
