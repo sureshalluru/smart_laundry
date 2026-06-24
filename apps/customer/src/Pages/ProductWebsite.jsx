@@ -48,7 +48,7 @@ const ProductWebsite = () => {
             </Badge>
             <Heading fontSize={{ base: '3xl', md: '5xl', lg: '6xl' }} color="white" lineHeight="shorter" fontWeight="800"
               textShadow="0 2px 30px rgba(0,0,0,0.5)">
-              Stop Giving Away 10% of Every Load
+              Stop Giving Away 25% of Every Load
             </Heading>
             <Text fontSize={{ base: 'md', md: 'lg' }} color="white" maxW="650px" lineHeight="tall" fontWeight="500"
               textShadow="0 1px 10px rgba(0,0,0,0.4)">
@@ -89,9 +89,9 @@ const ProductWebsite = () => {
                   <Text fontWeight="700" fontSize="lg" color="red.200">With Other Platforms</Text>
                   <Box bg="red.800" borderRadius="lg" p={4}>
                     <Text fontSize="sm" color="red.200">If you process <strong>$8,000/mo</strong></Text>
-                    <Text fontSize="sm" color="red.200">and they take <strong>10%</strong>...</Text>
-                    <Text fontSize="2xl" fontWeight="800" color="red.300" mt={2}>-$800/mo</Text>
-                    <Text fontSize="sm" color="red.300">That's $9,600/year gone.</Text>
+                    <Text fontSize="sm" color="red.200">and they take <strong>25%</strong>...</Text>
+                    <Text fontSize="2xl" fontWeight="800" color="red.300" mt={2}>-$2,000/mo</Text>
+                    <Text fontSize="sm" color="red.300">That's $24,000/year gone.</Text>
                   </Box>
                 </VStack>
               </Box>
@@ -103,7 +103,7 @@ const ProductWebsite = () => {
                   <Box bg="green.800" borderRadius="lg" p={4}>
                     <Text fontSize="sm" color="green.200">You pay a flat</Text>
                     <Text fontSize="2xl" fontWeight="800" color="green.300">$149/mo</Text>
-                    <Text fontSize="sm" color="green.200" mt={2}>You save <strong>$651/mo</strong> ($7,812/year)</Text>
+                    <Text fontSize="sm" color="green.200" mt={2}>You save <strong>$1,851/mo</strong> ($22,212/year)</Text>
                   </Box>
                 </VStack>
               </Box>
@@ -111,7 +111,7 @@ const ProductWebsite = () => {
 
             <Box bg="whiteAlpha.100" borderRadius="2xl" px={8} py={6} border="1px solid" borderColor="whiteAlpha.200">
               <Text fontSize="sm" color="gray.400" mb={1}>Average annual savings</Text>
-              <Heading fontSize={{ base: '3xl', md: '5xl' }} color="green.300">Save $7,800+ per year</Heading>
+              <Heading fontSize={{ base: '3xl', md: '5xl' }} color="green.300">Save $22,000+ per year</Heading>
             </Box>
           </VStack>
         </Container>
