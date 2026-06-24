@@ -280,6 +280,7 @@ async def upload_photos(request: Request, body: PhotoUploadRequest):
         VisionServiceError,
     )
     from app.services.s3_service import get_s3_client, DELIVERY_IMAGES_BUCKET
+    import asyncio
     import base64
     import uuid
 
@@ -299,9 +300,9 @@ async def upload_photos(request: Request, body: PhotoUploadRequest):
         logger.warning(f"[item-tracking] Invalid image count ({len(body.images)}) for order={payload.order_id}")
         raise HTTPException(status_code=400, detail="Maximum 4 photos per upload")
 
-    # Upload images to S3
-    image_urls = []
-    for i, img_base64 in enumerate(body.images):
+    # Upload images to S3 in parallel and collect bytes for vision service
+    async def _upload_single_image(i: int, img_base64: str):
+        """Decode, validate, and upload a single image to S3. Returns (url, bytes, content_type)."""
         # Strip data URL prefix if present
         if "," in img_base64 and img_base64.startswith("data:"):
             img_base64 = img_base64.split(",", 1)[1]
@@ -323,23 +324,40 @@ async def upload_photos(request: Request, body: PhotoUploadRequest):
             content_type = "image/png"
             ext = "png"
 
-        # Upload to S3
+        # Upload to S3 (boto3 is synchronous, so use asyncio.to_thread)
         unique_id = uuid.uuid4().hex[:8]
         s3_key = f"{payload.laundry_id}/{payload.order_id}/tracking_{payload.phase}_{unique_id}.{ext}"
 
         try:
             s3 = get_s3_client()
-            s3.put_object(
+            await asyncio.to_thread(
+                s3.put_object,
                 Bucket=DELIVERY_IMAGES_BUCKET,
                 Key=s3_key,
                 Body=image_bytes,
                 ContentType=content_type,
             )
             image_url = f"https://{DELIVERY_IMAGES_BUCKET}.s3.amazonaws.com/{s3_key}"
-            image_urls.append(image_url)
+            return (image_url, image_bytes, content_type)
         except Exception as e:
             logger.error(f"[item-tracking] S3 upload failed: order={payload.order_id} laundry={payload.laundry_id} image={i+1}/{len(body.images)} key={s3_key} error={e}")
             raise HTTPException(status_code=500, detail=f"Storage upload failed for image {i+1}. Please retry.")
+
+    # Run all uploads in parallel
+    upload_tasks = [_upload_single_image(i, img) for i, img in enumerate(body.images)]
+    upload_results = await asyncio.gather(*upload_tasks, return_exceptions=True)
+
+    # Check for exceptions in results
+    for i, result in enumerate(upload_results):
+        if isinstance(result, Exception):
+            if isinstance(result, HTTPException):
+                raise result
+            logger.error(f"[item-tracking] Parallel upload failed for image {i+1}: {result}")
+            raise HTTPException(status_code=500, detail=f"Storage upload failed for image {i+1}. Please retry.")
+
+    # Separate URLs and bytes from results
+    image_urls = [r[0] for r in upload_results]
+    image_bytes_list = [(r[1], r[2]) for r in upload_results]  # [(bytes, content_type), ...]
 
     # Get active categories for this laundry
     with get_db() as conn:
@@ -360,9 +378,9 @@ async def upload_photos(request: Request, body: PhotoUploadRequest):
         from app.migrations.add_item_tracking import DEFAULT_CATEGORIES
         categories = DEFAULT_CATEGORIES
 
-    # Call Claude Vision
+    # Call Claude Vision with pre-loaded image bytes (skips re-download from S3)
     try:
-        vision_result = await analyze_photos(image_urls, categories, phase=payload.phase)
+        vision_result = await analyze_photos(image_urls, categories, phase=payload.phase, image_data=image_bytes_list)
     except VisionServiceError as e:
         logger.error(f"[item-tracking] Vision analysis failed: order={payload.order_id} laundry={payload.laundry_id} images_uploaded={len(image_urls)} error={type(e).__name__}: {e}")
         if e.code == "RATE_LIMIT":

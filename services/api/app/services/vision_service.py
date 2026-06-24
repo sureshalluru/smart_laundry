@@ -150,10 +150,54 @@ RESPOND WITH ONLY THIS JSON — nothing else before or after:
 Remember: Folded laundry always has items. TOTAL COUNT accuracy is the #1 priority. Use all 4 angles — especially side views — to count layers. Do NOT return an empty items list if folded garments are visible."""
 
 
+def _resize_image(image_bytes: bytes, media_type: str, max_dimension: int = 1568) -> bytes:
+    """
+    Resize image so longest side is at most max_dimension pixels.
+    Uses Pillow. Returns resized bytes in the same format.
+    Falls back to original if Pillow unavailable or resize fails.
+    """
+    try:
+        from PIL import Image
+        import io
+
+        img = Image.open(io.BytesIO(image_bytes))
+
+        # Only resize if larger than max
+        width, height = img.size
+        if max(width, height) <= max_dimension:
+            return image_bytes
+
+        # Calculate new dimensions maintaining aspect ratio
+        if width > height:
+            new_width = max_dimension
+            new_height = int(height * (max_dimension / width))
+        else:
+            new_height = max_dimension
+            new_width = int(width * (max_dimension / height))
+
+        img = img.resize((new_width, new_height), Image.LANCZOS)
+
+        # Save to bytes
+        output = io.BytesIO()
+        fmt = "PNG" if media_type == "image/png" else "JPEG"
+        img.save(output, format=fmt, quality=85)
+        resized_bytes = output.getvalue()
+
+        logger.info(f"[VISION] Resized image from {width}x{height} ({len(image_bytes)} bytes) to {new_width}x{new_height} ({len(resized_bytes)} bytes)")
+        return resized_bytes
+    except ImportError:
+        logger.warning("[VISION] Pillow not installed, skipping image resize")
+        return image_bytes
+    except Exception as e:
+        logger.warning(f"[VISION] Image resize failed: {e}, using original")
+        return image_bytes
+
+
 async def analyze_photos(
     image_urls: list[str],
     categories: list[str],
     phase: str = "intake",
+    image_data: list[tuple[bytes, str]] | None = None,
 ) -> VisionResult:
     """
     Send images to Claude Vision API for item identification and counting.
@@ -162,6 +206,8 @@ async def analyze_photos(
         image_urls: List of S3 URLs for the uploaded photos (2-3 angle shots)
         categories: List of configured item category names for classification
         phase: "intake" for dirty laundry, "fold" for folded stacks
+        image_data: Optional pre-loaded image data as [(bytes, content_type), ...].
+                    When provided, skips HTTP re-download from S3.
 
     Returns:
         VisionResult with identified items, counts, and confidence scores
@@ -179,34 +225,53 @@ async def analyze_photos(
 
         client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
 
-        # Build content blocks with images — fetch from S3 URLs and send as base64
-        import httpx
         import base64
 
         content = []
-        for i, url in enumerate(image_urls):
-            try:
-                logger.info(f"[VISION] Fetching image {i+1}/{len(image_urls)}: {url[:80]}...")
-                resp = httpx.get(url, timeout=10)
-                if resp.status_code == 200:
-                    img_base64 = base64.standard_b64encode(resp.content).decode("utf-8")
-                    # Detect media type
-                    media_type = "image/jpeg"
-                    if resp.content[:8] == b'\x89PNG\r\n\x1a\n':
-                        media_type = "image/png"
-                    logger.info(f"[VISION] Image {i+1} fetched OK: {len(resp.content)} bytes, {media_type}")
-                    content.append({
-                        "type": "image",
-                        "source": {
-                            "type": "base64",
-                            "media_type": media_type,
-                            "data": img_base64,
-                        },
-                    })
-                else:
-                    logger.warning(f"[VISION] Failed to fetch image {i+1} from {url}: HTTP {resp.status_code}")
-            except Exception as e:
-                logger.warning(f"[VISION] Failed to fetch image {i+1} from {url}: {e}")
+
+        if image_data:
+            # Use pre-loaded bytes directly (skip HTTP re-download from S3)
+            for i, (img_bytes, media_type) in enumerate(image_data):
+                img_bytes = _resize_image(img_bytes, media_type, max_dimension=1568)
+                img_base64 = base64.standard_b64encode(img_bytes).decode("utf-8")
+                logger.info(f"[VISION] Using pre-loaded image {i+1}/{len(image_data)}: {len(img_bytes)} bytes, {media_type}")
+                content.append({
+                    "type": "image",
+                    "source": {
+                        "type": "base64",
+                        "media_type": media_type,
+                        "data": img_base64,
+                    },
+                })
+        else:
+            # Fallback: fetch from URLs (existing behavior for backward compatibility)
+            import httpx
+
+            for i, url in enumerate(image_urls):
+                try:
+                    logger.info(f"[VISION] Fetching image {i+1}/{len(image_urls)}: {url[:80]}...")
+                    resp = httpx.get(url, timeout=10)
+                    if resp.status_code == 200:
+                        # Detect media type
+                        media_type = "image/jpeg"
+                        if resp.content[:8] == b'\x89PNG\r\n\x1a\n':
+                            media_type = "image/png"
+                        # Resize before encoding
+                        img_bytes = _resize_image(resp.content, media_type, max_dimension=1568)
+                        img_base64 = base64.standard_b64encode(img_bytes).decode("utf-8")
+                        logger.info(f"[VISION] Image {i+1} fetched OK: {len(img_bytes)} bytes, {media_type}")
+                        content.append({
+                            "type": "image",
+                            "source": {
+                                "type": "base64",
+                                "media_type": media_type,
+                                "data": img_base64,
+                            },
+                        })
+                    else:
+                        logger.warning(f"[VISION] Failed to fetch image {i+1} from {url}: HTTP {resp.status_code}")
+                except Exception as e:
+                    logger.warning(f"[VISION] Failed to fetch image {i+1} from {url}: {e}")
 
         if not content:
             raise VisionServiceError("INVALID_IMAGE", "Could not fetch any uploaded images for analysis")
