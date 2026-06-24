@@ -626,6 +626,55 @@ async def self_service_onboard(body: dict = Body(...)):
             except Exception as welcome_err:
                 logger.warning(f"Failed to send welcome email for {laundry_name}: {welcome_err}")
 
+        # Send referral notification email to the referrer
+        if referred_by_email:
+            try:
+                from app.services.notification_service import send_email
+                referral_html = f"""
+                <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 32px;">
+                    <div style="text-align: center; margin-bottom: 24px;">
+                        <h2 style="color: #2B6CB0; margin: 0;">🎉 Great news!</h2>
+                        <p style="color: #718096; margin-top: 8px;">Someone you referred just signed up</p>
+                    </div>
+
+                    <div style="background: #F0FFF4; border: 1px solid #C6F6D5; border-radius: 8px; padding: 20px; margin-bottom: 24px;">
+                        <p style="margin: 0 0 8px 0; font-size: 16px;">Hi {referred_by_name or 'there'},</p>
+                        <p style="margin: 0; font-size: 15px;">
+                            <strong>{laundry_name}</strong> just joined Smart Laundry Basket and listed you as their referrer!
+                        </p>
+                    </div>
+
+                    <div style="background: #EBF8FF; border: 1px solid #BEE3F8; border-radius: 8px; padding: 20px; margin-bottom: 24px;">
+                        <h3 style="color: #2B6CB0; margin: 0 0 8px 0;">💰 Your 10% Reward</h3>
+                        <p style="margin: 0; font-size: 14px; color: #4A5568;">
+                            Once <strong>{laundry_name}</strong> starts paying their monthly subscription, you'll earn
+                            <strong>10% of their monthly subscription fee</strong> — every month, for as long as they remain an active subscriber.
+                        </p>
+                        <p style="margin: 12px 0 0 0; font-size: 14px; color: #4A5568;">
+                            We'll notify you when your first payout is ready.
+                        </p>
+                    </div>
+
+                    <div style="background: #FFFAF0; border: 1px solid #FEEBC8; border-radius: 8px; padding: 20px; margin-bottom: 24px;">
+                        <h3 style="color: #DD6B20; margin: 0 0 8px 0;">🚀 Keep referring, keep earning</h3>
+                        <p style="margin: 0; font-size: 14px; color: #4A5568;">
+                            There's no limit to how many laundries you can refer. Each one earns you 10% of their subscription — every single month.
+                            Know another laundry owner who could use a smarter platform? Send them to
+                            <a href="https://smartlaundrybasket.ai/onboard" style="color: #2B6CB0; font-weight: bold;">smartlaundrybasket.ai/onboard</a>
+                            and make sure they enter your name and email in the referral section.
+                        </p>
+                    </div>
+
+                    <p style="font-size: 13px; color: #A0AEC0; text-align: center; margin-top: 24px;">
+                        Thank you for spreading the word about Smart Laundry Basket!
+                    </p>
+                </div>
+                """
+                send_email(referred_by_email, f"You earned a referral! {laundry_name} just signed up", referral_html)
+                logger.info(f"Referral notification email sent to {referred_by_email} for {laundry_name}")
+            except Exception as ref_err:
+                logger.warning(f"Failed to send referral email to {referred_by_email}: {ref_err}")
+
         return {
             "status": "success",
             "laundry": {
