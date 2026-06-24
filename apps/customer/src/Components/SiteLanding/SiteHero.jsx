@@ -56,14 +56,14 @@ export default function SiteHero({ config }) {
                 <VStack spacing={6} textAlign="center" maxW="700px" mx="auto">
                     <Badge colorScheme={videoLoaded ? 'whiteAlpha' : theme.badge} borderRadius="full" px={4} py={1} fontSize="sm" fontWeight="600"
                         bg={videoLoaded ? 'whiteAlpha.200' : undefined} color={videoLoaded ? 'white' : undefined}>
-                        {sc.tagline || 'Professional Laundry Service'}
+                        {sc.tagline || 'Pickup & Delivery Laundry'}
                     </Badge>
 
                     <Heading fontSize={{ base: '3xl', md: '5xl', lg: '6xl' }} fontWeight="800"
                         color={videoLoaded ? 'white' : 'gray.800'} lineHeight="shorter"
                         textShadow={videoLoaded ? '0 2px 30px rgba(0,0,0,0.5), 0 4px 60px rgba(0,0,0,0.3)' : 'none'}
                         dangerouslySetInnerHTML={{
-                            __html: (sc.headline || 'Fresh, Clean Laundry <span>Delivered</span>').replace(
+                            __html: (sc.headline || 'We Pick Up, Wash & <span>Deliver</span>').replace(
                                 /<span>(.*?)<\/span>/g,
                                 videoLoaded
                                     ? `<span style="color:var(--chakra-colors-${themeColor}-300)">$1</span>`
@@ -75,7 +75,7 @@ export default function SiteHero({ config }) {
                     <Text fontSize={{ base: 'md', md: 'lg' }} color={videoLoaded ? 'white' : 'gray.600'} maxW="550px" lineHeight="tall"
                         fontWeight={videoLoaded ? '500' : '400'}
                         textShadow={videoLoaded ? '0 1px 10px rgba(0,0,0,0.4)' : 'none'}>
-                        {sc.subheadline || 'Professional wash & fold service with free pickup and delivery. Your clothes deserve the best care.'}
+                        {sc.subheadline || 'Schedule a free pickup and we handle the rest. Wash, dry, fold — delivered back to your door. It really is that simple.'}
                     </Text>
 
                     <HStack spacing={4} pt={2} flexWrap="wrap" justify="center">
@@ -94,7 +94,7 @@ export default function SiteHero({ config }) {
 
                     {/* Trust indicators */}
                     <Flex pt={6} gap={{ base: 4, md: 8 }} flexWrap="wrap" justify="center" color={videoLoaded ? 'white' : 'gray.600'}>
-                        {(sc.trustBadges || ['Free Delivery', 'Open 24/7', 'Modern Facility']).map((badge, i) => (
+                        {(sc.trustBadges || ['Free Pickup & Delivery', '24-Hour Turnaround', '5-Star Rated']).map((badge, i) => (
                             <HStack key={i} spacing={2}>
                                 <Icon as={[FiTruck, FiClock, FiStar][i % 3]} color={videoLoaded ? `${themeColor}.300` : theme.accent} />
                                 <Text fontSize="sm" fontWeight="600" textShadow={videoLoaded ? '0 1px 8px rgba(0,0,0,0.3)' : 'none'}>{badge}</Text>
