@@ -157,7 +157,13 @@ function ItemTrackingUpload() {
 
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        throw new Error(err.detail || 'Upload failed');
+        const statusText = res.status === 401 ? 'Link expired' 
+            : res.status === 429 ? 'Too many requests' 
+            : res.status === 503 ? 'AI service unavailable'
+            : res.status >= 500 ? 'Server error'
+            : 'Upload failed';
+        console.error(`[ItemTracking] Upload failed: status=${res.status} detail=${err.detail || 'unknown'}`);
+        throw new Error(err.detail || statusText);
       }
 
       const data = await res.json();
@@ -179,6 +185,7 @@ function ItemTrackingUpload() {
         duration: 3000,
       });
     } catch (e) {
+      console.error(`[ItemTracking] Analysis error:`, e);
       toast({
         title: 'Analysis failed',
         description: e.message || 'Please try again.',

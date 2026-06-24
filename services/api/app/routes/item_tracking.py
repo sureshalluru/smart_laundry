@@ -286,12 +286,17 @@ async def upload_photos(request: PhotoUploadRequest, req: Request):
     # Validate token
     payload = validate_token(request.token)
     if not payload:
+        logger.warning(f"[item-tracking] Token validation failed: token_prefix={request.token[:20]}...")
         raise HTTPException(status_code=401, detail="Invalid or expired token")
+
+    logger.info(f"[item-tracking] Upload started: order={payload.order_id} laundry={payload.laundry_id} phase={payload.phase} images={len(request.images)}")
 
     # Validate image count (4 required for full angle coverage)
     if len(request.images) < 2:
+        logger.warning(f"[item-tracking] Invalid image count ({len(request.images)}) for order={payload.order_id}")
         raise HTTPException(status_code=400, detail="Minimum 2 photos required (4 recommended: left, right, front, top)")
     if len(request.images) > 4:
+        logger.warning(f"[item-tracking] Invalid image count ({len(request.images)}) for order={payload.order_id}")
         raise HTTPException(status_code=400, detail="Maximum 4 photos per upload")
 
     # Upload images to S3
@@ -304,10 +309,12 @@ async def upload_photos(request: PhotoUploadRequest, req: Request):
         try:
             image_bytes = base64.b64decode(img_base64)
         except Exception:
+            logger.warning(f"[item-tracking] Invalid base64 for image {i+1}: order={payload.order_id} laundry={payload.laundry_id}")
             raise HTTPException(status_code=400, detail=f"Invalid base64 data for image {i+1}")
 
         if len(image_bytes) < 1000:
-            raise HTTPException(status_code=400, detail=f"Image {i+1} is too small or corrupted")
+            logger.warning(f"[item-tracking] Image {i+1} too small ({len(image_bytes)} bytes): order={payload.order_id}")
+            raise HTTPException(status_code=400, detail=f"Image {i+1} appears corrupted or too small. Please retake the photo.")
 
         # Detect content type
         content_type = "image/jpeg"
@@ -331,8 +338,8 @@ async def upload_photos(request: PhotoUploadRequest, req: Request):
             image_url = f"https://{DELIVERY_IMAGES_BUCKET}.s3.amazonaws.com/{s3_key}"
             image_urls.append(image_url)
         except Exception as e:
-            logger.error(f"S3 upload failed for tracking photo: {e}")
-            raise HTTPException(status_code=500, detail=f"Failed to upload photo to storage: {str(e)}")
+            logger.error(f"[item-tracking] S3 upload failed: order={payload.order_id} laundry={payload.laundry_id} image={i+1}/{len(request.images)} key={s3_key} error={e}")
+            raise HTTPException(status_code=500, detail=f"Storage upload failed for image {i+1}. Please retry.")
 
     # Get active categories for this laundry
     with get_db() as conn:
@@ -357,15 +364,18 @@ async def upload_photos(request: PhotoUploadRequest, req: Request):
     try:
         vision_result = await analyze_photos(image_urls, categories, phase=payload.phase)
     except VisionServiceError as e:
+        logger.error(f"[item-tracking] Vision analysis failed: order={payload.order_id} laundry={payload.laundry_id} images_uploaded={len(image_urls)} error={type(e).__name__}: {e}")
         if e.code == "RATE_LIMIT":
             raise HTTPException(status_code=429, detail=e.message)
         raise HTTPException(status_code=503, detail=e.message)
     except Exception as e:
-        logger.error(f"Vision analysis failed: {e}")
-        raise HTTPException(status_code=503, detail=f"AI vision analysis failed: {str(e)}")
+        logger.error(f"[item-tracking] Vision analysis failed: order={payload.order_id} laundry={payload.laundry_id} images_uploaded={len(image_urls)} error={type(e).__name__}: {e}")
+        raise HTTPException(status_code=503, detail="AI analysis unavailable. Please retry in a moment.")
 
     # Flag low-confidence items
     flagged_items = flag_low_confidence(vision_result.items)
+
+    logger.info(f"[item-tracking] Upload complete: order={payload.order_id} laundry={payload.laundry_id} items_found={len(flagged_items)} time_ms={vision_result.processing_time_ms}")
 
     return PhotoUploadResponse(
         status="success",

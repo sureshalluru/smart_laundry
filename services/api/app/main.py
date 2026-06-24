@@ -45,6 +45,10 @@ class SuppressPollingFilter(logging.Filter):
         return True
 
 logging.getLogger("uvicorn.access").addFilter(SuppressPollingFilter())
+
+# Configure structured request logging
+logging.getLogger("smart_laundry.requests").setLevel(logging.DEBUG if os.environ.get("DEBUG") else logging.INFO)
+
 from app.routes import (
     auth,
     orders_info,
@@ -97,6 +101,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# ── Structured Request Logging ────────────────────────────────────────────────
+from app.middleware.request_logging import RequestLoggingMiddleware
+app.add_middleware(RequestLoggingMiddleware)
 
 # ── API Routes ────────────────────────────────────────────────────────────────
 app.include_router(auth.router, prefix="/api/auth", tags=["Authentication"])
