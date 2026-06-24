@@ -52,7 +52,7 @@ const ProductWebsite = () => {
             </Heading>
             <Text fontSize={{ base: 'md', md: 'lg' }} color="white" maxW="650px" lineHeight="tall" fontWeight="500"
               textShadow="0 1px 10px rgba(0,0,0,0.4)">
-              Other laundry platforms take a cut of every transaction. Smart Laundry Basket charges a flat $149/mo — so you keep 100% of what you earn. Free until you hit $3K/month.
+              Other laundry platforms take a cut of every transaction. Smart Laundry Basket charges a flat $149/mo — and we never touch your payments. Customers pay directly to YOUR Stripe account, money goes straight to YOUR bank. Free until you hit $3K/month.
             </Text>
             <HStack spacing={4} pt={2} flexWrap="wrap" justify="center">
               <Button as="a" href="/onboard" size="lg" colorScheme="blue" borderRadius="full" px={8} boxShadow="lg"
@@ -67,7 +67,7 @@ const ProductWebsite = () => {
             <HStack spacing={6} pt={4} color="whiteAlpha.800" fontSize="sm" flexWrap="wrap" justify="center">
               <HStack><Icon as={FiCheck} color="green.300" /><Text>No setup fees</Text></HStack>
               <HStack><Icon as={FiCheck} color="green.300" /><Text>No contracts</Text></HStack>
-              <HStack><Icon as={FiCheck} color="green.300" /><Text>No per-transaction fees</Text></HStack>
+              <HStack><Icon as={FiCheck} color="green.300" /><Text>Payments go direct to you</Text></HStack>
             </HStack>
           </VStack>
         </Container>
@@ -136,7 +136,7 @@ const ProductWebsite = () => {
               { icon: FiMail, title: 'Automated Marketing', desc: 'Win-back campaigns, smart reminders, holiday promos on autopilot.', color: 'pink' },
               { icon: FiUsers, title: 'Customer CRM', desc: 'Full history, preferences, recurring schedules, and loyalty tracking.', color: 'cyan' },
               { icon: FiClock, title: 'Recurring Orders', desc: 'Customers set it and forget it. You get predictable, steady revenue.', color: 'yellow' },
-              { icon: FiShield, title: 'Secure Payments', desc: 'Stripe-powered. Card on file, terminals, invoicing. PCI compliant.', color: 'red' },
+              { icon: FiShield, title: 'Direct Payments', desc: 'Your Stripe, your bank account. We never touch your money — payments go straight from customer to you.', color: 'red' },
             ].map((feature) => (
               <Box key={feature.title} p={6} borderRadius="xl" border="1px solid" borderColor="gray.100"
                 _hover={{ boxShadow: 'lg', transform: 'translateY(-4px)' }} transition="all 0.3s">
@@ -264,7 +264,7 @@ const ProductWebsite = () => {
           <Accordion allowMultiple>
             {[
               { q: 'What happens if I cancel?', a: 'You can cancel anytime — no penalties, no contracts. Your data stays yours and we\'ll help you export everything.' },
-              { q: 'Do you take a cut of my transactions?', a: 'Never. We charge a flat $149/mo (free under $3K/mo). You keep 100% of every dollar your customers pay.' },
+              { q: 'Do you take a cut of my transactions?', a: 'Never. We don\'t even process your payments. You connect your own Stripe account and customer payments go directly to YOUR bank. We charge a flat $149/mo (free under $3K/mo) and never touch your revenue.' },
               { q: 'What\'s included in the $149/mo?', a: 'Everything — POS, customer portal, website, pickup & delivery management, AI tracking, automated marketing, CRM, analytics, and priority support. No add-ons or hidden fees.' },
               { q: 'How long does setup take?', a: 'About 2 minutes. Enter your business info, set your services and pricing, and you\'re live. Your website and POS are ready immediately.' },
               { q: 'Can I use my own domain?', a: 'Yes. Growth plan customers can connect their own custom domain (e.g., www.yourlaundry.com) to their customer portal.' },

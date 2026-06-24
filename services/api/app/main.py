@@ -205,26 +205,33 @@ async def serve_customer(request: Request, full_path: str):
     if full_path.startswith("api"):
         return {"error": "Not found"}
 
+    # Helper to safely check if a path is a file (handles invalid chars, long paths)
+    def _is_file_safe(path):
+        try:
+            return path.is_file()
+        except (OSError, ValueError):
+            return False
+
     # Serve static files — check BOTH builds (admin and customer have different bundles)
     if full_path.startswith("static/"):
         # Check admin build first
         file_path = ADMIN_BUILD / full_path
-        if file_path.is_file():
+        if _is_file_safe(file_path):
             return FileResponse(file_path)
         # Then customer build
         file_path = CUSTOMER_BUILD / full_path
-        if file_path.is_file():
+        if _is_file_safe(file_path):
             return FileResponse(file_path)
         return {"error": "Static file not found"}
 
     # Check if it's a real file in customer build (favicon, manifest, etc.)
     file_path = CUSTOMER_BUILD / full_path
-    if file_path.is_file():
+    if _is_file_safe(file_path):
         return FileResponse(file_path)
 
     # Check admin build files
     file_path = ADMIN_BUILD / full_path
-    if file_path.is_file():
+    if _is_file_safe(file_path):
         return FileResponse(file_path)
 
     # Route decision: paths with /admin or /driver go to admin app, everything else to customer
