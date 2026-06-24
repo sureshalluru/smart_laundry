@@ -268,7 +268,7 @@ class PhotoUploadResponse(BaseModel):
 
 @track_router.post("/track/upload", response_model=PhotoUploadResponse)
 @limiter.limit("10/minute")
-async def upload_photos(request: PhotoUploadRequest, req: Request):
+async def upload_photos(request: Request, body: PhotoUploadRequest):
     """
     Accept photos from the mobile upload page, upload to S3,
     call Claude Vision, and return structured results.
@@ -284,24 +284,24 @@ async def upload_photos(request: PhotoUploadRequest, req: Request):
     import uuid
 
     # Validate token
-    payload = validate_token(request.token)
+    payload = validate_token(body.token)
     if not payload:
-        logger.warning(f"[item-tracking] Token validation failed: token_prefix={request.token[:20]}...")
+        logger.warning(f"[item-tracking] Token validation failed: token_prefix={body.token[:20]}...")
         raise HTTPException(status_code=401, detail="Invalid or expired token")
 
-    logger.info(f"[item-tracking] Upload started: order={payload.order_id} laundry={payload.laundry_id} phase={payload.phase} images={len(request.images)}")
+    logger.info(f"[item-tracking] Upload started: order={payload.order_id} laundry={payload.laundry_id} phase={payload.phase} images={len(body.images)}")
 
     # Validate image count (4 required for full angle coverage)
-    if len(request.images) < 2:
-        logger.warning(f"[item-tracking] Invalid image count ({len(request.images)}) for order={payload.order_id}")
+    if len(body.images) < 2:
+        logger.warning(f"[item-tracking] Invalid image count ({len(body.images)}) for order={payload.order_id}")
         raise HTTPException(status_code=400, detail="Minimum 2 photos required (4 recommended: left, right, front, top)")
-    if len(request.images) > 4:
-        logger.warning(f"[item-tracking] Invalid image count ({len(request.images)}) for order={payload.order_id}")
+    if len(body.images) > 4:
+        logger.warning(f"[item-tracking] Invalid image count ({len(body.images)}) for order={payload.order_id}")
         raise HTTPException(status_code=400, detail="Maximum 4 photos per upload")
 
     # Upload images to S3
     image_urls = []
-    for i, img_base64 in enumerate(request.images):
+    for i, img_base64 in enumerate(body.images):
         # Strip data URL prefix if present
         if "," in img_base64 and img_base64.startswith("data:"):
             img_base64 = img_base64.split(",", 1)[1]
@@ -338,7 +338,7 @@ async def upload_photos(request: PhotoUploadRequest, req: Request):
             image_url = f"https://{DELIVERY_IMAGES_BUCKET}.s3.amazonaws.com/{s3_key}"
             image_urls.append(image_url)
         except Exception as e:
-            logger.error(f"[item-tracking] S3 upload failed: order={payload.order_id} laundry={payload.laundry_id} image={i+1}/{len(request.images)} key={s3_key} error={e}")
+            logger.error(f"[item-tracking] S3 upload failed: order={payload.order_id} laundry={payload.laundry_id} image={i+1}/{len(body.images)} key={s3_key} error={e}")
             raise HTTPException(status_code=500, detail=f"Storage upload failed for image {i+1}. Please retry.")
 
     # Get active categories for this laundry
