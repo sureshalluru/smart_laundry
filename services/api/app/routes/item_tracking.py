@@ -981,12 +981,11 @@ async def get_customer_tracking(
         response.dropoffDate = str(order_row["dropoff_date"]) if order_row.get("dropoff_date") else None
         response.services = order_services
 
-        # Generate payment link if unpaid (balance > 0)
+        # Generate payment link only after fold is confirmed and if unpaid
         try:
-            if order_row.get("payment_status") != "Paid" and balance_due > 0:
+            if order_row.get("payment_status") != "Paid" and balance_due > 0 and fold_row:
                 base_url = get_laundry_base_url(laundryId)
-                # Link to customer login/orders page where they can pay
-                response.paymentLink = f"{base_url}/{laundryId}/user/orders?order_id={order_id}&is_open=true"
+                response.paymentLink = f"{base_url}/{laundryId}/user/my-orders?order_id={order_id}&is_open=true"
         except (ValueError, TypeError):
             pass
 
