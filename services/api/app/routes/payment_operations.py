@@ -17,6 +17,7 @@ router = APIRouter()
 
 
 @router.put("/instore-payment")
+@router.put("/instore-online-payment")
 async def instore_payment(
     operation: str = Query(...),
     orderId: str = Query(...),
