@@ -1,13 +1,14 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   Box, Flex, Grid, GridItem, Button, Text, Input, VStack, HStack, Badge,
-  Icon, useToast, IconButton, InputGroup, InputLeftAddon, Divider
+  Icon, IconButton, InputGroup, InputLeftAddon, useToast
 } from '@chakra-ui/react';
 import { keyframes } from '@emotion/react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { FaArrowLeft, FaCheck, FaTimes, FaMinus, FaPlus, FaPrint } from 'react-icons/fa';
-import { useAdminSession } from '../hooks/useAdminSession';
+import { QuickPOSPaymentModalWrapper } from '../Components/QuickPOS/QuickPOSPaymentModal';
+import RegisterCustomer from '../hooks/RegisterCustomer';
 
 const popIn = keyframes`
   0% { transform: scale(0.95); opacity: 0.7; }
@@ -18,11 +19,9 @@ const popIn = keyframes`
 const SERVICE_COLORS = ['blue.50','green.50','purple.50','orange.50','pink.50','teal.50','cyan.50','yellow.50','red.50'];
 const SERVICE_BORDERS = ['blue.300','green.300','purple.300','orange.300','pink.300','teal.300','cyan.300','yellow.300','red.300'];
 
-export default function QuickPOSPage({ laundryId }) {
+export default function QuickPOSPage({ laundryId, stripePublicKey, stripeTerminalExists }) {
   const navigate = useNavigate();
-  const toast = useToast();
   const authToken = localStorage.getItem('idToken');
-  const { getEmpId } = useAdminSession();
 
   const [services, setServices] = useState([]);
   const [cart, setCart] = useState([]);
@@ -32,12 +31,20 @@ export default function QuickPOSPage({ laundryId }) {
   const [phoneSuggestions, setPhoneSuggestions] = useState([]);
   const [bags, setBags] = useState(1);
   const [tip, setTip] = useState({ tipOption: 'noTip', tipType: 'noTip', tipPercentage: 0, tipAmount: '0.00', customTip: '' });
-  const [paymentMethod, setPaymentMethod] = useState('');
   const [needBy, setNeedBy] = useState('asap'); // 'asap' or date string
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [orderSuccess, setOrderSuccess] = useState(null);
+  const [orderId, setOrderId] = useState(null);
   const [searchTimeout, setSearchTimeout] = useState(null);
   const [animatingItem, setAnimatingItem] = useState(null);
+
+  // New customer registration state
+  const [isNewCustomer, setIsNewCustomer] = useState(false);
+  const [newFirstName, setNewFirstName] = useState('');
+  const [newLastName, setNewLastName] = useState('');
+  const [newEmail, setNewEmail] = useState('');
+  const [isRegistering, setIsRegistering] = useState(false);
+  const toast = useToast();
 
   useEffect(() => {
     const fetchServices = async () => {
@@ -54,6 +61,7 @@ export default function QuickPOSPage({ laundryId }) {
   const handlePhoneChange = (e) => {
     const value = e.target.value.replace(/\D/g, '');
     setCustomerPhone(value);
+    setIsNewCustomer(false);
     if (value.length < 3) { setPhoneSuggestions([]); setCustomerName(''); setCustomerId(''); return; }
     if (searchTimeout) clearTimeout(searchTimeout);
     const t = setTimeout(() => lookupCustomer(value), 300);
@@ -67,15 +75,46 @@ export default function QuickPOSPage({ laundryId }) {
       const suggestions = res.data?.body?.suggestions || [];
       setPhoneSuggestions(suggestions);
       const exact = suggestions.find(s => s.phoneNumber?.replace('+1','') === phone);
-      if (exact) { setCustomerName(`${exact.firstName||''} ${exact.lastName||''}`.trim()); setCustomerId(exact.customerId); setPhoneSuggestions([]); }
-      else { setCustomerName(''); setCustomerId(''); }
+      if (exact) { setCustomerName(`${exact.firstName||''} ${exact.lastName||''}`.trim()); setCustomerId(exact.customerId); setPhoneSuggestions([]); setIsNewCustomer(false); }
+      else {
+        setCustomerName(''); setCustomerId('');
+        if (phone.length === 10) setIsNewCustomer(true);
+      }
     } catch (err) { /* ok */ }
   };
 
   const selectCustomer = (s) => {
     setCustomerPhone(s.phoneNumber?.replace('+1','') || '');
     setCustomerName(`${s.firstName||''} ${s.lastName||''}`.trim());
-    setCustomerId(s.customerId); setPhoneSuggestions([]);
+    setCustomerId(s.customerId); setPhoneSuggestions([]); setIsNewCustomer(false);
+  };
+
+  // Register new customer inline
+  const handleRegisterCustomer = async () => {
+    if (!newFirstName.trim() || !newLastName.trim()) {
+      toast({ title: 'Name required', description: 'Please enter first and last name.', status: 'warning', duration: 3000, isClosable: true });
+      return;
+    }
+    setIsRegistering(true);
+    try {
+      const result = await RegisterCustomer({
+        laundryId,
+        phoneNumber: customerPhone,
+        firstName: newFirstName.trim(),
+        lastName: newLastName.trim(),
+        email: newEmail.trim(),
+        receivePhoneNotification: true,
+      });
+      setCustomerId(result.customerId);
+      setCustomerName(`${newFirstName.trim()} ${newLastName.trim()}`);
+      setIsNewCustomer(false);
+      setNewFirstName(''); setNewLastName(''); setNewEmail('');
+      toast({ title: result.isNew ? 'Customer registered' : 'Customer found', status: 'success', duration: 2000, isClosable: true });
+    } catch (err) {
+      toast({ title: 'Registration failed', description: err.message, status: 'error', duration: 4000, isClosable: true });
+    } finally {
+      setIsRegistering(false);
+    }
   };
 
   // Cart
@@ -99,13 +138,13 @@ export default function QuickPOSPage({ laundryId }) {
   const total = subtotal + tipAmount;
 
   // Print
-  const printTicket = (orderId) => {
+  const printTicket = (printOrderId) => {
     const w = window.open('', 'PRINT', 'height=600,width=350');
     if (!w) return;
     const now = new Date().toLocaleString();
     const items = cart.map(i => {
       const qty = i.isWeight ? (parseFloat(i.inputWeight)||0) : i.quantity;
-      return `<tr><td>${i.serviceName}</td><td>${qty}${i.isWeight?'lb':''}</td><td>$${(i.price*qty).toFixed(2)}</td></tr>`;
+      return `<tr><td>${i.serviceName}</td><td>${qty}${i.isWeight?'lb':''}</td><td>${(i.price*qty).toFixed(2)}</td></tr>`;
     }).join('');
     w.document.write(`<html><head><title>Ticket</title><style>
       body{font-family:monospace;font-size:12px;width:280px;margin:0 auto;padding:10px}
@@ -113,98 +152,23 @@ export default function QuickPOSPage({ laundryId }) {
       table{width:100%}td{padding:2px 0}.total{font-size:14px;font-weight:bold;text-align:right}.center{text-align:center}
     </style></head><body>
       <h2>Order Ticket</h2><p class="center">${now}</p><div class="line"></div>
-      <p><strong>Order:</strong> ${orderId}</p>
+      <p><strong>Order:</strong> ${printOrderId}</p>
       <p><strong>Customer:</strong> ${customerName||customerPhone}</p>
       <p><strong>Bags:</strong> ${bags}</p><div class="line"></div>
       <table>${items}</table><div class="line"></div>
-      <p class="total">Subtotal: $${subtotal.toFixed(2)}</p>
-      ${tipAmount>0?`<p class="total">Tip: $${tipAmount.toFixed(2)}</p>`:''}
-      <p class="total">TOTAL: $${total.toFixed(2)}</p><div class="line"></div>
-      <p class="center">Payment: ${paymentMethod}</p><p class="center">Thank you!</p>
+      <p class="total">Subtotal: ${subtotal.toFixed(2)}</p>
+      ${tipAmount>0?`<p class="total">Tip: ${tipAmount.toFixed(2)}</p>`:''}
+      <p class="total">TOTAL: ${total.toFixed(2)}</p><div class="line"></div>
+      <p class="center">Thank you!</p>
     </body></html>`);
     w.document.close(); w.focus();
     setTimeout(() => { w.print(); w.close(); }, 300);
   };
 
-  // Submit — uses same API as AdminCreateOrder (instore-place-order)
-  const handleSubmitOrder = async () => {
-    if (!cart.length) { toast({ title: 'Cart empty', status: 'warning', duration: 2000 }); return; }
-    if (customerPhone.length < 10) { toast({ title: 'Enter phone', status: 'warning', duration: 2000 }); return; }
-    if (!paymentMethod) { toast({ title: 'Select payment', status: 'warning', duration: 2000 }); return; }
-    setIsSubmitting(true);
-    try {
-      const empId = getEmpId() || localStorage.getItem('empId') || '';
-      // Only Cash and Terminal are immediately paid. Card/PayLater/Invoice = create as Unpaid
-      const isCash = paymentMethod === 'cash';
-      const isPayNow = paymentMethod === 'cash' || paymentMethod === 'terminal';
-      const isTerminal = paymentMethod === 'terminal';
-      const tipMethod = isCash ? 'Cash' : 'Card';
-
-      // Resolve customerId if not already found
-      let resolvedCustId = customerId;
-      if (!resolvedCustId && customerPhone.length >= 10) {
-        try {
-          const checkRes = await axios.get(`${process.env.REACT_APP_AWS_API_URL}/api/customers/info`,
-            { params: { operation: 'checkPhoneNumber', phoneNumber: `+1${customerPhone}`, laundryId }, headers: { Authorization: `Bearer ${authToken}` } });
-          if (checkRes.data?.exists) resolvedCustId = checkRes.data.customerId;
-        } catch (e) { /* walk-in */ }
-      }
-
-      const inStoreOrderPayload = {
-        operation: 'inStorePlaceOrder',
-        customerId: resolvedCustId || '',
-        laundryId: laundryId,
-        address: '',
-        doorNumber: '',
-        addressInstructions: '',
-        specialInstructions: '',
-        saveSpecialInstructions: false,
-        services: cart.map(i => ({
-          service: i.serviceName,
-          weightOrCount: i.isWeight ? (parseFloat(i.inputWeight) || 0) : i.quantity,
-          servicePrice: i.price,
-        })),
-        pickupDate: new Date().toISOString().split('T')[0],
-        pickupTimeInterval: '',
-        dropoffDate: needBy === 'asap' ? null : needBy,
-        dropoffTimeInterval: '',
-        coupon: '',
-        subTotal: parseFloat(subtotal.toFixed(2)),
-        totalCost: parseFloat(subtotal.toFixed(2)),
-        grandTotal: parseFloat(total.toFixed(2)),
-        tip: {
-          tipType: tip.tipType || 'noTip',
-          tipPercentage: tip.tipPercentage || 0,
-          tipAmount: parseFloat(tip.tipAmount) || 0,
-          tipMethod: tipMethod,
-          tipReceiverId: empId || '',
-        },
-        discountedPrice: 0,
-        isPayNow: isPayNow,
-        isCash: isCash,
-        laundryBags: bags,
-        cardPaymentMethodId: '',
-        isTerminalPayment: paymentMethod === 'terminal',
-        customerPhone: `+1${customerPhone}`,
-      };
-
-      const res = await axios.post(
-        `${process.env.REACT_APP_AWS_API_URL}/api/admin/instore-place-order`,
-        inStoreOrderPayload,
-        { headers: { Authorization: `Bearer ${authToken}`, 'X-Amz-Date': laundryId } }
-      );
-      const orderId = res.data?.orderId || res.data?.body?.orderId || 'Created';
-      setOrderSuccess(orderId);
-      printTicket(orderId);
-      setTimeout(() => resetPOS(), 4000);
-    } catch (err) {
-      toast({ title: 'Order failed', description: err.response?.data?.message || err.response?.data?.body?.message || err.message, status: 'error', duration: 4000 });
-    } finally { setIsSubmitting(false); }
-  };
-
   const resetPOS = () => {
     setCart([]); setCustomerPhone(''); setCustomerName(''); setCustomerId('');
-    setBags(1); setTip({ tipOption: 'noTip', tipType: 'noTip', tipPercentage: 0, tipAmount: '0.00', customTip: '' }); setPaymentMethod(''); setNeedBy('asap'); setOrderSuccess(null); setPhoneSuggestions([]);
+    setBags(1); setTip({ tipOption: 'noTip', tipType: 'noTip', tipPercentage: 0, tipAmount: '0.00', customTip: '' }); setNeedBy('asap'); setOrderSuccess(null); setOrderId(null); setPhoneSuggestions([]);
+    setIsNewCustomer(false); setNewFirstName(''); setNewLastName(''); setNewEmail('');
   };
 
   if (orderSuccess) {
@@ -212,9 +176,9 @@ export default function QuickPOSPage({ laundryId }) {
       <Flex h="100vh" align="center" justify="center" bg="green.50" direction="column">
         <Icon as={FaCheck} boxSize={20} color="green.400" mb={4} />
         <Text fontSize="4xl" fontWeight="bold" color="green.600">Order Created!</Text>
-        <Text fontSize="2xl" color="gray.600" mt={2}>{orderSuccess}</Text>
+        <Text fontSize="2xl" color="gray.600" mt={2}>{orderId}</Text>
         <HStack mt={6} spacing={4}>
-          <Button leftIcon={<FaPrint />} colorScheme="blue" size="lg" onClick={() => printTicket(orderSuccess)}>Print Again</Button>
+          <Button leftIcon={<FaPrint />} colorScheme="blue" size="lg" onClick={() => printTicket(orderId)}>Print Again</Button>
           <Button colorScheme="green" size="lg" onClick={resetPOS}>New Order</Button>
         </HStack>
       </Flex>
@@ -222,12 +186,12 @@ export default function QuickPOSPage({ laundryId }) {
   }
 
   return (
-    <Flex h="100vh" w="100vw" position="fixed" top={0} left={0} bg="gray.50" zIndex={1500} direction={{ base: 'column', md: 'row' }}>
+    <Flex h="100vh" w="100vw" position="fixed" top={0} left={0} bg="gray.50" zIndex={1300} direction={{ base: 'column', md: 'row' }}>
       {/* LEFT: Phone + Services Grid (clean, just tap targets) */}
       <Box w={{ base: '100%', md: '55%' }} h="100%" overflowY="auto" p={3} bg="white">
         <HStack mb={2} justify="space-between">
           <HStack>
-            <Button variant="ghost" size="xs" leftIcon={<FaArrowLeft />} onClick={() => navigate(`/${laundryId}/admin/active-orders`)}>Back</Button>
+            <Button variant="ghost" size="xs" leftIcon={<FaArrowLeft />} onClick={() => navigate(`/${laundryId}/admin/active-orders`)}>Active Orders</Button>
             <Badge colorScheme="blue" fontSize="xs">QUICK POS</Badge>
           </HStack>
           <Button size="xs" colorScheme="red" variant="ghost" onClick={resetPOS}>Clear</Button>
@@ -241,6 +205,7 @@ export default function QuickPOSPage({ laundryId }) {
               <Input placeholder="Customer phone" value={customerPhone} onChange={handlePhoneChange} maxLength={10} bg="blue.50" />
             </InputGroup>
             {customerName && <Badge colorScheme="green" fontSize="xs" px={2} py={1}>✓ {customerName}</Badge>}
+            {!customerName && customerPhone.length === 10 && <Badge colorScheme="orange" fontSize="xs" px={2} py={1}>New Customer</Badge>}
           </HStack>
           {phoneSuggestions.length > 0 && (
             <Box position="absolute" top="42px" left={0} right={0} bg="white" border="1px solid" borderColor="gray.200" borderRadius="md" boxShadow="lg" zIndex={10} maxH="120px" overflowY="auto">
@@ -252,6 +217,27 @@ export default function QuickPOSPage({ laundryId }) {
             </Box>
           )}
         </Box>
+
+        {/* New Customer Registration — inline compact form */}
+        {isNewCustomer && !customerId && (
+          <Box mb={3} p={2} bg="orange.50" borderRadius="md" border="1px solid" borderColor="orange.200">
+            <Text fontSize="xs" fontWeight="semibold" mb={1} color="orange.700">Register New Customer</Text>
+            <HStack spacing={2} mb={1}>
+              <Input placeholder="First name *" value={newFirstName} onChange={(e) => setNewFirstName(e.target.value)}
+                size="sm" bg="white" />
+              <Input placeholder="Last name *" value={newLastName} onChange={(e) => setNewLastName(e.target.value)}
+                size="sm" bg="white" />
+            </HStack>
+            <HStack spacing={2}>
+              <Input placeholder="Email (optional)" value={newEmail} onChange={(e) => setNewEmail(e.target.value)}
+                size="sm" bg="white" type="email" />
+              <Button size="sm" colorScheme="orange" onClick={handleRegisterCustomer} isLoading={isRegistering}
+                isDisabled={!newFirstName.trim() || !newLastName.trim()} minW="80px">
+                Register
+              </Button>
+            </HStack>
+          </Box>
+        )}
 
         {/* Services Grid — large tap targets, nothing else */}
         <Grid templateColumns={{ base: 'repeat(2, 1fr)', md: 'repeat(3, 1fr)', lg: 'repeat(4, 1fr)' }} gap={2}>
@@ -272,7 +258,7 @@ export default function QuickPOSPage({ laundryId }) {
         </Grid>
       </Box>
 
-      {/* RIGHT: Cart (with weight/qty) + Summary + Payment */}
+      {/* RIGHT: Cart (with weight/qty) + Summary */}
       <Box w={{ base: '100%', md: '45%' }} h="100%" bg="gray.800" color="white" display="flex" flexDirection="column">
         {/* Cart items with inline controls */}
         <Box flex={1} overflowY="auto" p={3}>
@@ -323,7 +309,7 @@ export default function QuickPOSPage({ laundryId }) {
           )}
         </Box>
 
-        {/* Bottom: Summary + Payment (sticky) */}
+        {/* Bottom: Summary + Complete (sticky) */}
         <Box p={3} bg="gray.900" borderTop="1px solid" borderColor="gray.700">
           <HStack justify="space-between" mb={1}>
             <Text fontSize="sm">Subtotal</Text><Text fontSize="sm" fontWeight="bold">${subtotal.toFixed(2)}</Text>
@@ -382,36 +368,38 @@ export default function QuickPOSPage({ laundryId }) {
             <Text fontSize="2xl" fontWeight="bold" color="green.300">${total.toFixed(2)}</Text>
           </HStack>
 
-          {/* Payment */}
-          <Grid templateColumns="repeat(5, 1fr)" gap={1} mb={2}>
-            {[
-              { key: 'cash', label: '💵 Cash', color: 'green' },
-              { key: 'card', label: '💳 Card', color: 'blue' },
-              { key: 'terminal', label: '📱 Tap', color: 'teal' },
-              { key: 'payLater', label: '🕐 Later', color: 'orange' },
-              { key: 'invoice', label: '📄 Invoice', color: 'purple' },
-            ].map(pm => (
-              <Button key={pm.key} h="40px" fontSize="xs" fontWeight="bold"
-                colorScheme={pm.color}
-                variant={paymentMethod === pm.key ? 'solid' : 'outline'}
-                opacity={paymentMethod === pm.key ? 1 : 0.7}
-                border={paymentMethod === pm.key ? '2px solid white' : '1px solid'}
-                borderColor={paymentMethod === pm.key ? 'white' : `${pm.color}.400`}
-                onClick={() => setPaymentMethod(pm.key)}>
-                {pm.label}
-              </Button>
-            ))}
-          </Grid>
-
-          {/* Complete */}
+          {/* Complete — opens payment modal */}
           <Button w="100%" h="50px" colorScheme="green" fontSize="md" fontWeight="bold" borderRadius="lg"
-            onClick={handleSubmitOrder} isLoading={isSubmitting}
-            isDisabled={!cart.length || !paymentMethod || customerPhone.length < 10}
-            opacity={(!cart.length || !paymentMethod || customerPhone.length < 10) ? 0.5 : 1}>
-            {!cart.length ? '⬅️ Add items' : !paymentMethod ? '⬆️ Select payment' : customerPhone.length < 10 ? '📱 Enter phone' : `✅ Complete — $${total.toFixed(2)}`}
+            onClick={() => setIsPaymentModalOpen(true)}
+            isDisabled={!cart.length || customerPhone.length < 10 || (isNewCustomer && !customerId)}
+            opacity={(!cart.length || customerPhone.length < 10 || (isNewCustomer && !customerId)) ? 0.5 : 1}>
+            {!cart.length ? '⬅️ Add items' : customerPhone.length < 10 ? '📱 Enter phone' : (isNewCustomer && !customerId) ? '👤 Register customer' : `✅ Complete — $${total.toFixed(2)}`}
           </Button>
         </Box>
       </Box>
+
+      {/* Payment Modal */}
+      <QuickPOSPaymentModalWrapper
+        isOpen={isPaymentModalOpen}
+        onClose={() => setIsPaymentModalOpen(false)}
+        onPaymentSuccess={(successOrderId) => {
+          setIsPaymentModalOpen(false);
+          setOrderSuccess(true);
+          setOrderId(successOrderId);
+          printTicket(successOrderId);
+        }}
+        cart={cart}
+        subtotal={subtotal}
+        bags={bags}
+        customerPhone={customerPhone}
+        customerName={customerName}
+        customerId={customerId}
+        initialTip={tip}
+        needBy={needBy}
+        laundryId={laundryId}
+        stripeTerminalExists={!!stripeTerminalExists}
+        stripePublicKey={stripePublicKey || ''}
+      />
     </Flex>
   );
 }

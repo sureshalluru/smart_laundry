@@ -279,6 +279,63 @@ const DriverHome = ({ laundryId }) => {
     loadOrders();
   }, [laundryId, selectedDateValues, currentPage, assignedOrderIds, routeAssignments]);
 
+  /* ───────────── Unassigned orders (Available pool) ───────────── */
+  const [unassignedOrders, setUnassignedOrders] = useState([]);
+  const [claimingOrderId, setClaimingOrderId] = useState(null);
+
+  useEffect(() => {
+    const fetchUnassigned = async () => {
+      if (!selectedDateValues.length) return;
+      // Only fetch unassigned orders if the driver has route assignments
+      // (meaning admin has done some assignment but may have missed orders)
+      if (!assignedOrderIds || assignedOrderIds.size === 0) {
+        setUnassignedOrders([]);
+        return;
+      }
+      const dateStr = selectedDateValues[0];
+      try {
+        const res = await axios.get(
+          `${process.env.REACT_APP_AWS_API_URL}/api/routes/unassigned`,
+          {
+            params: { laundryId, date: dateStr },
+            headers: { Authorization: `Bearer ${authToken}` },
+          }
+        );
+        setUnassignedOrders(res.data?.unassignedOrders || []);
+      } catch (err) {
+        console.log('Unable to fetch unassigned orders');
+        setUnassignedOrders([]);
+      }
+    };
+    fetchUnassigned();
+  }, [laundryId, selectedDateValues, authToken, assignedOrderIds]);
+
+  const handleClaimOrder = async (orderId) => {
+    const empId = localStorage.getItem('empId');
+    if (!empId || !selectedDateValues.length) return;
+    setClaimingOrderId(orderId);
+    try {
+      await axios.post(
+        `${process.env.REACT_APP_AWS_API_URL}/api/routes/claim`,
+        { laundryId, date: selectedDateValues[0], orderId, driverId: empId },
+        { headers: { Authorization: `Bearer ${authToken}` } }
+      );
+      toast({ title: 'Order claimed!', status: 'success', duration: 2000, isClosable: true });
+      // Remove from unassigned list and add to assigned
+      setUnassignedOrders(prev => prev.filter(o => o.orderId !== orderId));
+      setAssignedOrderIds(prev => {
+        const next = new Set(prev);
+        next.add(orderId);
+        return next;
+      });
+    } catch (err) {
+      const msg = err.response?.data?.message || 'Failed to claim order';
+      toast({ title: msg, status: 'error', duration: 3000, isClosable: true });
+    } finally {
+      setClaimingOrderId(null);
+    }
+  };
+
   /* ───────────── Upload helper ───────────── */
   const handleUpload = async (orderId, file, action) => {
     const key = action === 'missed' ? `miss_${orderId}` : `upload_${orderId}`;
@@ -762,6 +819,53 @@ const DriverHome = ({ laundryId }) => {
               Load More
             </Button>
           </Flex>
+        )}
+
+        {/* ───────────── Available (Unassigned) Orders ───────────── */}
+        {unassignedOrders.length > 0 && (
+          <Box mt={6}>
+            <HStack mb={3}>
+              <Badge colorScheme="orange" fontSize="sm" px={2} py={1}>Available</Badge>
+              <Text fontSize="sm" color="gray.600">
+                {unassignedOrders.length} unassigned order{unassignedOrders.length > 1 ? 's' : ''} — tap Claim to add to your route
+              </Text>
+            </HStack>
+            <Stack spacing={3}>
+              {unassignedOrders.map((order) => {
+                const { label, color } = statusBadge(order.orderStatus || '');
+                return (
+                  <Box
+                    key={order.orderId}
+                    p={3}
+                    borderWidth="2px"
+                    borderColor="orange.200"
+                    borderRadius="lg"
+                    bg="orange.50"
+                    boxShadow="sm"
+                  >
+                    <Flex justify="space-between" align="center" mb={1}>
+                      <HStack>
+                        <Badge colorScheme={color} fontSize="xs">{label}</Badge>
+                        <Text fontWeight="bold" fontSize="sm">{order.orderId}</Text>
+                      </HStack>
+                      <Button
+                        size="sm"
+                        colorScheme="green"
+                        onClick={() => handleClaimOrder(order.orderId)}
+                        isLoading={claimingOrderId === order.orderId}
+                      >
+                        Claim
+                      </Button>
+                    </Flex>
+                    <Text fontSize="sm">{order.customerName}</Text>
+                    {order.address && (
+                      <Text fontSize="xs" color="gray.600" noOfLines={1}>{order.address}</Text>
+                    )}
+                  </Box>
+                );
+              })}
+            </Stack>
+          </Box>
         )}
 
         {/* Route modal */}

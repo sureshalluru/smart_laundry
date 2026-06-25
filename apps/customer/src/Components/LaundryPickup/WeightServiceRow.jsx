@@ -17,7 +17,7 @@ import {
  * Shows service name, price/lb, +/- weight buttons, and Add/Remove.
  */
 export default function WeightServiceRow({ service, cartItem, dispatch }) {
-  const [weight, setWeight] = useState(cartItem ? cartItem.quantity : 0);
+  const [weight, setWeight] = useState(cartItem ? cartItem.quantity : 25);
 
   const increment = (amount = 1) => {
     const newWeight = Math.round((weight + amount) * 10) / 10;
@@ -87,6 +87,13 @@ export default function WeightServiceRow({ service, cartItem, dispatch }) {
         </Text>
       </Flex>
 
+      {/* Clarification: customer doesn't need to weigh */}
+      <Box bg="green.50" border="1px solid" borderColor="green.200" borderRadius="lg" px={3} py={2} mb={3}>
+        <Text fontSize="xs" color="green.700" fontWeight="500">
+          📋 No need to weigh at home! We'll weigh your laundry at the store and send a photo with the exact weight. Minimum order is 25 lbs. You'll only be charged for actual weight.
+        </Text>
+      </Box>
+
       {/* Weight input with +/- buttons */}
       <Flex align="center" justify="center" gap={4} mb={3}>
         <IconButton
@@ -120,7 +127,7 @@ export default function WeightServiceRow({ service, cartItem, dispatch }) {
             borderColor="blue.200"
             _focus={{ borderColor: 'blue.500' }}
           />
-          <Text fontSize="xs" color="gray.500" mt={1}>lbs</Text>
+          <Text fontSize="xs" color="gray.500" mt={1}>estimated lbs (min 25)</Text>
         </VStack>
 
         <IconButton

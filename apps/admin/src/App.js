@@ -167,6 +167,12 @@ function AdminRedirect() {
     return null;
 }
 
+// Responsive default route: desktop → Quick POS, mobile → Active Orders
+function ResponsiveDefaultRedirect() {
+    const isMobile = window.innerWidth < 768;
+    return <Navigate to={isMobile ? "active-orders" : "pos"} replace/>;
+}
+
 function App() {
     const auth = useAuth();
 
@@ -221,7 +227,7 @@ function App() {
                     }>
                         <Route index element={
                             <ProtectedRoute feature={FEATURES.ORDERS}>
-                                <Navigate to="active-orders" replace/>
+                                <ResponsiveDefaultRedirect/>
                             </ProtectedRoute>
                         }/>
                         <Route path="home" element={

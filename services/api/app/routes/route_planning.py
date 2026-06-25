@@ -502,3 +502,124 @@ async def delete_assignments(
         deleted_count = cur.rowcount
 
     return {"status": "success", "deletedCount": deleted_count}
+
+
+# ── GET /unassigned ────────────────────────────────────────────────────────────
+
+@router.get("/unassigned")
+async def get_unassigned_orders(
+    laundryId: str = Query(...),
+    date: str = Query(...),
+    current_user: dict = Depends(get_current_user),
+):
+    """
+    Return orders that need pickup/delivery on the given date but have NOT been
+    assigned to any driver in route_assignments.
+    Drivers see these as "Available" orders they can claim.
+    """
+    try:
+        route_date = datetime.strptime(date, "%Y-%m-%d").date()
+    except ValueError:
+        return {"status": "error", "message": "Invalid date format. Use YYYY-MM-DD."}
+
+    with get_db() as conn:
+        cur = get_cursor(conn)
+        # Get all order IDs assigned for this date
+        cur.execute("""
+            SELECT order_id FROM routes.route_assignments
+            WHERE laundry_id = %s AND route_date = %s
+        """, (laundryId, route_date))
+        assigned_ids = {row["order_id"] for row in cur.fetchall()}
+
+        # Get all orders that need driver action on this date
+        cur.execute("""
+            SELECT o.order_id, o.order_status, o.pickup_date, o.dropoff_date,
+                   o.pickup_service, o.dropoff_service,
+                   c.first_name, c.last_name, c.phone_number,
+                   ca.address AS customer_address
+            FROM orders.orders o
+            JOIN shop.customers c ON c.customer_id = o.customer_id
+            LEFT JOIN shop.customer_addresses ca ON ca.address_id = o.address_id
+            WHERE o.laundry_id = %s
+              AND o.order_type = 'Online'
+              AND (
+                (o.order_status IN ('OrderSubmitted', 'ReadyForIntake')
+                 AND o.pickup_date = %s
+                 AND LOWER(COALESCE(o.pickup_service, 'LaundryDriver')) = 'laundrydriver')
+                OR
+                (o.order_status IN ('EnRouteToDelivery')
+                 AND o.dropoff_date = %s
+                 AND LOWER(COALESCE(o.dropoff_service, 'LaundryDriver')) = 'laundrydriver')
+              )
+            ORDER BY COALESCE(o.pickup_date, o.dropoff_date) ASC
+        """, (laundryId, route_date, route_date))
+        all_orders = cur.fetchall()
+
+    # Filter out already-assigned orders
+    unassigned = []
+    for row in all_orders:
+        if row["order_id"] not in assigned_ids:
+            unassigned.append({
+                "orderId": row["order_id"],
+                "orderStatus": row["order_status"],
+                "pickupDate": str(row["pickup_date"]) if row["pickup_date"] else None,
+                "dropoffDate": str(row["dropoff_date"]) if row["dropoff_date"] else None,
+                "customerName": f"{row['first_name'] or ''} {row['last_name'] or ''}".strip(),
+                "customerPhone": row["phone_number"] or "",
+                "address": row["customer_address"] or "",
+            })
+
+    return {"status": "success", "unassignedOrders": unassigned}
+
+
+# ── POST /claim ────────────────────────────────────────────────────────────────
+
+@router.post("/claim")
+async def claim_order(
+    body: dict = Body(...),
+    current_user: dict = Depends(get_current_user),
+):
+    """
+    Allow a driver to self-assign (claim) an unassigned order.
+    Adds the order to their route_assignments with the next sequence position.
+    """
+    laundry_id = body.get("laundryId")
+    date_str = body.get("date")
+    order_id = body.get("orderId")
+    driver_id = body.get("driverId")
+
+    if not all([laundry_id, date_str, order_id, driver_id]):
+        return {"status": "error", "message": "Missing required fields: laundryId, date, orderId, driverId"}
+
+    try:
+        route_date = datetime.strptime(date_str, "%Y-%m-%d").date()
+    except ValueError:
+        return {"status": "error", "message": "Invalid date format. Use YYYY-MM-DD."}
+
+    with get_db() as conn:
+        cur = get_cursor(conn)
+
+        # Check if order is already assigned
+        cur.execute("""
+            SELECT order_id FROM routes.route_assignments
+            WHERE laundry_id = %s AND route_date = %s AND order_id = %s
+        """, (laundry_id, route_date, order_id))
+        if cur.fetchone():
+            return {"status": "error", "message": "Order already assigned to a driver."}
+
+        # Get the next sequence position for this driver
+        cur.execute("""
+            SELECT COALESCE(MAX(sequence_position), 0) + 1 AS next_pos
+            FROM routes.route_assignments
+            WHERE laundry_id = %s AND route_date = %s AND driver_id = %s
+        """, (laundry_id, route_date, driver_id))
+        next_pos = cur.fetchone()["next_pos"]
+
+        # Insert the assignment
+        cur.execute("""
+            INSERT INTO routes.route_assignments
+                (laundry_id, route_date, driver_id, order_id, sequence_position, status)
+            VALUES (%s, %s, %s, %s, %s, 'pending')
+        """, (laundry_id, route_date, driver_id, order_id, next_pos))
+
+    return {"status": "success", "message": "Order claimed successfully.", "sequencePosition": next_pos}
