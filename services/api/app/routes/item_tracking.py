@@ -650,6 +650,17 @@ async def confirm_fold(request: ConfirmFoldRequest):
             ),
         )
 
+        # Auto-update order status to ProcessingCompleted when fold is confirmed
+        cur.execute(
+            """
+            UPDATE orders.orders
+            SET order_status = 'ProcessingCompleted', updated_at = NOW()
+            WHERE order_id = %s AND laundry_id = %s
+              AND order_status NOT IN ('OrderCanceled', 'Delivered', 'ProcessingCompleted')
+            """,
+            (payload.order_id, payload.laundry_id),
+        )
+
     # Send completion SMS
     sms_sent = False
     try:
