@@ -916,33 +916,49 @@ async def get_customer_tracking(
         )
         fold_row = cur.fetchone()
 
-        # Fetch order details
-        cur.execute(
-            """
-            SELECT order_status, payment_status, grand_total, balance_due,
-                   pickup_date, dropoff_date
-            FROM orders.orders
-            WHERE order_id = %s AND laundry_id = %s
-            """,
-            (order_id, laundryId),
-        )
-        order_row = cur.fetchone()
-
-        # Fetch order services from separate table
-        order_services = []
-        if order_row:
+    # Fetch order details in a separate block (non-critical — don't break tracking if this fails)
+    order_row = None
+    order_services = []
+    try:
+        with get_db() as conn:
+            cur = get_cursor(conn)
             cur.execute(
                 """
-                SELECT service_name, service_price, weight_or_count
-                FROM orders.order_services
-                WHERE order_id = %s
+                SELECT order_status, payment_status, grand_total,
+                       pickup_date, dropoff_date
+                FROM orders.orders
+                WHERE order_id = %s AND laundry_id = %s
                 """,
-                (order_id,),
+                (order_id, laundryId),
             )
-            order_services = [
-                {"service": r["service_name"], "servicePrice": str(r["service_price"] or 0), "weightOrCount": str(r["weight_or_count"] or 1)}
-                for r in cur.fetchall()
-            ]
+            order_row = cur.fetchone()
+
+            if order_row:
+                # Compute balance_due from payments
+                cur.execute(
+                    "SELECT COALESCE(SUM(amount), 0) as paid FROM orders.order_payments WHERE order_id = %s",
+                    (order_id,),
+                )
+                paid_row = cur.fetchone()
+                paid_amount = float(paid_row["paid"]) if paid_row else 0
+                grand_total = float(order_row["grand_total"] or 0)
+                balance_due = max(0, round(grand_total - paid_amount, 2))
+
+                cur.execute(
+                    """
+                    SELECT service_name, service_price, weight_or_count
+                    FROM orders.order_services
+                    WHERE order_id = %s
+                    """,
+                    (order_id,),
+                )
+                order_services = [
+                    {"service": r["service_name"], "servicePrice": str(r["service_price"] or 0), "weightOrCount": str(r["weight_or_count"] or 1)}
+                    for r in cur.fetchall()
+                ]
+    except Exception as e:
+        logger.warning(f"[item-tracking] Failed to fetch order details for {order_id}: {e}")
+        balance_due = 0
 
     response = CustomerTrackingResponse(orderId=order_id)
 
@@ -959,17 +975,19 @@ async def get_customer_tracking(
     if order_row:
         response.orderStatus = order_row["order_status"]
         response.paymentStatus = order_row["payment_status"]
-        response.grandTotal = str(order_row["grand_total"]) if order_row["grand_total"] else None
-        response.balanceDue = str(order_row["balance_due"]) if order_row["balance_due"] else None
-        response.pickupDate = order_row["pickup_date"]
-        response.dropoffDate = order_row["dropoff_date"]
+        response.grandTotal = str(order_row["grand_total"]) if order_row.get("grand_total") else None
+        response.balanceDue = str(balance_due) if balance_due > 0 else None
+        response.pickupDate = str(order_row["pickup_date"]) if order_row.get("pickup_date") else None
+        response.dropoffDate = str(order_row["dropoff_date"]) if order_row.get("dropoff_date") else None
         response.services = order_services
 
         # Generate payment link if unpaid (balance > 0)
-        if order_row["payment_status"] != "Paid" and order_row.get("balance_due") and float(order_row["balance_due"] or 0) > 0:
-            # Get the laundry's custom domain for payment link
-            base_url = get_laundry_base_url(laundryId)
-            response.paymentLink = f"{base_url}/{laundryId}/pay/{order_id}"
+        try:
+            if order_row.get("payment_status") != "Paid" and balance_due > 0:
+                base_url = get_laundry_base_url(laundryId)
+                response.paymentLink = f"{base_url}/{laundryId}/pay/{order_id}"
+        except (ValueError, TypeError):
+            pass
 
     return response
 
