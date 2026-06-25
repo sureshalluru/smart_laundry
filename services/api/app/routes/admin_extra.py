@@ -113,6 +113,40 @@ async def cancel_order_admin(
         except Exception as e:
             logger.warning(f"Error reversing holds for order {order_id}: {e}")
 
+    # Cancel any Uber deliveries associated with this order
+    try:
+        with get_db() as conn:
+            cur = get_cursor(conn)
+            cur.execute("SELECT uber_info FROM orders.orders WHERE order_id = %s", (order_id,))
+            row = cur.fetchone()
+            uber_info = (row.get("uber_info") if row else None) or {}
+
+        for leg in ("laundryPickup", "laundryDropoff"):
+            leg_info = uber_info.get(leg, {})
+            delivery_id = leg_info.get("deliveryId")
+            if not delivery_id:
+                continue
+            # Only cancel if Uber hasn't already completed/canceled
+            leg_status = (leg_info.get("status") or "").lower()
+            if leg_status in ("delivered", "canceled", "cancelled", "returned"):
+                continue
+            try:
+                from app.routes.uber import get_laundry_uber_credentials, get_uber_access_token
+                import requests as req
+                creds = get_laundry_uber_credentials(laundry_id)
+                token = get_uber_access_token(creds["clientId"], creds["clientSecret"])
+                url = f"{creds['baseUrl']}/customers/{creds['customerId']}/deliveries/{delivery_id}/cancel"
+                headers = {"Content-Type": "application/json", "Authorization": f"Bearer {token}"}
+                resp = req.post(url, headers=headers)
+                if resp.status_code in (200, 202):
+                    logger.info(f"Canceled Uber delivery {delivery_id} for order {order_id} ({leg})")
+                else:
+                    logger.warning(f"Uber cancel returned {resp.status_code} for {delivery_id}: {resp.text[:200]}")
+            except Exception as ue:
+                logger.warning(f"Could not cancel Uber delivery {delivery_id} for {order_id}: {ue}")
+    except Exception as uber_err:
+        logger.warning(f"Error checking/canceling Uber for order {order_id}: {uber_err}")
+
     # Send cancellation notification to customer
     try:
         from app.routes.customer_public import _send_cancel_notification

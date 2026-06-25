@@ -18,3 +18,10 @@ root.render(
 );
 
 reportWebVitals();
+
+// Register service worker for PWA install support (desktop shortcut)
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch(() => {});
+  });
+}
