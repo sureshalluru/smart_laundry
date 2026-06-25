@@ -304,6 +304,76 @@ function OrderTrackingPhotos() {
           )}
         </Flex>
 
+        {/* Order Details & Payment */}
+        {data.orderStatus && (
+          <Box bg="white" p={4} borderRadius="lg" boxShadow="sm">
+            <VStack spacing={3} align="stretch">
+              <HStack justify="space-between">
+                <Text fontWeight="bold" fontSize="sm">Order Details</Text>
+                <Badge colorScheme={data.paymentStatus === 'Paid' ? 'green' : 'orange'} fontSize="xs">
+                  {data.paymentStatus || 'Unpaid'}
+                </Badge>
+              </HStack>
+
+              <Divider />
+
+              {/* Dates */}
+              <HStack justify="space-between" fontSize="xs" color="gray.600">
+                {data.pickupDate && <Text>Pickup: {data.pickupDate}</Text>}
+                {data.dropoffDate && <Text>Due: {data.dropoffDate}</Text>}
+              </HStack>
+
+              {/* Services */}
+              {data.services && data.services.length > 0 && (
+                <VStack spacing={1} align="stretch">
+                  {data.services.map((svc, i) => (
+                    <HStack key={i} justify="space-between" fontSize="sm">
+                      <Text>{svc.service || svc.productName}</Text>
+                      <Text fontWeight="600">${svc.servicePrice || svc.productPrice || '0'}</Text>
+                    </HStack>
+                  ))}
+                </VStack>
+              )}
+
+              {/* Total */}
+              {data.grandTotal && (
+                <HStack justify="space-between" pt={1} borderTop="1px solid" borderColor="gray.100">
+                  <Text fontWeight="bold" fontSize="sm">Total</Text>
+                  <Text fontWeight="bold" fontSize="sm">${data.grandTotal}</Text>
+                </HStack>
+              )}
+
+              {/* Pay Now button if unpaid */}
+              {data.paymentStatus !== 'Paid' && data.paymentLink && data.balanceDue && parseFloat(data.balanceDue) > 0 && (
+                <Box bg="orange.50" p={3} borderRadius="md" border="1px solid" borderColor="orange.200" mt={2}>
+                  <VStack spacing={2}>
+                    <Text fontSize="sm" color="orange.700" fontWeight="600">
+                      Balance Due: ${data.balanceDue}
+                    </Text>
+                    <Button
+                      as="a"
+                      href={data.paymentLink}
+                      colorScheme="orange"
+                      size="md"
+                      w="full"
+                      borderRadius="full"
+                    >
+                      💳 Pay Now
+                    </Button>
+                  </VStack>
+                </Box>
+              )}
+
+              {/* Paid confirmation */}
+              {data.paymentStatus === 'Paid' && (
+                <HStack justify="center" bg="green.50" p={2} borderRadius="md">
+                  <Text fontSize="sm" color="green.600" fontWeight="600">✓ Payment Complete</Text>
+                </HStack>
+              )}
+            </VStack>
+          </Box>
+        )}
+
         {/* Intake Section */}
         {hasIntake && (
           <Box bg="white" p={4} borderRadius="lg" boxShadow="sm">

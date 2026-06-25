@@ -869,6 +869,15 @@ class CustomerTrackingResponse(BaseModel):
     foldItems: Optional[list[dict]] = None
     foldPhotos: Optional[list[str]] = None
     foldConfirmedAt: Optional[str] = None
+    # Order details
+    orderStatus: Optional[str] = None
+    paymentStatus: Optional[str] = None
+    grandTotal: Optional[str] = None
+    balanceDue: Optional[str] = None
+    pickupDate: Optional[str] = None
+    dropoffDate: Optional[str] = None
+    services: Optional[list[dict]] = None
+    paymentLink: Optional[str] = None
 
 
 @track_router.get("/track/customer/{order_id}", response_model=CustomerTrackingResponse)
@@ -907,6 +916,18 @@ async def get_customer_tracking(
         )
         fold_row = cur.fetchone()
 
+        # Fetch order details
+        cur.execute(
+            """
+            SELECT order_status, payment_status, grand_total, balance_due,
+                   pickup_date, dropoff_date, services, laundry_id
+            FROM orders.orders
+            WHERE order_id = %s AND laundry_id = %s
+            """,
+            (order_id, laundryId),
+        )
+        order_row = cur.fetchone()
+
     response = CustomerTrackingResponse(orderId=order_id)
 
     if intake_row:
@@ -918,6 +939,21 @@ async def get_customer_tracking(
         response.foldItems = fold_row["items"]
         response.foldPhotos = get_presigned_urls(fold_row["photo_urls"] or [])
         response.foldConfirmedAt = fold_row["confirmed_at"].isoformat() if fold_row["confirmed_at"] else None
+
+    if order_row:
+        response.orderStatus = order_row["order_status"]
+        response.paymentStatus = order_row["payment_status"]
+        response.grandTotal = str(order_row["grand_total"]) if order_row["grand_total"] else None
+        response.balanceDue = str(order_row["balance_due"]) if order_row["balance_due"] else None
+        response.pickupDate = order_row["pickup_date"]
+        response.dropoffDate = order_row["dropoff_date"]
+        response.services = order_row["services"] if isinstance(order_row.get("services"), list) else []
+
+        # Generate payment link if unpaid (balance > 0)
+        if order_row["payment_status"] != "Paid" and order_row.get("balance_due") and float(order_row["balance_due"] or 0) > 0:
+            # Get the laundry's custom domain for payment link
+            base_url = get_laundry_base_url(laundryId)
+            response.paymentLink = f"{base_url}/{laundryId}/pay/{order_id}"
 
     return response
 
