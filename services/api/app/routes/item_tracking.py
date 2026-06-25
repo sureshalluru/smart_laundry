@@ -985,7 +985,8 @@ async def get_customer_tracking(
         try:
             if order_row.get("payment_status") != "Paid" and balance_due > 0:
                 base_url = get_laundry_base_url(laundryId)
-                response.paymentLink = f"{base_url}/{laundryId}/pay/{order_id}"
+                # Link to customer login/orders page where they can pay
+                response.paymentLink = f"{base_url}/{laundryId}/user/orders?order_id={order_id}&is_open=true"
         except (ValueError, TypeError):
             pass
 
