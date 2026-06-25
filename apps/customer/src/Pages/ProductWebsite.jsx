@@ -117,6 +117,159 @@ const ProductWebsite = () => {
         </Container>
       </Box>
 
+      {/* The Pain — Emotional Problem Story */}
+      <Box py={{ base: 16, md: 20 }} bg="white">
+        <Container maxW="1000px">
+          <SimpleGrid columns={{ base: 1, md: 2 }} spacing={10}>
+            <VStack align="flex-start" spacing={6}>
+              <Badge colorScheme="red" px={3} py={1} borderRadius="full">The Problem</Badge>
+              <Heading fontSize={{ base: 'xl', md: '3xl' }} color="gray.800">
+                "Where's My Blue Shirt?"
+              </Heading>
+              <Text color="gray.600" fontSize="md" lineHeight="tall">
+                That dreaded phone call. A customer claims something is missing. Your staff checks the paper tickets, 
+                the handwritten notes, the memory of last Tuesday's rush. Nothing.
+              </Text>
+              <Text color="gray.600" fontSize="md" lineHeight="tall">
+                One lost garment costs more than money. It costs trust. It costs reviews. It costs sleep.
+                Meanwhile, the platform you're paying 25% to doesn't help you prove anything.
+              </Text>
+              <Text color="gray.700" fontSize="md" fontWeight="600">
+                You deserve a system that has your back — not one that takes your money and leaves you guessing.
+              </Text>
+            </VStack>
+            <VStack align="flex-start" spacing={6}>
+              <Badge colorScheme="orange" px={3} py={1} borderRadius="full">The Hidden Costs</Badge>
+              <Heading fontSize={{ base: 'xl', md: '3xl' }} color="gray.800">
+                Juggling 5 Systems That Don't Talk
+              </Heading>
+              <Text color="gray.600" fontSize="md" lineHeight="tall">
+                One app for POS. Another for delivery scheduling. A spreadsheet for customer data. 
+                A separate website builder. And somehow you're still texting customers manually.
+              </Text>
+              <Text color="gray.600" fontSize="md" lineHeight="tall">
+                Each system costs $50-200/mo. None of them share data. Your staff wastes hours 
+                copying order details between screens. And when something goes wrong? 
+                Good luck finding which system dropped the ball.
+              </Text>
+              <Text color="gray.700" fontSize="md" fontWeight="600">
+                What if one platform did everything — and cost less than any single tool you're using today?
+              </Text>
+            </VStack>
+          </SimpleGrid>
+        </Container>
+      </Box>
+
+      {/* AI Garment Tracking — Trust & Protection */}
+      <Box py={{ base: 16, md: 20 }} bg="gray.900" color="white">
+        <Container maxW="1100px">
+          <Flex direction={{ base: 'column', lg: 'row' }} align="center" gap={10}>
+            <VStack align={{ base: 'center', lg: 'flex-start' }} spacing={6} flex={1} textAlign={{ base: 'center', lg: 'left' }}>
+              <Badge colorScheme="purple" px={3} py={1} borderRadius="full">AI-Powered</Badge>
+              <Heading fontSize={{ base: '2xl', md: '3xl' }}>
+                AI Garment Tracking That Builds Trust
+              </Heading>
+              <Text fontSize="lg" color="gray.300" lineHeight="tall">
+                Builds customer trust, protects employees, and automatically documents every order — without changing your workflow.
+              </Text>
+              <List spacing={3} color="gray.300">
+                <ListItem><ListIcon as={FiCheck} color="purple.300" />Snap photos at intake → AI identifies and counts every item</ListItem>
+                <ListItem><ListIcon as={FiCheck} color="purple.300" />Customers see exactly what was received (transparency = trust)</ListItem>
+                <ListItem><ListIcon as={FiCheck} color="purple.300" />Employees are protected — photo proof that items were received intact</ListItem>
+                <ListItem><ListIcon as={FiCheck} color="purple.300" />Fold verification catches discrepancies before delivery</ListItem>
+                <ListItem><ListIcon as={FiCheck} color="purple.300" />Reduces "missing item" disputes by 90%+ with zero extra effort</ListItem>
+              </List>
+              <Text fontSize="sm" color="gray.400" fontStyle="italic">
+                No extra hardware. No training. Just take photos with any phone — AI handles the rest.
+              </Text>
+            </VStack>
+            <Box flex={1} maxW="420px" bg="gray.800" borderRadius="2xl" p={6} border="1px solid" borderColor="gray.700">
+              <VStack spacing={4} align="stretch">
+                <HStack bg="gray.700" p={4} borderRadius="lg">
+                  <Icon as={FiCamera} boxSize={8} color="purple.300" />
+                  <Box>
+                    <Text fontWeight="bold">Photo Intake</Text>
+                    <Text fontSize="sm" color="gray.400">Employee snaps photos → AI counts items automatically</Text>
+                  </Box>
+                </HStack>
+                <HStack bg="gray.700" p={4} borderRadius="lg">
+                  <Icon as={FiShield} boxSize={8} color="green.300" />
+                  <Box>
+                    <Text fontWeight="bold">Proof of Condition</Text>
+                    <Text fontSize="sm" color="gray.400">Timestamped photos prove what you received and when</Text>
+                  </Box>
+                </HStack>
+                <HStack bg="gray.700" p={4} borderRadius="lg">
+                  <Icon as={FiUsers} boxSize={8} color="blue.300" />
+                  <Box>
+                    <Text fontWeight="bold">Customer Transparency</Text>
+                    <Text fontSize="sm" color="gray.400">Customers view their items online — builds confidence</Text>
+                  </Box>
+                </HStack>
+                <HStack bg="gray.700" p={4} borderRadius="lg">
+                  <Icon as={FiCheck} boxSize={8} color="yellow.300" />
+                  <Box>
+                    <Text fontWeight="bold">Fold Reconciliation</Text>
+                    <Text fontSize="sm" color="gray.400">AI compares intake vs fold — flags discrepancies automatically</Text>
+                  </Box>
+                </HStack>
+              </VStack>
+            </Box>
+          </Flex>
+        </Container>
+      </Box>
+
+      {/* Comparison Table — Us vs Competitors */}
+      <Box py={{ base: 16, md: 20 }} bg="gray.50">
+        <Container maxW="900px">
+          <VStack spacing={4} textAlign="center" mb={10}>
+            <Badge colorScheme="blue" px={3} py={1} borderRadius="full">Why Switch</Badge>
+            <Heading fontSize={{ base: '2xl', md: '3xl' }}>How We Compare</Heading>
+            <Text color="gray.600" maxW="600px">The choice is clear when you see it side by side.</Text>
+          </VStack>
+
+          <Box overflowX="auto" borderRadius="xl" border="1px solid" borderColor="gray.200" bg="white">
+            <Box as="table" w="100%" fontSize="sm">
+              <Box as="thead" bg="gray.800" color="white">
+                <Box as="tr">
+                  <Box as="th" p={4} textAlign="left">Feature</Box>
+                  <Box as="th" p={4} textAlign="center" bg="blue.600">Smart Laundry Basket</Box>
+                  <Box as="th" p={4} textAlign="center">Revenue-Share Platforms</Box>
+                  <Box as="th" p={4} textAlign="center">iOS-Only POS Apps</Box>
+                </Box>
+              </Box>
+              <Box as="tbody">
+                {[
+                  ['Monthly Cost', '$149 flat', '25% of revenue', 'From $75/mo'],
+                  ['Payment Processing', 'Direct to YOUR bank', 'They collect & pay you', 'Direct to you'],
+                  ['Platform Fee on Transactions', 'None — 0%', '25% cut', 'None'],
+                  ['Pickup & Delivery Management', '✓', '✓ (their drivers only)', '✗'],
+                  ['AI Garment Tracking', '✓', '✗', '✓ (photos only)'],
+                  ['Customer Website & Portal', '✓ (branded)', '✗', '✗'],
+                  ['POS System', '✓ (any device)', '✗', '✓ (iOS only)'],
+                  ['Automated Marketing', '✓', '✗', '✗'],
+                  ['Works on Any Device', '✓ (browser-based)', '✗ (app only)', '✗ (iOS only)'],
+                  ['Custom Domain', '✓', '✗', '✗'],
+                  ['Free Tier', 'Yes (up to $3K/mo)', 'No', 'No'],
+                  ['Unlimited Staff', '✓', 'N/A', '✓'],
+                ].map(([feature, us, revShare, iosOnly], i) => (
+                  <Box as="tr" key={i} borderTop="1px solid" borderColor="gray.100" _hover={{ bg: 'blue.50' }}>
+                    <Box as="td" p={3} fontWeight="600" color="gray.700">{feature}</Box>
+                    <Box as="td" p={3} textAlign="center" bg="blue.50" fontWeight="600" color="blue.700">{us}</Box>
+                    <Box as="td" p={3} textAlign="center" color="gray.600">{revShare}</Box>
+                    <Box as="td" p={3} textAlign="center" color="gray.600">{iosOnly}</Box>
+                  </Box>
+                ))}
+              </Box>
+            </Box>
+          </Box>
+
+          <Text textAlign="center" fontSize="xs" color="gray.500" mt={4}>
+            Comparison based on publicly available information as of 2024. Pricing may vary.
+          </Text>
+        </Container>
+      </Box>
+
       {/* Features Grid */}
       <Box id="features" py={{ base: 16, md: 20 }}>
         <Container maxW="1200px">
