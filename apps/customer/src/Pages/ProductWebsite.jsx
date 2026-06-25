@@ -240,7 +240,7 @@ const ProductWebsite = () => {
               </Box>
               <Box as="tbody">
                 {[
-                  ['Monthly Cost', '$149 flat', '25% of revenue', 'From $75/mo'],
+                  ['Monthly Cost', '$149 flat', '25% of revenue', 'From $300/mo'],
                   ['Payment Processing', 'Direct to YOUR bank', 'They collect & pay you', 'Direct to you'],
                   ['Platform Fee on Transactions', 'None — 0%', '25% cut', 'None'],
                   ['Pickup & Delivery Management', '✓', '✓ (their drivers only)', '✗'],
