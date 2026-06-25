@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import {
   Box, Container, Heading, Text, Button, VStack, HStack, SimpleGrid, Icon,
   Flex, Badge, List, ListItem, ListIcon, Accordion, AccordionItem,
@@ -8,6 +8,10 @@ import { FiCheck, FiTruck, FiSmartphone, FiClock, FiDollarSign, FiShield,
   FiUsers, FiBarChart2, FiMail, FiCamera, FiArrowRight } from 'react-icons/fi';
 
 const ProductWebsite = () => {
+  // Set correct page title for the platform marketing page
+  useEffect(() => {
+    document.title = 'Smart Laundry Basket — The All-in-One Platform for Laundromat Owners';
+  }, []);
   return (
     <Box bg="white" minH="100vh">
       {/* Sticky Navbar */}
@@ -484,6 +488,14 @@ const ProductWebsite = () => {
                 <Text as="a" href="/onboard" _hover={{ color: 'white' }}>Get Started</Text>
                 <Text as="a" href="https://calendar.app.google/Gu7fDZWRHYtrZK5H8" target="_blank" _hover={{ color: 'white' }}>Book Demo</Text>
                 <Text as="a" href="mailto:roundrocklaundry@gmail.com" _hover={{ color: 'white' }}>Contact</Text>
+              </VStack>
+              <VStack align="flex-start" spacing={2}>
+                <Text fontWeight="bold" color="white">Contact</Text>
+                <Text fontSize="xs">900 E Palm Valley Blvd</Text>
+                <Text fontSize="xs">Ste 1006-1007</Text>
+                <Text fontSize="xs">Round Rock, TX 78664</Text>
+                <Text as="a" href="tel:5124977435" fontSize="xs" _hover={{ color: 'white' }}>(512) 497-7435</Text>
+                <Text as="a" href="mailto:roundrocklaundry@gmail.com" fontSize="xs" _hover={{ color: 'white' }}>roundrocklaundry@gmail.com</Text>
               </VStack>
             </HStack>
           </Flex>
