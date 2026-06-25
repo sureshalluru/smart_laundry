@@ -920,13 +920,29 @@ async def get_customer_tracking(
         cur.execute(
             """
             SELECT order_status, payment_status, grand_total, balance_due,
-                   pickup_date, dropoff_date, services, laundry_id
+                   pickup_date, dropoff_date
             FROM orders.orders
             WHERE order_id = %s AND laundry_id = %s
             """,
             (order_id, laundryId),
         )
         order_row = cur.fetchone()
+
+        # Fetch order services from separate table
+        order_services = []
+        if order_row:
+            cur.execute(
+                """
+                SELECT service_name, service_price, weight_or_count
+                FROM orders.order_services
+                WHERE order_id = %s
+                """,
+                (order_id,),
+            )
+            order_services = [
+                {"service": r["service_name"], "servicePrice": str(r["service_price"] or 0), "weightOrCount": str(r["weight_or_count"] or 1)}
+                for r in cur.fetchall()
+            ]
 
     response = CustomerTrackingResponse(orderId=order_id)
 
@@ -947,7 +963,7 @@ async def get_customer_tracking(
         response.balanceDue = str(order_row["balance_due"]) if order_row["balance_due"] else None
         response.pickupDate = order_row["pickup_date"]
         response.dropoffDate = order_row["dropoff_date"]
-        response.services = order_row["services"] if isinstance(order_row.get("services"), list) else []
+        response.services = order_services
 
         # Generate payment link if unpaid (balance > 0)
         if order_row["payment_status"] != "Paid" and order_row.get("balance_due") and float(order_row["balance_due"] or 0) > 0:
