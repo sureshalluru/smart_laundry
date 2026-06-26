@@ -193,7 +193,7 @@ def _get_laundry_info(cur, laundry_id, is_customer=None):
         "laundryTimeZone": shop["laundry_timezone"],
         "stripePublicKey": shop["stripe_public_key"] or "",
         "stripeTerminalExists": bool(shop["stripe_terminal_id"]),
-        "deliveryTimeInterval": str(shop["delivery_time_interval"] or ""),
+        "deliveryTimeInterval": str(shop["delivery_time_interval"] or 2),
         "laundryAddress": addr,
         "laundryServices": laundry_services,
         "serviceCategories": service_categories,
