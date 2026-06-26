@@ -48,15 +48,15 @@ const ProductWebsite = () => {
         <Container maxW="800px" textAlign="center" position="relative" zIndex="2">
           <VStack spacing={6}>
             <Badge bg="whiteAlpha.200" color="white" px={4} py={1} borderRadius="full" fontSize="xs" fontWeight="600">
-              The platform that puts money back in your pocket
+              2-Minute Setup • No Hardware • No Hidden Costs
             </Badge>
             <Heading fontSize={{ base: '3xl', md: '5xl', lg: '6xl' }} color="white" lineHeight="shorter" fontWeight="800"
               textShadow="0 2px 30px rgba(0,0,0,0.5)">
-              Stop Giving Away 25% of Every Load
+              Run Your Entire Wash & Fold Operation from One Platform.
             </Heading>
             <Text fontSize={{ base: 'md', md: 'lg' }} color="white" maxW="650px" lineHeight="tall" fontWeight="500"
               textShadow="0 1px 10px rgba(0,0,0,0.4)">
-              Other laundry platforms take a cut of every transaction. Smart Laundry Basket charges a flat $149/mo — and we never touch your payments. Customers pay directly to YOUR Stripe account, money goes straight to YOUR bank. Free until you hit $3K/month.
+              POS, customer website, pickup & delivery, AI garment tracking, route optimization. Set up in 2 minutes. Free until your revenue hits $3K/month — then just $149/month. No contracts. No hardware.
             </Text>
             <HStack spacing={4} pt={2} flexWrap="wrap" justify="center">
               <Button as="a" href="/onboard" size="lg" colorScheme="blue" borderRadius="full" px={8} boxShadow="lg"
@@ -92,10 +92,10 @@ const ProductWebsite = () => {
                 <VStack spacing={4} align="stretch">
                   <Text fontWeight="700" fontSize="lg" color="red.200">With Other Platforms</Text>
                   <Box bg="red.800" borderRadius="lg" p={4}>
-                    <Text fontSize="sm" color="red.200">If you process <strong>$8,000/mo</strong></Text>
-                    <Text fontSize="sm" color="red.200">and they take <strong>25%</strong>...</Text>
-                    <Text fontSize="2xl" fontWeight="800" color="red.300" mt={2}>-$2,000/mo</Text>
-                    <Text fontSize="sm" color="red.300">That's $24,000/year gone.</Text>
+                    <Text fontSize="sm" color="red.200">Over <strong>$300/mo</strong> for basic software</Text>
+                    <Text fontSize="sm" color="red.200">Plus hardware costs, setup fees, onboarding calls...</Text>
+                    <Text fontSize="2xl" fontWeight="800" color="red.300" mt={2}>$4,200+/year</Text>
+                    <Text fontSize="sm" color="red.300">And still no AI tracking or free website.</Text>
                   </Box>
                 </VStack>
               </Box>
@@ -105,17 +105,17 @@ const ProductWebsite = () => {
                 <VStack spacing={4} align="stretch">
                   <Text fontWeight="700" fontSize="lg" color="green.200">With Smart Laundry Basket</Text>
                   <Box bg="green.800" borderRadius="lg" p={4}>
-                    <Text fontSize="sm" color="green.200">You pay a flat</Text>
+                    <Text fontSize="sm" color="green.200">Everything included at</Text>
                     <Text fontSize="2xl" fontWeight="800" color="green.300">$149/mo</Text>
-                    <Text fontSize="sm" color="green.200" mt={2}>You save <strong>$1,851/mo</strong> ($22,212/year)</Text>
+                    <Text fontSize="sm" color="green.200" mt={2}>POS + AI tracking + website + routing. <strong>No hardware. No hidden fees.</strong></Text>
                   </Box>
                 </VStack>
               </Box>
             </SimpleGrid>
 
             <Box bg="whiteAlpha.100" borderRadius="2xl" px={8} py={6} border="1px solid" borderColor="whiteAlpha.200">
-              <Text fontSize="sm" color="gray.400" mb={1}>Average annual savings</Text>
-              <Heading fontSize={{ base: '3xl', md: '5xl' }} color="green.300">Save $22,000+ per year</Heading>
+              <Text fontSize="sm" color="gray.400" mb={1}>Save over $2,400/year vs other platforms</Text>
+              <Heading fontSize={{ base: '3xl', md: '5xl' }} color="green.300">More Features. Half the Price.</Heading>
             </Box>
           </VStack>
         </Container>

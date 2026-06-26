@@ -15,6 +15,11 @@ const EngagementPage = () => {
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [stats, setStats] = useState(null);
+    const [selectedBucket, setSelectedBucket] = useState(null); // 'abandoned' | 'dormant' | 'winback' | 'active'
+    const [bucketCustomers, setBucketCustomers] = useState([]);
+    const [loadingCustomers, setLoadingCustomers] = useState(false);
+    const [sendingNotifyId, setSendingNotifyId] = useState(null);
+    const [customerSearch, setCustomerSearch] = useState('');
 
     const [config, setConfig] = useState({
         isActive: true,
@@ -93,6 +98,45 @@ const EngagementPage = () => {
         }
     };
 
+    const handleBucketClick = async (bucket) => {
+        if (selectedBucket === bucket) { setSelectedBucket(null); setBucketCustomers([]); return; }
+        setSelectedBucket(bucket);
+        setLoadingCustomers(true);
+        try {
+            const res = await axios.get(`${process.env.REACT_APP_AWS_API_URL}/api/engagement/customers`, {
+                params: { laundryId, bucket },
+                headers: { Authorization: `Bearer ${authToken}` }
+            });
+            setBucketCustomers(res.data?.body?.customers || []);
+        } catch (err) {
+            setBucketCustomers([]);
+            toast({ title: 'Error loading customers', status: 'error', duration: 3000 });
+        } finally {
+            setLoadingCustomers(false);
+        }
+    };
+
+    const handleNotifyCustomer = async (customerId, phone) => {
+        if (!selectedBucket) return;
+        setSendingNotifyId(customerId);
+        try {
+            await axios.post(`${process.env.REACT_APP_AWS_API_URL}/api/engagement/notify`, {
+                laundryId, customerId, bucket: selectedBucket
+            }, { headers: { Authorization: `Bearer ${authToken}` } });
+            toast({ title: 'Reminder sent!', status: 'success', duration: 2000 });
+            // Update the customer in the list to show they were just notified
+            setBucketCustomers(prev => prev.map(c =>
+                c.customerId === customerId
+                    ? { ...c, lastNotified: new Date().toISOString().slice(0, 16).replace('T', ' '), timesNotified: (c.timesNotified || 0) + 1 }
+                    : c
+            ));
+        } catch (err) {
+            toast({ title: 'Failed to send', description: err.response?.data?.body?.message || err.message, status: 'error', duration: 3000 });
+        } finally {
+            setSendingNotifyId(null);
+        }
+    };
+
     if (loading) return <Flex justify="center" p={10}><Spinner size="xl" /></Flex>;
 
     return (
@@ -103,22 +147,85 @@ const EngagementPage = () => {
                     <Text color="gray.600" mt={1}>Automated reminders to bring customers back and grow revenue</Text>
                 </Box>
 
-                {/* Stats Overview */}
+                {/* Stats Overview — clickable to show customers */}
                 {stats && (
                     <SimpleGrid columns={{ base: 2, md: 4 }} spacing={4}>
-                        <Card><CardBody textAlign="center">
+                        <Card cursor="pointer" onClick={() => handleBucketClick('active')} border={selectedBucket === 'active' ? '2px solid' : 'none'} borderColor="green.400" _hover={{ shadow: 'md' }}><CardBody textAlign="center">
                             <Stat><StatLabel>Active (30d)</StatLabel><StatNumber color="green.500">{stats.active}</StatNumber><StatHelpText>Ordered recently</StatHelpText></Stat>
                         </CardBody></Card>
-                        <Card><CardBody textAlign="center">
+                        <Card cursor="pointer" onClick={() => handleBucketClick('abandoned')} border={selectedBucket === 'abandoned' ? '2px solid' : 'none'} borderColor="orange.400" _hover={{ shadow: 'md' }}><CardBody textAlign="center">
                             <Stat><StatLabel>Abandoned</StatLabel><StatNumber color="orange.500">{stats.abandoned}</StatNumber><StatHelpText>Never ordered</StatHelpText></Stat>
                         </CardBody></Card>
-                        <Card><CardBody textAlign="center">
+                        <Card cursor="pointer" onClick={() => handleBucketClick('dormant')} border={selectedBucket === 'dormant' ? '2px solid' : 'none'} borderColor="yellow.400" _hover={{ shadow: 'md' }}><CardBody textAlign="center">
                             <Stat><StatLabel>Dormant</StatLabel><StatNumber color="yellow.600">{stats.dormant}</StatNumber><StatHelpText>30-90 days inactive</StatHelpText></Stat>
                         </CardBody></Card>
-                        <Card><CardBody textAlign="center">
+                        <Card cursor="pointer" onClick={() => handleBucketClick('winback')} border={selectedBucket === 'winback' ? '2px solid' : 'none'} borderColor="red.400" _hover={{ shadow: 'md' }}><CardBody textAlign="center">
                             <Stat><StatLabel>Win-back</StatLabel><StatNumber color="red.500">{stats.winback}</StatNumber><StatHelpText>90+ days inactive</StatHelpText></Stat>
                         </CardBody></Card>
                     </SimpleGrid>
+                )}
+
+                {/* Customer list for selected bucket */}
+                {selectedBucket && (
+                    <Box bg="white" borderRadius="md" boxShadow="sm" p={4} border="1px solid" borderColor="gray.200">
+                        <HStack justify="space-between" mb={3}>
+                            <Text fontWeight="bold" fontSize="md" color="gray.700">
+                                {selectedBucket === 'active' ? 'Active' : selectedBucket === 'abandoned' ? 'Abandoned' : selectedBucket === 'dormant' ? 'Dormant' : 'Win-back'} Customers
+                            </Text>
+                            <Badge colorScheme="blue">{bucketCustomers.length} shown</Badge>
+                        </HStack>
+                        <Input
+                            placeholder="Search by name or phone..."
+                            value={customerSearch}
+                            onChange={(e) => setCustomerSearch(e.target.value)}
+                            size="sm" mb={3} borderRadius="md"
+                        />
+                        {loadingCustomers ? (
+                            <Flex justify="center" py={6}><Spinner /></Flex>
+                        ) : bucketCustomers.length === 0 ? (
+                            <Text color="gray.500" textAlign="center" py={4}>No customers in this bucket</Text>
+                        ) : (
+                            <VStack spacing={2} align="stretch" maxH="400px" overflowY="auto">
+                                {bucketCustomers
+                                    .filter(cust => {
+                                        if (!customerSearch) return true;
+                                        const q = customerSearch.toLowerCase();
+                                        return (cust.name || '').toLowerCase().includes(q) || (cust.phone || '').includes(q);
+                                    })
+                                    .map((cust, idx) => (
+                                    <HStack key={cust.customerId || idx} p={3} bg="gray.50" borderRadius="md" justify="space-between" flexWrap="wrap">
+                                        <Box flex="1" minW="200px">
+                                            <Text fontWeight="600" fontSize="sm">{cust.name}</Text>
+                                            <Text fontSize="xs" color="gray.500">{cust.phone}</Text>
+                                        </Box>
+                                        <Box minW="140px">
+                                            {cust.lastOrderDate && <Text fontSize="xs" color="gray.600">Last order: {cust.lastOrderDate}</Text>}
+                                            {cust.registeredDate && <Text fontSize="xs" color="gray.600">Registered: {cust.registeredDate}</Text>}
+                                            {cust.totalOrders && <Text fontSize="xs" color="green.600">Orders (30d): {cust.totalOrders}</Text>}
+                                        </Box>
+                                        <Box minW="160px" textAlign="right">
+                                            {cust.lastNotified ? (
+                                                <Text fontSize="xs" color="blue.600">Notified: {cust.lastNotified}</Text>
+                                            ) : (
+                                                <Text fontSize="xs" color="orange.500">Not yet notified</Text>
+                                            )}
+                                            {cust.timesNotified > 0 && (
+                                                <Text fontSize="xs" color="gray.400">{cust.timesNotified} reminder{cust.timesNotified > 1 ? 's' : ''} sent</Text>
+                                            )}
+                                        </Box>
+                                        {selectedBucket && (
+                                            <Button size="xs" colorScheme="blue" variant="outline" ml={2}
+                                                onClick={() => handleNotifyCustomer(cust.customerId, cust.phone)}
+                                                isLoading={sendingNotifyId === cust.customerId}
+                                            >
+                                                Notify
+                                            </Button>
+                                        )}
+                                    </HStack>
+                                ))}
+                            </VStack>
+                        )}
+                    </Box>
                 )}
 
                 {/* Master Toggle */}

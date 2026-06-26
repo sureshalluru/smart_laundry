@@ -111,6 +111,20 @@ export default function PlatformAdminPage() {
         }
     };
 
+    const handleDeleteLaundry = async (laundryId, laundryName) => {
+        try {
+            const res = await axios.delete(`${API_URL}/api/platform/laundries/${laundryId}`, { headers });
+            if (res.data.status === 'success') {
+                toast({ title: `"${laundryName}" deleted`, status: 'success', duration: 3000 });
+                setLaundries(prev => prev.filter(l => l.laundryId !== laundryId));
+            } else {
+                toast({ title: 'Error', description: res.data.message, status: 'error', duration: 3000 });
+            }
+        } catch (err) {
+            toast({ title: 'Delete failed', description: err.response?.data?.message || err.message, status: 'error', duration: 4000 });
+        }
+    };
+
     const viewOwnerCredentials = async (laundryId) => {
         try {
             const res = await axios.get(`${API_URL}/api/platform/laundries/${laundryId}/owner-credentials`, { headers });
@@ -335,6 +349,14 @@ export default function PlatformAdminPage() {
                                         Send Credentials
                                     </Button>
                                 </HStack>
+                                <Button size="xs" colorScheme="red" variant="ghost" w="100%"
+                                    onClick={() => {
+                                        if (window.confirm(`DELETE "${l.laundryName}" and ALL its data? This cannot be undone.`)) {
+                                            handleDeleteLaundry(l.laundryId, l.laundryName);
+                                        }
+                                    }}>
+                                    🗑️ Delete Laundry
+                                </Button>
                             </VStack>
                         </Box>
                     ))}

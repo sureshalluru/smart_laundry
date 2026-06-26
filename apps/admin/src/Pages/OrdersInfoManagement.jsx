@@ -106,6 +106,7 @@ const OrdersInfo = ({orderOperation, validateEmpCredentials, stripePublicKey, st
     const [empId, setEmpId] = useState('');
     const [passcode, setPasscode] = useState('');
     const [statusFilter, setStatusFilter] = useState('');
+    const [activeStatusChip, setActiveStatusChip] = useState('All');
     const [paymentFilter, setPaymentFilter] = useState('');
     const [orderStatusMap, setOrderStatusMap] = useState({});
     const [servicesToAddMap, setServicesToAddMap] = useState({});
@@ -334,12 +335,35 @@ const getInstantPickupWindow = (laundryTimeZone) => {
                 normalizeString(order.customerName).includes(normalizeString(searchTerm)) // Match Customer Name
                 : true;
 
-            // Match active orders with status filter
+            // Match active orders with status filter (chip-based or dropdown)
             const matchesOrderStatus =
                 orderOperation === 'active'
-                    ? statusFilter
-                        ? order.orderStatus === statusFilter
-                        : true // No status filter matches all
+                    ? (() => {
+                        // Chip filter takes priority for active orders
+                        if (activeStatusChip && activeStatusChip !== 'All') {
+                            switch (activeStatusChip) {
+                                case 'Submitted':
+                                    return order.orderStatus === 'OrderSubmitted';
+                                case 'Picked Up':
+                                    return order.orderStatus === 'ReadyForIntake';
+                                case 'At Facility':
+                                    return order.orderStatus === 'ReceivedAtFacility';
+                                case 'Processing':
+                                    return order.orderStatus === 'Processing' || order.orderStatus === 'ProcessingStarted';
+                                case 'Processed':
+                                    return order.orderStatus === 'ProcessingCompleted';
+                                case 'Ready':
+                                    return order.orderStatus === 'ReadyForDelivery' || order.orderStatus === 'EnRouteToDelivery';
+                                default:
+                                    return true;
+                            }
+                        }
+                        // Fallback to dropdown statusFilter
+                        if (statusFilter) {
+                            return order.orderStatus === statusFilter;
+                        }
+                        return true; // No filter matches all
+                    })()
                     : true;
 
             // Match completed orders with time filter
@@ -502,7 +526,7 @@ const getInstantPickupWindow = (laundryTimeZone) => {
 
         setFilteredOrders(filteredList);
 
-    }, [searchTerm, statusFilter, paymentFilter, orders, orderOperation, orderTab, sortOrder]);
+    }, [searchTerm, statusFilter, activeStatusChip, paymentFilter, orders, orderOperation, orderTab, sortOrder]);
 
 
     useEffect(() => {
@@ -3949,11 +3973,11 @@ const handleAssignLaundryDriver = async (customAddress) => {
                         </MenuButton>
                         <MenuList>
                             {statusOptions.map((status) => (
-                                <MenuItem key={status} onClick={() => setStatusFilter(status)}>
+                                <MenuItem key={status} onClick={() => { setStatusFilter(status); setActiveStatusChip('All'); }}>
                                     {status}
                                 </MenuItem>
                             ))}
-                            <MenuItem onClick={() => setStatusFilter("")}>Clear Filter</MenuItem>
+                            <MenuItem onClick={() => { setStatusFilter(""); setActiveStatusChip('All'); }}>Clear Filter</MenuItem>
                         </MenuList>
                     </Menu>
                 ) : orderOperation === "canceled" ? (
@@ -4040,6 +4064,70 @@ const handleAssignLaundryDriver = async (customAddress) => {
                     Commercial
                 </Button>
             </SimpleGrid>
+
+            {/* Status Filter Chips - Only for Active Orders */}
+            {orderOperation === 'active' && (
+                <Flex
+                    overflowX="auto"
+                    gap={2}
+                    mb={4}
+                    pb={2}
+                    css={{
+                        '&::-webkit-scrollbar': { height: '4px' },
+                        '&::-webkit-scrollbar-thumb': { background: '#CBD5E0', borderRadius: '4px' },
+                    }}
+                >
+                    {(() => {
+                        const statusChips = [
+                            { label: 'All', statuses: null },
+                            { label: 'Submitted', statuses: ['OrderSubmitted'] },
+                            { label: 'Picked Up', statuses: ['ReadyForIntake'] },
+                            { label: 'At Facility', statuses: ['ReceivedAtFacility'] },
+                            { label: 'Processing', statuses: ['Processing', 'ProcessingStarted'] },
+                            { label: 'Processed', statuses: ['ProcessingCompleted'] },
+                            { label: 'Ready', statuses: ['ReadyForDelivery', 'EnRouteToDelivery'] },
+                        ];
+
+                        // Filter orders by the active tab first (Online/In-Store/All/Commercial)
+                        const tabFilteredOrders = orders.filter((o) =>
+                            orderTab === 'all' ||
+                            (orderTab === 'instore' && o.orderId?.startsWith('IS-')) ||
+                            (orderTab === 'online' && o.orderId?.startsWith('O-')) ||
+                            (orderTab === 'commercial' && o.orderId?.startsWith('CL-'))
+                        );
+
+                        return statusChips.map((chip) => {
+                            const count = chip.statuses === null
+                                ? tabFilteredOrders.length
+                                : tabFilteredOrders.filter((o) => chip.statuses.includes(o.orderStatus)).length;
+                            const isSelected = activeStatusChip === chip.label;
+
+                            return (
+                                <Button
+                                    key={chip.label}
+                                    size="sm"
+                                    minW="auto"
+                                    px={4}
+                                    borderRadius="full"
+                                    fontWeight="medium"
+                                    fontSize="sm"
+                                    flexShrink={0}
+                                    variant={isSelected ? 'solid' : 'outline'}
+                                    colorScheme={isSelected ? 'blue' : 'gray'}
+                                    color={isSelected ? 'white' : 'gray.600'}
+                                    borderColor={isSelected ? 'blue.500' : 'gray.300'}
+                                    onClick={() => {
+                                        setActiveStatusChip(chip.label);
+                                        setStatusFilter(''); // Clear dropdown filter when chip is used
+                                    }}
+                                >
+                                    {chip.label} ({count})
+                                </Button>
+                            );
+                        });
+                    })()}
+                </Flex>
+            )}
 
 
             {/* Orders Section */}

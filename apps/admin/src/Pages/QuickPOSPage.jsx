@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   Box, Flex, Grid, GridItem, Button, Text, Input, VStack, HStack, Badge,
-  Icon, IconButton, InputGroup, InputLeftAddon, useToast
+  Icon, IconButton, InputGroup, InputLeftAddon, useToast, InputLeftElement, Divider
 } from '@chakra-ui/react';
 import { keyframes } from '@emotion/react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
-import { FaArrowLeft, FaCheck, FaTimes, FaMinus, FaPlus, FaPrint } from 'react-icons/fa';
+import { FaArrowLeft, FaCheck, FaTimes, FaMinus, FaPlus, FaPrint, FaSearch } from 'react-icons/fa';
 import { QuickPOSPaymentModalWrapper } from '../Components/QuickPOS/QuickPOSPaymentModal';
 import RegisterCustomer from '../hooks/RegisterCustomer';
 
@@ -45,6 +45,9 @@ export default function QuickPOSPage({ laundryId, stripePublicKey, stripeTermina
   const [newEmail, setNewEmail] = useState('');
   const [isRegistering, setIsRegistering] = useState(false);
   const toast = useToast();
+
+  // Service search/filter
+  const [serviceSearch, setServiceSearch] = useState('');
 
   useEffect(() => {
     const fetchServices = async () => {
@@ -188,7 +191,7 @@ export default function QuickPOSPage({ laundryId, stripePublicKey, stripeTermina
   return (
     <Flex h="100vh" w="100vw" position="fixed" top={0} left={0} bg="gray.50" zIndex={1300} direction={{ base: 'column', md: 'row' }}>
       {/* LEFT: Phone + Services Grid (clean, just tap targets) */}
-      <Box w={{ base: '100%', md: '55%' }} h="100%" overflowY="auto" p={3} bg="white">
+      <Box w={{ base: '100%', md: 'auto' }} flex={{ md: 1 }} h="100%" overflowY="auto" p={3} bg="white">
         <HStack mb={2} justify="space-between">
           <HStack>
             <Button variant="ghost" size="xs" leftIcon={<FaArrowLeft />} onClick={() => navigate(`/${laundryId}/admin/active-orders`)}>Active Orders</Button>
@@ -239,66 +242,88 @@ export default function QuickPOSPage({ laundryId, stripePublicKey, stripeTermina
           </Box>
         )}
 
-        {/* Services Grid — large tap targets, nothing else */}
+        {/* Search services */}
+        <InputGroup size="sm" mb={3}>
+          <InputLeftElement pointerEvents="none">
+            <Icon as={FaSearch} color="gray.400" boxSize={3} />
+          </InputLeftElement>
+          <Input placeholder="Search services..." value={serviceSearch}
+            onChange={(e) => setServiceSearch(e.target.value)}
+            bg="gray.50" borderRadius="lg" border="1px solid" borderColor="gray.200"
+            _focus={{ borderColor: 'blue.300', bg: 'white' }} />
+        </InputGroup>
+
+        {/* Services Grid — clean uniform cards */}
         <Grid templateColumns={{ base: 'repeat(2, 1fr)', md: 'repeat(3, 1fr)', lg: 'repeat(4, 1fr)' }} gap={2}>
-          {services.map((svc, idx) => (
+          {services
+            .filter(svc => !serviceSearch || svc.serviceName?.toLowerCase().includes(serviceSearch.toLowerCase()))
+            .map((svc, idx) => {
+              const inCart = cart.find(i => i.serviceName === svc.serviceName);
+              return (
             <GridItem key={svc.serviceName || idx}>
-              <Button w="100%" h={{ base: '60px', md: '70px' }} bg={SERVICE_COLORS[idx % 9]} border="2px solid"
-                borderColor={SERVICE_BORDERS[idx % 9]} borderRadius="lg" flexDirection="column"
-                onClick={() => addToCart(svc)} _hover={{ transform: 'scale(1.02)', shadow: 'md' }}
+              <Button w="100%" h={{ base: '68px', md: '76px' }} bg={inCart ? 'blue.50' : 'white'}
+                border="1px solid" borderColor={inCart ? 'blue.400' : 'gray.200'}
+                borderRadius="xl" flexDirection="column" position="relative"
+                onClick={() => addToCart(svc)} _hover={{ bg: 'gray.50', shadow: 'sm', borderColor: 'blue.300' }}
                 _active={{ transform: 'scale(0.97)' }} transition="all 0.12s"
                 animation={animatingItem === svc.serviceName ? `${popIn} 0.25s ease` : undefined}>
-                <Text fontWeight="bold" fontSize="xs" textAlign="center" noOfLines={1}>{svc.serviceName}</Text>
-                <Text fontSize="sm" fontWeight="bold" color="gray.700">
+                {inCart && (
+                  <Badge position="absolute" top={1} right={1} colorScheme="blue" borderRadius="full" fontSize="9px" px={1.5}>
+                    {inCart.quantity}{inCart.isWeight ? 'lb' : ''}
+                  </Badge>
+                )}
+                <Text fontWeight="600" fontSize="xs" textAlign="center" noOfLines={2} color="gray.800">{svc.serviceName}</Text>
+                <Text fontSize="sm" fontWeight="700" color="blue.600" mt={0.5}>
                   ${parseFloat(svc.price || 0).toFixed(2)}{svc.inputWeight ? '/lb' : ''}
                 </Text>
               </Button>
             </GridItem>
-          ))}
+              );
+          })}
         </Grid>
       </Box>
 
-      {/* RIGHT: Cart (with weight/qty) + Summary */}
-      <Box w={{ base: '100%', md: '45%' }} h="100%" bg="gray.800" color="white" display="flex" flexDirection="column">
+      {/* RIGHT: Cart + Summary — light clean panel */}
+      <Box w={{ base: '100%', md: '320px' }} minW="320px" h="100%" bg="white" borderLeft="1px solid" borderColor="gray.200" display="flex" flexDirection="column">
         {/* Cart items with inline controls */}
         <Box flex={1} overflowY="auto" p={3}>
           <HStack justify="space-between" mb={2}>
-            <Text fontSize="md" fontWeight="bold">Cart ({cart.length})</Text>
+            <Text fontSize="md" fontWeight="bold" color="gray.800">Cart ({cart.length})</Text>
             <HStack>
-              <Text fontSize="xs">Bags:</Text>
-              <IconButton icon={<FaMinus />} size="xs" variant="outline" colorScheme="whiteAlpha" onClick={() => setBags(Math.max(1, bags-1))} aria-label="-" />
-              <Text fontWeight="bold" fontSize="sm">{bags}</Text>
-              <IconButton icon={<FaPlus />} size="xs" variant="outline" colorScheme="whiteAlpha" onClick={() => setBags(bags+1)} aria-label="+" />
+              <Text fontSize="xs" color="gray.600">Bags:</Text>
+              <IconButton icon={<FaMinus />} size="xs" variant="outline" colorScheme="gray" onClick={() => setBags(Math.max(1, bags-1))} aria-label="-" />
+              <Text fontWeight="bold" fontSize="sm" color="gray.800">{bags}</Text>
+              <IconButton icon={<FaPlus />} size="xs" variant="outline" colorScheme="gray" onClick={() => setBags(bags+1)} aria-label="+" />
             </HStack>
           </HStack>
 
           {cart.length === 0 ? (
-            <Text color="gray.500" textAlign="center" py={8} fontSize="sm">Tap services on the left to add items</Text>
+            <Text color="gray.400" textAlign="center" py={8} fontSize="sm">Tap services on the left to add items</Text>
           ) : (
             <VStack spacing={2} align="stretch">
               {cart.map(item => {
                 const qty = item.isWeight ? (parseFloat(item.inputWeight) || 0) : item.quantity;
                 const lineTotal = item.price * qty;
                 return (
-                  <Box key={item.serviceName} bg="gray.700" borderRadius="md" p={2}>
+                  <Box key={item.serviceName} bg="gray.50" borderRadius="lg" p={2} border="1px solid" borderColor="gray.100">
                     <HStack justify="space-between" mb={1}>
-                      <Text fontSize="sm" fontWeight="semibold" noOfLines={1} flex={1}>{item.serviceName}</Text>
-                      <Text fontSize="sm" fontWeight="bold" color="green.300">${lineTotal.toFixed(2)}</Text>
+                      <Text fontSize="sm" fontWeight="semibold" noOfLines={1} flex={1} color="gray.800">{item.serviceName}</Text>
+                      <Text fontSize="sm" fontWeight="bold" color="blue.600">${lineTotal.toFixed(2)}</Text>
                       <IconButton icon={<FaTimes />} size="xs" variant="ghost" colorScheme="red" onClick={() => removeFromCart(item.serviceName)} aria-label="x" />
                     </HStack>
                     <HStack>
-                      <Text fontSize="xs" color="gray.400" minW="50px">${item.price.toFixed(2)}{item.isWeight ? '/lb' : ' ea'}</Text>
+                      <Text fontSize="xs" color="gray.500" minW="50px">${item.price.toFixed(2)}{item.isWeight ? '/lb' : ' ea'}</Text>
                       {item.isWeight ? (
                         <InputGroup size="sm" maxW="120px">
                           <Input placeholder="0" value={item.inputWeight} onChange={(e) => updateWeight(item.serviceName, e.target.value)}
-                            type="number" textAlign="center" bg="gray.600" borderColor="orange.400" _focus={{ borderColor: 'orange.300' }} />
-                          <InputLeftAddon bg="orange.600" color="white" fontSize="xs">lbs</InputLeftAddon>
+                            type="number" textAlign="center" bg="white" borderColor="orange.300" _focus={{ borderColor: 'orange.400' }} />
+                          <InputLeftAddon bg="orange.100" color="orange.700" fontSize="xs">lbs</InputLeftAddon>
                         </InputGroup>
                       ) : (
                         <HStack spacing={1}>
-                          <IconButton icon={<FaMinus />} size="xs" variant="solid" colorScheme="gray" onClick={() => updateQuantity(item.serviceName, -1)} aria-label="-" />
-                          <Text fontWeight="bold" fontSize="md" minW="25px" textAlign="center">{item.quantity}</Text>
-                          <IconButton icon={<FaPlus />} size="xs" variant="solid" colorScheme="gray" onClick={() => updateQuantity(item.serviceName, 1)} aria-label="+" />
+                          <IconButton icon={<FaMinus />} size="xs" variant="outline" colorScheme="gray" onClick={() => updateQuantity(item.serviceName, -1)} aria-label="-" />
+                          <Text fontWeight="bold" fontSize="md" minW="25px" textAlign="center" color="gray.800">{item.quantity}</Text>
+                          <IconButton icon={<FaPlus />} size="xs" variant="outline" colorScheme="gray" onClick={() => updateQuantity(item.serviceName, 1)} aria-label="+" />
                         </HStack>
                       )}
                     </HStack>
@@ -310,31 +335,31 @@ export default function QuickPOSPage({ laundryId, stripePublicKey, stripeTermina
         </Box>
 
         {/* Bottom: Summary + Complete (sticky) */}
-        <Box p={3} bg="gray.900" borderTop="1px solid" borderColor="gray.700">
+        <Box p={3} bg="gray.50" borderTop="1px solid" borderColor="gray.200">
           <HStack justify="space-between" mb={1}>
-            <Text fontSize="sm">Subtotal</Text><Text fontSize="sm" fontWeight="bold">${subtotal.toFixed(2)}</Text>
+            <Text fontSize="sm" color="gray.600">Subtotal</Text><Text fontSize="sm" fontWeight="bold" color="gray.800">${subtotal.toFixed(2)}</Text>
           </HStack>
 
           {/* Need By */}
           <HStack spacing={1} mb={2}>
-            <Text fontSize="xs">Need by:</Text>
+            <Text fontSize="xs" color="gray.600">Need by:</Text>
             <Button size="xs" h="26px" variant={needBy === 'asap' ? 'solid' : 'outline'}
-              colorScheme={needBy === 'asap' ? 'green' : 'whiteAlpha'} onClick={() => setNeedBy('asap')}>ASAP</Button>
+              colorScheme={needBy === 'asap' ? 'green' : 'gray'} onClick={() => setNeedBy('asap')}>ASAP</Button>
             <Button size="xs" h="26px" variant={needBy === 'tomorrow' ? 'solid' : 'outline'}
-              colorScheme={needBy === 'tomorrow' ? 'blue' : 'whiteAlpha'}
+              colorScheme={needBy === 'tomorrow' ? 'blue' : 'gray'}
               onClick={() => { const d = new Date(); d.setDate(d.getDate()+1); setNeedBy(d.toISOString().split('T')[0]); }}>Tomorrow</Button>
-            <Input type="date" size="xs" h="26px" w="110px" bg="gray.700" borderColor={needBy !== 'asap' && needBy !== 'tomorrow' ? 'blue.300' : 'gray.600'}
+            <Input type="date" size="xs" h="26px" w="110px" bg="white" borderColor={needBy !== 'asap' && needBy !== 'tomorrow' ? 'blue.300' : 'gray.300'}
               value={needBy !== 'asap' && needBy !== 'tomorrow' ? needBy : ''}
               onChange={(e) => setNeedBy(e.target.value || 'asap')} />
           </HStack>
 
-          {/* Tip — matches AdminCreateOrder */}
+          {/* Tip */}
           <HStack spacing={1} mb={2} flexWrap="wrap">
-            <Text fontSize="xs" mr={1}>Tip:</Text>
+            <Text fontSize="xs" mr={1} color="gray.600">Tip:</Text>
             {['5', '10', '15'].map(pct => (
               <Button key={pct} size="xs" h="26px" minW="35px"
                 variant={tip.tipOption === pct ? 'solid' : 'outline'}
-                colorScheme={tip.tipOption === pct ? 'blue' : 'whiteAlpha'}
+                colorScheme={tip.tipOption === pct ? 'blue' : 'gray'}
                 onClick={() => {
                   const amt = ((subtotal * parseInt(pct)) / 100).toFixed(2);
                   setTip({ tipOption: pct, tipType: 'percentage', tipPercentage: parseInt(pct), tipAmount: amt, customTip: '' });
@@ -344,28 +369,30 @@ export default function QuickPOSPage({ laundryId, stripePublicKey, stripeTermina
             ))}
             <Button size="xs" h="26px" minW="45px"
               variant={tip.tipOption === 'custom' ? 'solid' : 'outline'}
-              colorScheme={tip.tipOption === 'custom' ? 'orange' : 'whiteAlpha'}
+              colorScheme={tip.tipOption === 'custom' ? 'orange' : 'gray'}
               onClick={() => setTip(prev => ({ ...prev, tipOption: 'custom', tipType: 'custom' }))}>
               Custom
             </Button>
             <Button size="xs" h="26px" minW="40px"
               variant={tip.tipOption === 'noTip' ? 'solid' : 'outline'}
-              colorScheme={tip.tipOption === 'noTip' ? 'gray' : 'whiteAlpha'}
+              colorScheme={tip.tipOption === 'noTip' ? 'gray' : 'gray'}
               onClick={() => setTip({ tipOption: 'noTip', tipType: 'noTip', tipPercentage: 0, tipAmount: '0.00', customTip: '' })}>
               None
             </Button>
             {tip.tipOption === 'custom' && (
-              <Input placeholder="$" w="55px" size="xs" h="26px" bg="gray.700" value={tip.customTip} textAlign="center"
+              <Input placeholder="$" w="55px" size="xs" h="26px" bg="white" value={tip.customTip} textAlign="center"
                 onChange={(e) => { const v = e.target.value.replace(/[^0-9.]/g, ''); setTip(prev => ({ ...prev, customTip: v, tipAmount: v || '0.00' })); }}
                 type="text" />
             )}
-            {tipAmount > 0 && <Text fontSize="xs" color="green.300" ml={1}>${tipAmount.toFixed(2)}</Text>}
+            {tipAmount > 0 && <Text fontSize="xs" color="blue.600" ml={1} fontWeight="600">${tipAmount.toFixed(2)}</Text>}
           </HStack>
+
+          <Divider mb={2} />
 
           {/* Total */}
           <HStack justify="space-between" mb={2}>
-            <Text fontSize="lg" fontWeight="bold">TOTAL</Text>
-            <Text fontSize="2xl" fontWeight="bold" color="green.300">${total.toFixed(2)}</Text>
+            <Text fontSize="lg" fontWeight="bold" color="gray.800">Total</Text>
+            <Text fontSize="2xl" fontWeight="bold" color="blue.600">${total.toFixed(2)}</Text>
           </HStack>
 
           {/* Complete — opens payment modal */}

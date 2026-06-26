@@ -7,6 +7,126 @@ import {
 import { FiDollarSign, FiShoppingBag, FiUsers, FiTrendingUp, FiDownload } from 'react-icons/fi';
 import axios from 'axios';
 
+/* ─── Donut Chart Component ─── */
+function DonutChart({ segments }) {
+    // segments: [{ value, color, label }]
+    const total = segments.reduce((sum, s) => sum + (s.value || 0), 0);
+    if (total === 0) {
+        return (
+            <svg viewBox="0 0 36 36" width="130" height="130">
+                <circle cx="18" cy="18" r="15.9" fill="none" stroke="#E2E8F0" strokeWidth="3" />
+                <text x="18" y="19" textAnchor="middle" fontSize="4" fill="#A0AEC0">No data</text>
+            </svg>
+        );
+    }
+
+    let offset = 25; // start from top (SVG circle starts at 3 o'clock, offset 25 = 12 o'clock)
+    const circles = segments.map((seg, i) => {
+        const pct = (seg.value / total) * 100;
+        const circle = (
+            <circle
+                key={i}
+                cx="18"
+                cy="18"
+                r="15.9"
+                fill="none"
+                stroke={seg.color}
+                strokeWidth="3.5"
+                strokeDasharray={`${pct} ${100 - pct}`}
+                strokeDashoffset={-offset}
+                strokeLinecap="round"
+            />
+        );
+        offset += pct;
+        return circle;
+    });
+
+    return (
+        <svg viewBox="0 0 36 36" width="130" height="130">
+            <circle cx="18" cy="18" r="15.9" fill="none" stroke="#E2E8F0" strokeWidth="3" />
+            {circles}
+            <text x="18" y="17" textAnchor="middle" fontSize="5" fontWeight="bold" fill="#2D3748">{total}</text>
+            <text x="18" y="21" textAnchor="middle" fontSize="2.5" fill="#718096">orders</text>
+        </svg>
+    );
+}
+
+/* ─── Horizontal Bar (relative width) ─── */
+function HorizontalBar({ value, maxValue, color }) {
+    const pct = maxValue > 0 ? Math.max((value / maxValue) * 100, 4) : 0;
+    return (
+        <Box w="100%" bg="gray.100" borderRadius="full" h="8px" overflow="hidden">
+            <Box bg={color} h="100%" borderRadius="full" w={`${pct}%`} transition="width 0.3s ease" />
+        </Box>
+    );
+}
+
+/* ─── Revenue Trend Mini Bar Chart ─── */
+function RevenueTrendBars({ today, week, month }) {
+    const maxVal = Math.max(today || 0, week || 0, month || 0, 1);
+    const bars = [
+        { label: 'Today', value: today || 0, color: 'blue.400' },
+        { label: 'Week', value: week || 0, color: 'teal.400' },
+        { label: 'Month', value: month || 0, color: 'purple.400' },
+    ];
+
+    return (
+        <HStack spacing={4} align="flex-end" h="100px" justify="center">
+            {bars.map((bar, i) => {
+                const heightPct = maxVal > 0 ? Math.max((bar.value / maxVal) * 100, 8) : 8;
+                return (
+                    <VStack key={i} spacing={1} align="center">
+                        <Text fontSize="xs" fontWeight="600" color="gray.600">${bar.value.toFixed(0)}</Text>
+                        <Box
+                            w="36px"
+                            h={`${heightPct}%`}
+                            bg={bar.color}
+                            borderRadius="md"
+                            minH="8px"
+                            transition="height 0.3s ease"
+                        />
+                        <Text fontSize="xs" color="gray.500">{bar.label}</Text>
+                    </VStack>
+                );
+            })}
+        </HStack>
+    );
+}
+
+/* ─── Segmented Bar (Repeat vs New) ─── */
+function SegmentedBar({ newCount, repeatCount }) {
+    const total = (newCount || 0) + (repeatCount || 0);
+    if (total === 0) {
+        return (
+            <VStack spacing={1} align="stretch">
+                <Box w="100%" bg="gray.100" borderRadius="full" h="14px" />
+                <Text fontSize="xs" color="gray.400" textAlign="center">No customer data</Text>
+            </VStack>
+        );
+    }
+    const newPct = (newCount / total) * 100;
+    const repeatPct = (repeatCount / total) * 100;
+
+    return (
+        <VStack spacing={2} align="stretch">
+            <Box w="100%" bg="gray.100" borderRadius="full" h="14px" overflow="hidden" display="flex">
+                <Box bg="purple.400" h="100%" w={`${repeatPct}%`} transition="width 0.3s ease" />
+                <Box bg="orange.400" h="100%" w={`${newPct}%`} transition="width 0.3s ease" />
+            </Box>
+            <HStack justify="space-between" fontSize="xs">
+                <HStack spacing={1}>
+                    <Box w="10px" h="10px" borderRadius="sm" bg="purple.400" />
+                    <Text color="gray.600">Repeat: {repeatCount} ({repeatPct.toFixed(0)}%)</Text>
+                </HStack>
+                <HStack spacing={1}>
+                    <Box w="10px" h="10px" borderRadius="sm" bg="orange.400" />
+                    <Text color="gray.600">New: {newCount} ({newPct.toFixed(0)}%)</Text>
+                </HStack>
+            </HStack>
+        </VStack>
+    );
+}
+
 export default function DashboardPage({ laundryId }) {
     const [summary, setSummary] = useState(null);
     const [topServices, setTopServices] = useState([]);
@@ -151,6 +271,10 @@ export default function DashboardPage({ laundryId }) {
     const ord = summary?.orders || {};
     const cust = summary?.customers || {};
 
+    // Computed values
+    const avgOrderValue = ord.month > 0 ? (rev.month / ord.month) : 0;
+    const repeatCustomers = Math.max((cust.total || 0) - (cust.newThisMonth || 0), 0);
+
     return (
         <Box p={{ base: 3, md: 6 }}>
             <Flex justify="space-between" align="center" mb={4} flexWrap="wrap" gap={3}>
@@ -213,42 +337,49 @@ export default function DashboardPage({ laundryId }) {
             </Flex>
 
             {/* KPI Cards */}
-            <SimpleGrid columns={{ base: 2, md: 4 }} spacing={4} mb={6}>
+            <SimpleGrid columns={{ base: 2, md: 5 }} spacing={4} mb={6}>
                 <Box bg="white" p={4} borderRadius="xl" boxShadow="sm" border="1px solid" borderColor="gray.100">
                     <Stat>
                         <StatLabel fontSize="xs" color="gray.500">Today's Revenue</StatLabel>
-                        <StatNumber fontSize={{ base: 'lg', md: '2xl' }}>${rev.today?.toFixed(2)}</StatNumber>
+                        <StatNumber fontSize={{ base: 'lg', md: '2xl' }}>${(rev.today || 0).toFixed(2)}</StatNumber>
                         <StatHelpText fontSize="xs">
-                            <StatArrow type={rev.growth >= 0 ? 'increase' : 'decrease'} />
-                            {Math.abs(rev.growth)}% vs last month
+                            <StatArrow type={(rev.growth || 0) >= 0 ? 'increase' : 'decrease'} />
+                            {Math.abs(rev.growth || 0)}% vs last month
                         </StatHelpText>
                     </Stat>
                 </Box>
                 <Box bg="white" p={4} borderRadius="xl" boxShadow="sm" border="1px solid" borderColor="gray.100">
                     <Stat>
                         <StatLabel fontSize="xs" color="gray.500">Monthly Revenue</StatLabel>
-                        <StatNumber fontSize={{ base: 'lg', md: '2xl' }}>${rev.month?.toFixed(2)}</StatNumber>
-                        <StatHelpText fontSize="xs">Week: ${rev.week?.toFixed(2)}</StatHelpText>
+                        <StatNumber fontSize={{ base: 'lg', md: '2xl' }}>${(rev.month || 0).toFixed(2)}</StatNumber>
+                        <StatHelpText fontSize="xs">Week: ${(rev.week || 0).toFixed(2)}</StatHelpText>
                     </Stat>
                 </Box>
                 <Box bg="white" p={4} borderRadius="xl" boxShadow="sm" border="1px solid" borderColor="gray.100">
                     <Stat>
                         <StatLabel fontSize="xs" color="gray.500">Orders ({period === "custom" ? "Custom Range" : `Last ${period} days`})</StatLabel>
-                        <StatNumber fontSize={{ base: 'lg', md: '2xl' }}>{ord.month}</StatNumber>
-                        <StatHelpText fontSize="xs">Today: {ord.today} | Active: {ord.active}</StatHelpText>
+                        <StatNumber fontSize={{ base: 'lg', md: '2xl' }}>{ord.month || 0}</StatNumber>
+                        <StatHelpText fontSize="xs">Today: {ord.today || 0} | Active: {ord.active || 0}</StatHelpText>
                     </Stat>
                 </Box>
                 <Box bg="white" p={4} borderRadius="xl" boxShadow="sm" border="1px solid" borderColor="gray.100">
                     <Stat>
                         <StatLabel fontSize="xs" color="gray.500">Customers</StatLabel>
-                        <StatNumber fontSize={{ base: 'lg', md: '2xl' }}>{cust.total}</StatNumber>
-                        <StatHelpText fontSize="xs">+{cust.newThisMonth} new this month</StatHelpText>
+                        <StatNumber fontSize={{ base: 'lg', md: '2xl' }}>{cust.total || 0}</StatNumber>
+                        <StatHelpText fontSize="xs">+{cust.newThisMonth || 0} new this month</StatHelpText>
+                    </Stat>
+                </Box>
+                <Box bg="white" p={4} borderRadius="xl" boxShadow="sm" border="1px solid" borderColor="gray.100">
+                    <Stat>
+                        <StatLabel fontSize="xs" color="gray.500">Avg Order Value</StatLabel>
+                        <StatNumber fontSize={{ base: 'lg', md: '2xl' }}>${avgOrderValue.toFixed(2)}</StatNumber>
+                        <StatHelpText fontSize="xs">Revenue ÷ Orders</StatHelpText>
                     </Stat>
                 </Box>
             </SimpleGrid>
 
             {/* Alerts */}
-            {ord.unpaid > 0 && (
+            {(ord.unpaid || 0) > 0 && (
                 <Box bg="red.50" border="1px solid" borderColor="red.200" borderRadius="lg" p={3} mb={6}>
                     <Text fontSize="sm" color="red.600" fontWeight="600">
                         ⚠️ {ord.unpaid} active order{ord.unpaid > 1 ? 's' : ''} with unpaid balance
@@ -256,24 +387,33 @@ export default function DashboardPage({ laundryId }) {
                 </Box>
             )}
 
-            <SimpleGrid columns={{ base: 1, lg: 2 }} spacing={6}>
-                {/* Order Breakdown */}
+            <SimpleGrid columns={{ base: 1, lg: 2 }} spacing={6} mb={6}>
+                {/* Order Breakdown with Donut Chart */}
                 <Box bg="white" p={5} borderRadius="xl" boxShadow="sm">
                     <Text fontWeight="700" mb={4}>Order Breakdown ({period === "custom" ? "Custom Range" : `Last ${period} days`})</Text>
-                    <SimpleGrid columns={3} spacing={3}>
-                        <Box textAlign="center" p={3} bg="blue.50" borderRadius="lg">
-                            <Text fontSize="2xl" fontWeight="700" color="blue.600">{breakdown?.byType?.Online || 0}</Text>
-                            <Text fontSize="xs" color="gray.500">Online</Text>
-                        </Box>
-                        <Box textAlign="center" p={3} bg="green.50" borderRadius="lg">
-                            <Text fontSize="2xl" fontWeight="700" color="green.600">{breakdown?.byType?.InStore || 0}</Text>
-                            <Text fontSize="xs" color="gray.500">In-Store</Text>
-                        </Box>
-                        <Box textAlign="center" p={3} bg="purple.50" borderRadius="lg">
-                            <Text fontSize="2xl" fontWeight="700" color="purple.600">{breakdown?.byType?.Commercial || 0}</Text>
-                            <Text fontSize="xs" color="gray.500">Commercial</Text>
-                        </Box>
-                    </SimpleGrid>
+                    <Flex align="center" justify="center" gap={6} flexWrap="wrap">
+                        <DonutChart
+                            segments={[
+                                { value: breakdown?.byType?.Online || 0, color: '#3182CE', label: 'Online' },
+                                { value: breakdown?.byType?.InStore || 0, color: '#38A169', label: 'In-Store' },
+                                { value: breakdown?.byType?.Commercial || 0, color: '#805AD5', label: 'Commercial' },
+                            ]}
+                        />
+                        <VStack spacing={2} align="flex-start">
+                            <HStack spacing={2}>
+                                <Box w="12px" h="12px" borderRadius="sm" bg="blue.500" />
+                                <Text fontSize="sm">Online: <b>{breakdown?.byType?.Online || 0}</b></Text>
+                            </HStack>
+                            <HStack spacing={2}>
+                                <Box w="12px" h="12px" borderRadius="sm" bg="green.500" />
+                                <Text fontSize="sm">In-Store: <b>{breakdown?.byType?.InStore || 0}</b></Text>
+                            </HStack>
+                            <HStack spacing={2}>
+                                <Box w="12px" h="12px" borderRadius="sm" bg="purple.500" />
+                                <Text fontSize="sm">Commercial: <b>{breakdown?.byType?.Commercial || 0}</b></Text>
+                            </HStack>
+                        </VStack>
+                    </Flex>
                     <Divider my={4} />
                     <Text fontSize="sm" fontWeight="600" mb={2}>Payment Status</Text>
                     <HStack spacing={3}>
@@ -282,21 +422,60 @@ export default function DashboardPage({ laundryId }) {
                     </HStack>
                 </Box>
 
-                {/* Top Services */}
+                {/* Top Services with Horizontal Bars */}
                 <Box bg="white" p={5} borderRadius="xl" boxShadow="sm">
                     <Text fontWeight="700" mb={4}>Top Services ({period === "custom" ? "Custom Range" : `Last ${period} days`})</Text>
                     <VStack spacing={3} align="stretch">
-                        {topServices.slice(0, 5).map((svc, i) => (
-                            <Flex key={i} justify="space-between" align="center">
-                                <VStack align="flex-start" spacing={0}>
-                                    <Text fontSize="sm" fontWeight="500">{svc.service}</Text>
-                                    <Text fontSize="xs" color="gray.400">{svc.orders} orders</Text>
-                                </VStack>
-                                <Text fontSize="sm" fontWeight="700" color="green.600">${svc.revenue.toFixed(2)}</Text>
-                            </Flex>
-                        ))}
-                        {topServices.length === 0 && <Text fontSize="sm" color="gray.400">No data yet</Text>}
+                        {topServices.length > 0 ? (
+                            (() => {
+                                const maxRevenue = Math.max(...topServices.slice(0, 5).map(s => s.revenue || 0), 1);
+                                return topServices.slice(0, 5).map((svc, i) => (
+                                    <Box key={i}>
+                                        <Flex justify="space-between" align="center" mb={1}>
+                                            <VStack align="flex-start" spacing={0}>
+                                                <Text fontSize="sm" fontWeight="500">{svc.service}</Text>
+                                                <Text fontSize="xs" color="gray.400">{svc.orders} orders</Text>
+                                            </VStack>
+                                            <Text fontSize="sm" fontWeight="700" color="green.600">${svc.revenue.toFixed(2)}</Text>
+                                        </Flex>
+                                        <HorizontalBar value={svc.revenue} maxValue={maxRevenue} color="green.400" />
+                                    </Box>
+                                ));
+                            })()
+                        ) : (
+                            <Text fontSize="sm" color="gray.400">No data yet</Text>
+                        )}
                     </VStack>
+                </Box>
+
+                {/* Revenue Trend */}
+                <Box bg="white" p={5} borderRadius="xl" boxShadow="sm">
+                    <Text fontWeight="700" mb={4}>Revenue Trend</Text>
+                    <RevenueTrendBars
+                        today={rev.today || 0}
+                        week={rev.week || 0}
+                        month={rev.month || 0}
+                    />
+                </Box>
+
+                {/* Repeat vs New Customers */}
+                <Box bg="white" p={5} borderRadius="xl" boxShadow="sm">
+                    <Text fontWeight="700" mb={4}>Repeat vs New Customers</Text>
+                    <SegmentedBar
+                        newCount={cust.newThisMonth || 0}
+                        repeatCount={repeatCustomers}
+                    />
+                    <Divider my={3} />
+                    <SimpleGrid columns={2} spacing={3}>
+                        <Box textAlign="center" p={2} bg="purple.50" borderRadius="lg">
+                            <Text fontSize="xl" fontWeight="700" color="purple.600">{repeatCustomers}</Text>
+                            <Text fontSize="xs" color="gray.500">Repeat</Text>
+                        </Box>
+                        <Box textAlign="center" p={2} bg="orange.50" borderRadius="lg">
+                            <Text fontSize="xl" fontWeight="700" color="orange.600">{cust.newThisMonth || 0}</Text>
+                            <Text fontSize="xs" color="gray.500">New This Month</Text>
+                        </Box>
+                    </SimpleGrid>
                 </Box>
 
                 {/* Employee Performance */}

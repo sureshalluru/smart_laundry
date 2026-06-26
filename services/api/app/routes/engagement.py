@@ -411,3 +411,166 @@ async def get_engagement_stats(
             }
         }
     }
+
+
+@router.get("/customers")
+async def get_engagement_customers(
+    laundryId: str = Query(...),
+    bucket: str = Query(...),  # 'abandoned', 'dormant', 'winback', 'active'
+    current_user: dict = Depends(get_current_user),
+):
+    """
+    Get customers in a specific engagement bucket with notification history.
+    Returns: name, phone, last order date, last notification sent, total notifications sent.
+    """
+    if bucket not in ("abandoned", "dormant", "winback", "active"):
+        return {"statusCode": 400, "body": {"status": "error", "message": "Invalid bucket"}}
+
+    with get_db() as conn:
+        cur = get_cursor(conn)
+
+        if bucket == "abandoned":
+            cur.execute("""
+                SELECT c.customer_id, c.first_name, c.last_name, c.phone_number, c.email, c.created_at,
+                       (SELECT MAX(cr.sent_at) FROM shop.customer_reminders cr
+                        WHERE cr.customer_id::text = c.customer_id AND cr.laundry_id = %s AND cr.reminder_type = 'abandoned') as last_notified,
+                       (SELECT COUNT(*) FROM shop.customer_reminders cr
+                        WHERE cr.customer_id::text = c.customer_id AND cr.laundry_id = %s AND cr.reminder_type = 'abandoned') as times_notified
+                FROM shop.customer_payment_profiles cpp
+                JOIN shop.customers c ON c.customer_id = cpp.customer_id
+                WHERE cpp.laundry_id = %s
+                  AND NOT EXISTS (SELECT 1 FROM orders.orders o WHERE o.customer_id = c.customer_id AND o.laundry_id = %s)
+                  AND c.created_at > NOW() - INTERVAL '7 months'
+                ORDER BY c.created_at DESC
+                LIMIT 100
+            """, (laundryId, laundryId, laundryId, laundryId))
+
+        elif bucket == "dormant":
+            cur.execute("""
+                SELECT c.customer_id, c.first_name, c.last_name, c.phone_number, c.email,
+                       MAX(o.created_at) as last_order_date,
+                       (SELECT MAX(cr.sent_at) FROM shop.customer_reminders cr
+                        WHERE cr.customer_id::text = c.customer_id AND cr.laundry_id = %s AND cr.reminder_type = 'dormant') as last_notified,
+                       (SELECT COUNT(*) FROM shop.customer_reminders cr
+                        WHERE cr.customer_id::text = c.customer_id AND cr.laundry_id = %s AND cr.reminder_type = 'dormant') as times_notified
+                FROM orders.orders o
+                JOIN shop.customers c ON c.customer_id = o.customer_id
+                WHERE o.laundry_id = %s
+                GROUP BY c.customer_id, c.first_name, c.last_name, c.phone_number, c.email
+                HAVING MAX(o.created_at) < NOW() - INTERVAL '30 days'
+                   AND MAX(o.created_at) > NOW() - INTERVAL '90 days'
+                ORDER BY MAX(o.created_at) DESC
+                LIMIT 100
+            """, (laundryId, laundryId, laundryId))
+
+        elif bucket == "winback":
+            cur.execute("""
+                SELECT c.customer_id, c.first_name, c.last_name, c.phone_number, c.email,
+                       MAX(o.created_at) as last_order_date,
+                       (SELECT MAX(cr.sent_at) FROM shop.customer_reminders cr
+                        WHERE cr.customer_id::text = c.customer_id AND cr.laundry_id = %s AND cr.reminder_type = 'winback') as last_notified,
+                       (SELECT COUNT(*) FROM shop.customer_reminders cr
+                        WHERE cr.customer_id::text = c.customer_id AND cr.laundry_id = %s AND cr.reminder_type = 'winback') as times_notified
+                FROM orders.orders o
+                JOIN shop.customers c ON c.customer_id = o.customer_id
+                WHERE o.laundry_id = %s
+                GROUP BY c.customer_id, c.first_name, c.last_name, c.phone_number, c.email
+                HAVING MAX(o.created_at) < NOW() - INTERVAL '90 days'
+                ORDER BY MAX(o.created_at) DESC
+                LIMIT 100
+            """, (laundryId, laundryId, laundryId))
+
+        elif bucket == "active":
+            cur.execute("""
+                SELECT c.customer_id, c.first_name, c.last_name, c.phone_number, c.email,
+                       MAX(o.created_at) as last_order_date,
+                       COUNT(o.order_id) as total_orders
+                FROM orders.orders o
+                JOIN shop.customers c ON c.customer_id = o.customer_id
+                WHERE o.laundry_id = %s AND o.created_at > NOW() - INTERVAL '30 days'
+                GROUP BY c.customer_id, c.first_name, c.last_name, c.phone_number, c.email
+                ORDER BY MAX(o.created_at) DESC
+                LIMIT 100
+            """, (laundryId,))
+
+        rows = cur.fetchall()
+
+    customers = []
+    for r in rows:
+        cust = {
+            "customerId": r["customer_id"],
+            "name": f"{r.get('first_name', '') or ''} {r.get('last_name', '') or ''}".strip() or "Unknown",
+            "phone": r.get("phone_number", ""),
+            "email": r.get("email", ""),
+        }
+        if "last_order_date" in r and r["last_order_date"]:
+            cust["lastOrderDate"] = r["last_order_date"].strftime("%Y-%m-%d")
+        elif "created_at" in r and r["created_at"]:
+            cust["registeredDate"] = r["created_at"].strftime("%Y-%m-%d")
+        if "last_notified" in r and r["last_notified"]:
+            cust["lastNotified"] = r["last_notified"].strftime("%Y-%m-%d %H:%M")
+        if "times_notified" in r:
+            cust["timesNotified"] = r["times_notified"]
+        if "total_orders" in r:
+            cust["totalOrders"] = r["total_orders"]
+        customers.append(cust)
+
+    return {"statusCode": 200, "body": {"status": "success", "customers": customers}}
+
+
+@router.post("/notify")
+async def notify_customer(
+    body: dict = Body(...),
+    current_user: dict = Depends(get_current_user),
+):
+    """
+    Manually send a reminder to a specific customer.
+    Uses the configured message template for the given bucket.
+    """
+    laundry_id = body.get("laundryId")
+    customer_id = body.get("customerId")
+    bucket = body.get("bucket")  # 'abandoned', 'dormant', 'winback'
+
+    if not all([laundry_id, customer_id, bucket]):
+        return {"statusCode": 400, "body": {"status": "error", "message": "Missing laundryId, customerId, or bucket"}}
+
+    if bucket not in ("abandoned", "dormant", "winback", "active"):
+        return {"statusCode": 400, "body": {"status": "error", "message": "Invalid bucket for notification"}}
+
+    with get_db() as conn:
+        cur = get_cursor(conn)
+
+        # Get engagement config
+        cur.execute("SELECT * FROM shop.engagement_config WHERE laundry_id = %s", (laundry_id,))
+        config = cur.fetchone()
+        if not config:
+            return {"statusCode": 400, "body": {"status": "error", "message": "Engagement not configured for this laundry"}}
+
+        # Get customer info
+        cur.execute("SELECT first_name, phone_number, email FROM shop.customers WHERE customer_id = %s", (customer_id,))
+        cust = cur.fetchone()
+        if not cust:
+            return {"statusCode": 404, "body": {"status": "error", "message": "Customer not found"}}
+
+        # Get laundry name
+        cur.execute("SELECT laundry_name FROM shop.laundry_shops WHERE laundry_id = %s", (laundry_id,))
+        shop = cur.fetchone()
+        laundry_name = shop["laundry_name"] if shop else "Your Laundry"
+
+        # Get the message template and promo for this bucket
+        message_key = f"{bucket}_message"
+        promo_key = f"{bucket}_promo_code"
+        template = config.get(message_key, "Hi {name}, we'd love to see you again at {laundry}!")
+        promo_code = config.get(promo_key, "")
+
+        promo_text = _get_promo_text(promo_code, laundry_id)
+        message = _format_message(template, cust["first_name"], laundry_name, promo_text)
+
+        # Send the notification
+        sent = _send_reminder(cur, customer_id, laundry_id, bucket, "manual", message,
+                              promo_code, cust["phone_number"], cust.get("email"))
+
+    if sent:
+        return {"statusCode": 200, "body": {"status": "success", "message": "Reminder sent successfully"}}
+    else:
+        return {"statusCode": 500, "body": {"status": "error", "message": "Failed to send reminder — no phone or email on file"}}

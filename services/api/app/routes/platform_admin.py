@@ -88,6 +88,61 @@ async def list_laundries(x_platform_key: str = Header(None)):
     return {"status": "success", "laundries": laundries}
 
 
+@router.delete("/laundries/{laundry_id}")
+async def delete_laundry(laundry_id: str, x_platform_key: str = Header(None)):
+    """
+    Delete a laundry and ALL its associated data.
+    This is destructive and irreversible. Used for cleaning up test tenants.
+    """
+    verify_platform_admin(x_platform_key)
+
+    with get_db() as conn:
+        cur = get_cursor(conn)
+
+        # Verify laundry exists
+        cur.execute("SELECT laundry_name FROM shop.laundry_shops WHERE laundry_id = %s", (laundry_id,))
+        row = cur.fetchone()
+        if not row:
+            return {"status": "error", "message": f"Laundry {laundry_id} not found"}
+
+        laundry_name = row["laundry_name"]
+
+        # Delete in dependency order (child tables first)
+        # Use safe deletes — skip if table doesn't exist
+        safe_deletes = [
+            "DELETE FROM routes.route_assignments WHERE laundry_id = %s",
+            "DELETE FROM shop.engagement_config WHERE laundry_id = %s",
+            "DELETE FROM shop.customer_reminders WHERE laundry_id = %s",
+            "DELETE FROM orders.order_payments WHERE order_id IN (SELECT order_id FROM orders.orders WHERE laundry_id = %s)",
+            "DELETE FROM orders.order_services WHERE order_id IN (SELECT order_id FROM orders.orders WHERE laundry_id = %s)",
+            "DELETE FROM orders.order_products WHERE order_id IN (SELECT order_id FROM orders.orders WHERE laundry_id = %s)",
+            "DELETE FROM orders.laundry_frequency WHERE laundry_id = %s",
+            "DELETE FROM orders.orders WHERE laundry_id = %s",
+            "UPDATE shop.laundry_services SET category_id = NULL WHERE laundry_id = %s",
+            "DELETE FROM shop.service_categories WHERE laundry_id = %s",
+            "DELETE FROM shop.laundry_services WHERE laundry_id = %s",
+            "DELETE FROM shop.employees WHERE laundry_id = %s",
+            "DELETE FROM shop.delivery_time_slots WHERE laundry_id = %s",
+            "DELETE FROM shop.instore_pickup_time_slots WHERE laundry_id = %s",
+            "DELETE FROM shop.promotions WHERE laundry_id = %s",
+            "DELETE FROM shop.customer_payment_profiles WHERE laundry_id = %s",
+            "DELETE FROM shop.laundry_uber_credentials WHERE laundry_id = %s",
+            "DELETE FROM shop.laundry_shops WHERE laundry_id = %s",
+        ]
+
+        for sql in safe_deletes:
+            try:
+                cur.execute(sql, (laundry_id,))
+            except Exception as e:
+                # Table might not exist — rollback the failed statement and continue
+                conn.rollback()
+                logger.warning(f"Skipped during delete: {e}")
+                cur = get_cursor(conn)
+
+    logger.info(f"Deleted laundry: {laundry_name} (ID: {laundry_id})")
+    return {"status": "success", "message": f"Laundry '{laundry_name}' and all associated data deleted."}
+
+
 @router.post("/laundries")
 async def create_laundry(body: dict = Body(...), x_platform_key: str = Header(None)):
     """Create a new laundry + owner employee."""
@@ -489,18 +544,45 @@ async def self_service_onboard(body: dict = Body(...)):
                 VALUES (%s, %s, %s, 'Admin', %s, %s, TRUE, %s)
             """, (owner_emp_id, owner_first_name, owner_last_name, owner_passcode, next_id, owner_email))
 
-            # 3. Create services
-            for svc in services:
+            # 3. Create service categories and services
+            # Default categories (always created)
+            default_categories = [
+                {"name": "Wash & Fold (Per Pound)", "order": 1},
+                {"name": "Wash & Fold (Per Bag)", "order": 2},
+                {"name": "Comforters & Large Items", "order": 3},
+            ]
+            category_ids = {}
+            for cat in default_categories:
+                cur.execute("""
+                    INSERT INTO shop.service_categories (laundry_id, category_name, display_order)
+                    VALUES (%s, %s, %s) RETURNING category_id
+                """, (next_id, cat["name"], cat["order"]))
+                category_ids[cat["name"]] = cur.fetchone()["category_id"]
+
+            # Default services (one per category, used if no services provided)
+            default_services = [
+                {"serviceName": "Wash and Fold", "price": 1.59, "inputWeight": True, "categoryName": "Wash & Fold (Per Pound)"},
+                {"serviceName": "Wash & Fold Bag", "price": 30.00, "inputWeight": False, "categoryName": "Wash & Fold (Per Bag)"},
+                {"serviceName": "Comforter (Any Size)", "price": 22.00, "inputWeight": False, "categoryName": "Comforters & Large Items"},
+            ]
+
+            # Use provided services if available, otherwise use defaults
+            services_to_create = services if services else default_services
+
+            for svc in services_to_create:
                 svc_name = svc.get("serviceName", "").strip()
                 if not svc_name:
                     continue
                 price = float(svc.get("price", 0))
                 input_weight = svc.get("inputWeight", True)
                 customer_access = svc.get("customerAccess", True)
+                # Match to category if specified
+                cat_name = svc.get("categoryName", "")
+                cat_id = category_ids.get(cat_name) if cat_name else None
                 cur.execute("""
-                    INSERT INTO shop.laundry_services (laundry_id, service_name, price, input_weight, customer_access, is_active)
-                    VALUES (%s, %s, %s, %s, %s, TRUE)
-                """, (next_id, svc_name, price, input_weight, customer_access))
+                    INSERT INTO shop.laundry_services (laundry_id, service_name, price, input_weight, customer_access, is_active, category_id)
+                    VALUES (%s, %s, %s, %s, %s, TRUE, %s)
+                """, (next_id, svc_name, price, input_weight, customer_access, cat_id))
 
             # 4. Create delivery time slots
             for slot in delivery_time_slots:
