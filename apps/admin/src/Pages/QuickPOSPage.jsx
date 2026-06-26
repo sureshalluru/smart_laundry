@@ -140,32 +140,95 @@ export default function QuickPOSPage({ laundryId, stripePublicKey, stripeTermina
   const tipAmount = parseFloat(tip.tipAmount) || 0;
   const total = subtotal + tipAmount;
 
-  // Print
+  // Print — matches the regular order ticket format from OrdersInfoManagement
   const printTicket = (printOrderId) => {
-    const w = window.open('', 'PRINT', 'height=600,width=350');
-    if (!w) return;
-    const now = new Date().toLocaleString();
-    const items = cart.map(i => {
-      const qty = i.isWeight ? (parseFloat(i.inputWeight)||0) : i.quantity;
-      return `<tr><td>${i.serviceName}</td><td>${qty}${i.isWeight?'lb':''}</td><td>${(i.price*qty).toFixed(2)}</td></tr>`;
+    const orderSummary = cart.map(i => {
+      const qty = i.isWeight ? 1 : i.quantity;
+      const unit = i.isWeight ? `${parseFloat(i.inputWeight) || 0} lbs` : '';
+      return `<tr><td>${qty}</td><td>${i.serviceName}${unit ? ` (${unit})` : ''}</td></tr>`;
     }).join('');
-    w.document.write(`<html><head><title>Ticket</title><style>
-      body{font-family:monospace;font-size:12px;width:280px;margin:0 auto;padding:10px}
-      h2{text-align:center;margin:5px 0}.line{border-top:1px dashed #000;margin:8px 0}
-      table{width:100%}td{padding:2px 0}.total{font-size:14px;font-weight:bold;text-align:right}.center{text-align:center}
-    </style></head><body>
-      <h2>Order Ticket</h2><p class="center">${now}</p><div class="line"></div>
-      <p><strong>Order:</strong> ${printOrderId}</p>
-      <p><strong>Customer:</strong> ${customerName||customerPhone}</p>
-      <p><strong>Bags:</strong> ${bags}</p><div class="line"></div>
-      <table>${items}</table><div class="line"></div>
-      <p class="total">Subtotal: ${subtotal.toFixed(2)}</p>
-      ${tipAmount>0?`<p class="total">Tip: ${tipAmount.toFixed(2)}</p>`:''}
-      <p class="total">TOTAL: ${total.toFixed(2)}</p><div class="line"></div>
-      <p class="center">Thank you!</p>
-    </body></html>`);
-    w.document.close(); w.focus();
-    setTimeout(() => { w.print(); w.close(); }, 300);
+
+    const htmlContent = `
+      <html>
+        <head>
+          <style>
+            @page { size: auto; margin: 0; }
+            body {
+              font-family: Arial, sans-serif;
+              font-size: 14px;
+              font-weight: bold;
+              margin: 0;
+              padding: 0;
+              width: 80mm;
+            }
+            .ticket { padding: 10px; box-sizing: border-box; width: 80mm; }
+            .ticket-header { text-align: center; font-size: 16px; margin-bottom: 10px; }
+            .ticket-section { font-size: 14px; margin-bottom: 5px; }
+            .summary { font-size: 14px; margin-top: 10px; }
+            table { width: 100%; border-collapse: collapse; }
+            th, td { padding: 5px 0; }
+            .qr-code { text-align: center; margin-top: 10px; }
+            hr { border: none; border-top: 1px dashed #000; margin: 10px 0; }
+            .totals { margin-top: 10px; text-align: right; }
+          </style>
+        </head>
+        <body>
+          ${Array.from({length: bags}, (_, i) => `
+            <div class="ticket">
+              <div class="ticket-header">Ticket ${i + 1}/${bags} (Bag)</div>
+              <div class="ticket-section"><span>Order ID:</span> ${printOrderId}</div>
+              <div class="ticket-section"><span>Due:</span> ${needBy === 'asap' ? 'ASAP' : needBy}</div>
+              <div class="ticket-section"><span>Customer:</span> ${customerName || customerPhone}</div>
+              <div class="summary">
+                <span>Order Summary:</span>
+                <table>
+                  <thead><tr><th>Qty</th><th>Item Name</th></tr></thead>
+                  <tbody>${orderSummary}</tbody>
+                </table>
+              </div>
+              <hr/>
+              <div class="totals">
+                <div>Subtotal: $${subtotal.toFixed(2)}</div>
+                ${tipAmount > 0 ? `<div>Tip: $${tipAmount.toFixed(2)}</div>` : ''}
+                <div style="font-size:16px;">TOTAL: $${total.toFixed(2)}</div>
+              </div>
+              <div class="qr-code" id="qrcode-${i + 1}"></div>
+            </div>
+            ${i < bags - 1 ? '<hr>' : ''}
+          `).join('')}
+          <script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js"></script>
+          <script>
+            ${Array.from({length: bags}, (_, i) => `
+              QRCode.toDataURL('${printOrderId}', { width: 100, height: 100 }, (err, url) => {
+                const qr = document.getElementById('qrcode-${i + 1}');
+                if (!err && qr) { const img = document.createElement('img'); img.src = url; qr.appendChild(img); }
+              });
+            `).join('\n')}
+            setTimeout(() => { }, 800);
+          </script>
+        </body>
+      </html>
+    `;
+
+    // Print via hidden iframe — avoids popup window, cleaner UX
+    const iframe = document.createElement('iframe');
+    iframe.style.position = 'absolute';
+    iframe.style.top = '-9999px';
+    iframe.style.left = '-9999px';
+    iframe.style.width = '0';
+    iframe.style.height = '0';
+    document.body.appendChild(iframe);
+    const doc = iframe.contentDocument || iframe.contentWindow.document;
+    doc.open();
+    doc.write(htmlContent);
+    doc.close();
+    // Wait for QR codes to load, then print
+    setTimeout(() => {
+      iframe.contentWindow.focus();
+      iframe.contentWindow.print();
+      // Clean up iframe after print dialog closes
+      setTimeout(() => document.body.removeChild(iframe), 2000);
+    }, 800);
   };
 
   const resetPOS = () => {
