@@ -120,16 +120,20 @@ const EngagementPage = () => {
         if (!selectedBucket) return;
         setSendingNotifyId(customerId);
         try {
-            await axios.post(`${process.env.REACT_APP_AWS_API_URL}/api/engagement/notify`, {
+            const res = await axios.post(`${process.env.REACT_APP_AWS_API_URL}/api/engagement/notify`, {
                 laundryId, customerId, bucket: selectedBucket
             }, { headers: { Authorization: `Bearer ${authToken}` } });
-            toast({ title: 'Reminder sent!', status: 'success', duration: 2000 });
-            // Update the customer in the list to show they were just notified
-            setBucketCustomers(prev => prev.map(c =>
-                c.customerId === customerId
-                    ? { ...c, lastNotified: new Date().toISOString().slice(0, 16).replace('T', ' '), timesNotified: (c.timesNotified || 0) + 1 }
-                    : c
-            ));
+            const resBody = res.data?.body || res.data;
+            if (resBody?.status === 'success') {
+                toast({ title: 'Reminder sent!', status: 'success', duration: 2000 });
+                setBucketCustomers(prev => prev.map(c =>
+                    c.customerId === customerId
+                        ? { ...c, lastNotified: new Date().toISOString().slice(0, 16).replace('T', ' '), timesNotified: (c.timesNotified || 0) + 1 }
+                        : c
+                ));
+            } else {
+                toast({ title: 'Not sent', description: resBody?.message || 'Check SMS configuration', status: 'warning', duration: 4000 });
+            }
         } catch (err) {
             toast({ title: 'Failed to send', description: err.response?.data?.body?.message || err.message, status: 'error', duration: 3000 });
         } finally {

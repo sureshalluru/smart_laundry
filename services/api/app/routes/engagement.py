@@ -97,7 +97,7 @@ def _send_reminder(cur, customer_id, laundry_id, reminder_type, stage, message, 
     # Log the reminder
     cur.execute("""
         INSERT INTO shop.customer_reminders (laundry_id, customer_id, reminder_type, reminder_stage, promo_code, message_channel)
-        VALUES (%s, %s, %s, %s, %s, %s)
+        VALUES (%s, %s::text, %s, %s, %s, %s)
     """, (laundry_id, customer_id, reminder_type, stage,
           promo_code, 'sms' if phone else 'email'))
 
@@ -573,4 +573,7 @@ async def notify_customer(
     if sent:
         return {"statusCode": 200, "body": {"status": "success", "message": "Reminder sent successfully"}}
     else:
-        return {"statusCode": 500, "body": {"status": "error", "message": "Failed to send reminder — no phone or email on file"}}
+        # Check if it's a config issue vs no contact info
+        if not cust.get("phone_number") and not cust.get("email"):
+            return {"statusCode": 200, "body": {"status": "error", "message": "No phone or email on file for this customer"}}
+        return {"statusCode": 200, "body": {"status": "error", "message": "SMS/Email service not configured. Check Twilio settings."}}
