@@ -74,6 +74,7 @@ from app.routes import (
     item_tracking,
     route_planning,
     onboarding_verification,
+    reports,
 )
 
 app = FastAPI(
@@ -133,6 +134,7 @@ app.include_router(item_tracking.router, prefix="/api/admin", tags=["Item Tracki
 app.include_router(item_tracking.track_router, prefix="/api", tags=["Item Tracking Mobile"])
 app.include_router(route_planning.router, prefix="/api/routes", tags=["Route Planning"])
 app.include_router(onboarding_verification.router, prefix="/api/platform/onboard", tags=["Onboarding Verification"])
+app.include_router(reports.router, prefix="/api/admin/reports", tags=["Financial Reports"])
 
 
 # Block bot scanners probing for PHP/WordPress/exploit files
@@ -202,8 +204,9 @@ async def serve_customer_root(request: Request):
 async def serve_customer(request: Request, full_path: str):
     """Serve SPA for all non-API routes. Handles static files from both builds."""
     # Don't intercept API routes
-    if full_path.startswith("api"):
-        return {"error": "Not found"}
+    if full_path.startswith("api/") or full_path == "api":
+        from fastapi.responses import JSONResponse
+        return JSONResponse(status_code=404, content={"detail": "API endpoint not found"})
 
     # Helper to safely check if a path is a file (handles invalid chars, long paths)
     def _is_file_safe(path):

@@ -1333,3 +1333,332 @@ async def save_service_catalog_config(
         """, (services_json, laundry_id))
 
     return {"statusCode": 200, "body": {"message": "Service configuration saved successfully"}}
+
+
+# ── Financial Reports (added directly to admin_extra to avoid routing issues) ──
+
+@router.get("/financial-reports/sales-tax")
+async def get_financial_sales_tax(
+    laundryId: str = Query(...),
+    startDate: str = Query(...),
+    endDate: str = Query(...),
+    current_user: dict = Depends(get_current_user),
+):
+    """Sales tax report."""
+    with get_db() as conn:
+        cur = get_cursor(conn)
+        cur.execute("SELECT tax_rate FROM shop.laundry_shops WHERE laundry_id = %s", (laundryId,))
+        shop_row = cur.fetchone()
+        tax_rate = float(shop_row["tax_rate"] or 0) if shop_row else 0
+
+        cur.execute("""
+            SELECT COALESCE(SUM(grand_total), 0) AS gross_sales, COUNT(*) AS order_count
+            FROM orders.orders
+            WHERE laundry_id = %s AND created_at >= %s AND created_at < (%s::date + INTERVAL '1 day')
+              AND order_status != 'OrderCanceled'
+        """, (laundryId, startDate, endDate))
+        row = cur.fetchone()
+        gross_sales = float(row["gross_sales"] or 0)
+        order_count = int(row["order_count"] or 0)
+
+        if tax_rate > 0:
+            taxable_amount = round(gross_sales / (1 + tax_rate), 2)
+            tax_collected = round(gross_sales - taxable_amount, 2)
+        else:
+            taxable_amount = gross_sales
+            tax_collected = 0.0
+
+    return {"status": "success", "data": {
+        "grossSales": round(gross_sales, 2), "taxableAmount": taxable_amount,
+        "taxCollected": tax_collected, "taxRate": tax_rate,
+        "orderCount": order_count, "periodLabel": f"{startDate} to {endDate}",
+    }}
+
+
+@router.get("/financial-reports/tips")
+async def get_financial_tips(
+    laundryId: str = Query(...),
+    startDate: str = Query(...),
+    endDate: str = Query(...),
+    current_user: dict = Depends(get_current_user),
+):
+    """Tips report - reads from orders.order_tips table."""
+    with get_db() as conn:
+        cur = get_cursor(conn)
+        # Join order_tips with orders to filter by laundry and date range
+        cur.execute("""
+            SELECT ot.tip_amount, ot.tip_method, ot.tip_receiver_id
+            FROM orders.order_tips ot
+            JOIN orders.orders o ON o.order_id = ot.order_id
+            WHERE o.laundry_id = %s
+              AND o.created_at >= %s
+              AND o.created_at < (%s::date + INTERVAL '1 day')
+              AND o.order_status != 'OrderCanceled'
+              AND ot.tip_amount > 0
+        """, (laundryId, startDate, endDate))
+        rows = cur.fetchall()
+
+        total_tips = 0.0
+        tips_by_employee = {}
+        tips_by_method = {"cash": 0.0, "card": 0.0}
+
+        for row in rows:
+            tip_amount = float(row["tip_amount"] or 0)
+            if tip_amount <= 0:
+                continue
+            total_tips += tip_amount
+            method = (row["tip_method"] or "card").lower()
+            if method in tips_by_method:
+                tips_by_method[method] += tip_amount
+            else:
+                tips_by_method["card"] += tip_amount
+            receiver = row["tip_receiver_id"] or ""
+            if receiver:
+                receiver = str(receiver)
+                if receiver not in tips_by_employee:
+                    tips_by_employee[receiver] = {"tipsEarned": 0.0, "orderCount": 0}
+                tips_by_employee[receiver]["tipsEarned"] += tip_amount
+                tips_by_employee[receiver]["orderCount"] += 1
+
+        # Get employee names
+        tips_list = []
+        if tips_by_employee:
+            emp_ids = list(tips_by_employee.keys())
+            placeholders = ",".join(["%s"] * len(emp_ids))
+            cur.execute(f"SELECT emp_id, first_name, last_name FROM shop.employees WHERE emp_id IN ({placeholders})", emp_ids)
+            name_map = {str(r["emp_id"]): f"{r['first_name'] or ''} {r['last_name'] or ''}".strip() for r in cur.fetchall()}
+            for eid, data in tips_by_employee.items():
+                tips_list.append({"name": name_map.get(eid, "Unknown"), "tipsEarned": round(data["tipsEarned"], 2), "orderCount": data["orderCount"]})
+            tips_list.sort(key=lambda x: x["tipsEarned"], reverse=True)
+
+    return {"status": "success", "data": {
+        "totalTipsCollected": round(total_tips, 2), "tipsByEmployee": tips_list,
+        "tipsByMethod": {"cash": round(tips_by_method["cash"], 2), "card": round(tips_by_method["card"], 2)},
+    }}
+
+
+@router.get("/financial-reports/revenue-summary")
+async def get_financial_revenue(
+    laundryId: str = Query(...),
+    startDate: str = Query(...),
+    endDate: str = Query(...),
+    current_user: dict = Depends(get_current_user),
+):
+    """Revenue summary."""
+    with get_db() as conn:
+        cur = get_cursor(conn)
+        cur.execute("""
+            SELECT COALESCE(SUM(grand_total), 0) AS total_revenue,
+                COALESCE(SUM(CASE WHEN order_type = 'Online' THEN grand_total ELSE 0 END), 0) AS online_rev,
+                COALESCE(SUM(CASE WHEN order_type = 'InStore' THEN grand_total ELSE 0 END), 0) AS instore_rev,
+                COALESCE(SUM(CASE WHEN order_type = 'Commercial' THEN grand_total ELSE 0 END), 0) AS commercial_rev,
+                COALESCE(SUM(CASE WHEN payment_status = 'Unpaid' THEN grand_total ELSE 0 END), 0) AS unpaid_rev
+            FROM orders.orders
+            WHERE laundry_id = %s AND created_at >= %s AND created_at < (%s::date + INTERVAL '1 day')
+              AND order_status != 'OrderCanceled'
+        """, (laundryId, startDate, endDate))
+        r = cur.fetchone()
+
+    return {"status": "success", "data": {
+        "totalRevenue": round(float(r["total_revenue"] or 0), 2),
+        "revenueByType": {"online": round(float(r["online_rev"] or 0), 2), "instore": round(float(r["instore_rev"] or 0), 2), "commercial": round(float(r["commercial_rev"] or 0), 2)},
+        "revenueByService": [],
+        "cashRevenue": round(float(r["total_revenue"] or 0) - float(r["unpaid_rev"] or 0), 2),
+        "cardRevenue": 0.0,
+        "payLaterRevenue": round(float(r["unpaid_rev"] or 0), 2),
+    }}
+
+
+@router.get("/financial-reports/comptroller")
+async def get_financial_comptroller(
+    laundryId: str = Query(...),
+    startDate: str = Query(...),
+    endDate: str = Query(...),
+    current_user: dict = Depends(get_current_user),
+):
+    """State comptroller report."""
+    with get_db() as conn:
+        cur = get_cursor(conn)
+        cur.execute("SELECT tax_rate FROM shop.laundry_shops WHERE laundry_id = %s", (laundryId,))
+        shop_row = cur.fetchone()
+        tax_rate = float(shop_row["tax_rate"] or 0) if shop_row else 0
+
+        cur.execute("""
+            SELECT COALESCE(SUM(grand_total), 0) AS gross, COUNT(*) AS cnt
+            FROM orders.orders
+            WHERE laundry_id = %s AND created_at >= %s AND created_at < (%s::date + INTERVAL '1 day')
+              AND order_status != 'OrderCanceled'
+        """, (laundryId, startDate, endDate))
+        row = cur.fetchone()
+        gross = float(row["gross"] or 0)
+        cnt = int(row["cnt"] or 0)
+
+        if tax_rate > 0:
+            taxable = round(gross / (1 + tax_rate), 2)
+            tax_collected = round(gross - taxable, 2)
+        else:
+            taxable = gross
+            tax_collected = 0.0
+
+    return {"status": "success", "data": {
+        "reportingPeriod": f"{startDate} to {endDate}", "grossReceipts": round(gross, 2),
+        "taxableReceipts": taxable, "salesTaxCollected": tax_collected,
+        "taxRate": tax_rate, "totalOrders": cnt, "exemptSales": 0.0,
+    }}
+
+
+# ═══════════════════════════════════════════════════════════════
+# EXPENSES TRACKING
+# ═══════════════════════════════════════════════════════════════
+
+@router.get("/financial-reports/expenses")
+async def get_expenses(
+    laundryId: str = Query(...),
+    startDate: str = Query(...),
+    endDate: str = Query(...),
+    current_user: dict = Depends(get_current_user),
+):
+    """Get expenses for date range."""
+    with get_db() as conn:
+        cur = get_cursor(conn)
+        # Ensure table exists
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS shop.expenses (
+                expense_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                laundry_id TEXT NOT NULL,
+                category TEXT NOT NULL,
+                amount NUMERIC(10,2) NOT NULL DEFAULT 0,
+                expense_date DATE NOT NULL DEFAULT CURRENT_DATE,
+                description TEXT,
+                created_by TEXT,
+                created_at TIMESTAMPTZ DEFAULT NOW(),
+                updated_at TIMESTAMPTZ DEFAULT NOW()
+            )
+        """)
+        conn.commit()
+
+        cur.execute("""
+            SELECT expense_id, category, amount, expense_date, description, created_by, created_at
+            FROM shop.expenses
+            WHERE laundry_id = %s AND expense_date >= %s AND expense_date <= %s
+            ORDER BY expense_date DESC, created_at DESC
+        """, (laundryId, startDate, endDate))
+        rows = cur.fetchall()
+
+        expenses = [{
+            "expenseId": str(r["expense_id"]),
+            "category": r["category"],
+            "amount": float(r["amount"]),
+            "expenseDate": str(r["expense_date"]),
+            "description": r["description"] or "",
+            "createdBy": r["created_by"] or "",
+            "createdAt": r["created_at"].isoformat() if r["created_at"] else None,
+        } for r in rows]
+
+        # Summary by category
+        cur.execute("""
+            SELECT category, SUM(amount) as total, COUNT(*) as count
+            FROM shop.expenses
+            WHERE laundry_id = %s AND expense_date >= %s AND expense_date <= %s
+            GROUP BY category ORDER BY total DESC
+        """, (laundryId, startDate, endDate))
+        summary = [{
+            "category": r["category"],
+            "total": float(r["total"]),
+            "count": int(r["count"]),
+        } for r in cur.fetchall()]
+
+        total_expenses = sum(s["total"] for s in summary)
+
+    return {"status": "success", "data": {
+        "expenses": expenses,
+        "summary": summary,
+        "totalExpenses": round(total_expenses, 2),
+    }}
+
+
+@router.post("/financial-reports/expenses")
+async def add_expense(
+    laundryId: str = Query(...),
+    body: dict = Body({}),
+    current_user: dict = Depends(get_current_user),
+):
+    """Add a new expense."""
+    category = body.get("category", "").strip()
+    amount = float(body.get("amount", 0))
+    expense_date = body.get("expenseDate") or datetime.now().strftime("%Y-%m-%d")
+    description = body.get("description", "").strip()
+
+    if not category or amount <= 0:
+        return {"status": "error", "message": "Category and positive amount required"}
+
+    created_by = current_user.get("empId") or current_user.get("sub", "")
+
+    with get_db() as conn:
+        cur = get_cursor(conn)
+        # Ensure table exists
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS shop.expenses (
+                expense_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                laundry_id TEXT NOT NULL,
+                category TEXT NOT NULL,
+                amount NUMERIC(10,2) NOT NULL DEFAULT 0,
+                expense_date DATE NOT NULL DEFAULT CURRENT_DATE,
+                description TEXT,
+                created_by TEXT,
+                created_at TIMESTAMPTZ DEFAULT NOW(),
+                updated_at TIMESTAMPTZ DEFAULT NOW()
+            )
+        """)
+        conn.commit()
+
+        cur.execute("""
+            INSERT INTO shop.expenses (laundry_id, category, amount, expense_date, description, created_by)
+            VALUES (%s, %s, %s, %s, %s, %s)
+            RETURNING expense_id
+        """, (laundryId, category, amount, expense_date, description, created_by))
+        row = cur.fetchone()
+        expense_id = str(row["expense_id"])
+
+    return {"status": "success", "data": {"expenseId": expense_id, "message": "Expense added"}}
+
+
+@router.delete("/financial-reports/expenses")
+async def delete_expense(
+    laundryId: str = Query(...),
+    expenseId: str = Query(...),
+    current_user: dict = Depends(get_current_user),
+):
+    """Delete an expense."""
+    with get_db() as conn:
+        cur = get_cursor(conn)
+        cur.execute("""
+            DELETE FROM shop.expenses WHERE expense_id = %s::uuid AND laundry_id = %s
+        """, (expenseId, laundryId))
+        if cur.rowcount == 0:
+            return {"status": "error", "message": "Expense not found"}
+
+    return {"status": "success", "message": "Expense deleted"}
+
+
+@router.get("/financial-reports/expense-categories")
+async def get_expense_categories(
+    laundryId: str = Query(...),
+    current_user: dict = Depends(get_current_user),
+):
+    """Get distinct expense categories used by this laundry (for autocomplete)."""
+    with get_db() as conn:
+        cur = get_cursor(conn)
+        cur.execute("""
+            SELECT DISTINCT category FROM shop.expenses
+            WHERE laundry_id = %s ORDER BY category
+        """, (laundryId,))
+        categories = [r["category"] for r in cur.fetchall()]
+
+    # Include default categories even if not used yet
+    defaults = ["Soap/Detergent", "Gas", "Machine Quarters", "Bags/Hangers", "Delivery/Gas", "Utilities", "Supplies", "Maintenance", "Other"]
+    for d in defaults:
+        if d not in categories:
+            categories.append(d)
+
+    return {"status": "success", "data": {"categories": sorted(categories)}}

@@ -15,27 +15,39 @@ router = APIRouter()
 @router.get("/summary")
 async def get_dashboard_summary(
     laundryId: str = Query(...),
+    days: int = Query(30),
+    startDate: Optional[str] = Query(None),
+    endDate: Optional[str] = Query(None),
     current_user: dict = Depends(get_current_user),
 ):
     """Get dashboard summary metrics."""
     with get_db() as conn:
         cur = get_cursor(conn)
         today = datetime.now().date()
+
+        # Determine date range
+        if startDate and endDate:
+            range_start = startDate
+            range_end = endDate
+        else:
+            range_start = (today - timedelta(days=days)).isoformat()
+            range_end = today.isoformat()
+
         week_ago = today - timedelta(days=7)
-        month_ago = today - timedelta(days=30)
-        prev_month_start = today - timedelta(days=60)
-        prev_month_end = today - timedelta(days=30)
+        prev_period_days = (datetime.strptime(range_end, "%Y-%m-%d").date() - datetime.strptime(range_start, "%Y-%m-%d").date()).days
+        prev_period_start = (datetime.strptime(range_start, "%Y-%m-%d").date() - timedelta(days=prev_period_days)).isoformat()
+        prev_period_end = range_start
 
         # Revenue metrics
         cur.execute("""
             SELECT
                 COALESCE(SUM(CASE WHEN created_at::date = %s THEN grand_total ELSE 0 END), 0) as today_revenue,
                 COALESCE(SUM(CASE WHEN created_at::date >= %s THEN grand_total ELSE 0 END), 0) as week_revenue,
-                COALESCE(SUM(CASE WHEN created_at::date >= %s THEN grand_total ELSE 0 END), 0) as month_revenue,
-                COALESCE(SUM(CASE WHEN created_at::date >= %s AND created_at::date < %s THEN grand_total ELSE 0 END), 0) as prev_month_revenue
+                COALESCE(SUM(CASE WHEN created_at::date >= %s AND created_at::date <= %s THEN grand_total ELSE 0 END), 0) as range_revenue,
+                COALESCE(SUM(CASE WHEN created_at::date >= %s AND created_at::date < %s THEN grand_total ELSE 0 END), 0) as prev_period_revenue
             FROM orders.orders
             WHERE laundry_id = %s AND payment_status = 'Paid'
-        """, (today, week_ago, month_ago, prev_month_start, prev_month_end, laundryId))
+        """, (today, week_ago, range_start, range_end, prev_period_start, prev_period_end, laundryId))
         rev = cur.fetchone()
 
         # Order counts
@@ -43,45 +55,45 @@ async def get_dashboard_summary(
             SELECT
                 COUNT(*) FILTER (WHERE created_at::date = %s) as today_orders,
                 COUNT(*) FILTER (WHERE created_at::date >= %s) as week_orders,
-                COUNT(*) FILTER (WHERE created_at::date >= %s) as month_orders,
+                COUNT(*) FILTER (WHERE created_at::date >= %s AND created_at::date <= %s) as range_orders,
                 COUNT(*) FILTER (WHERE status_category = 'Active') as active_orders,
                 COUNT(*) FILTER (WHERE payment_status = 'Unpaid' AND status_category = 'Active') as unpaid_orders
             FROM orders.orders
             WHERE laundry_id = %s
-        """, (today, week_ago, month_ago, laundryId))
+        """, (today, week_ago, range_start, range_end, laundryId))
         orders = cur.fetchone()
 
         # Customer metrics
         cur.execute("""
             SELECT
-                COUNT(DISTINCT customer_id) FILTER (WHERE created_at::date >= %s) as new_customers_month,
+                COUNT(DISTINCT customer_id) FILTER (WHERE created_at::date >= %s AND created_at::date <= %s) as new_customers_range,
                 COUNT(DISTINCT customer_id) as total_customers
             FROM orders.orders
             WHERE laundry_id = %s
-        """, (month_ago, laundryId))
+        """, (range_start, range_end, laundryId))
         customers = cur.fetchone()
 
-        # Revenue growth
-        month_rev = float(rev["month_revenue"] or 0)
-        prev_rev = float(rev["prev_month_revenue"] or 0)
-        growth = round(((month_rev - prev_rev) / prev_rev * 100) if prev_rev > 0 else 0, 1)
+        # Revenue growth (range vs previous equivalent period)
+        range_rev = float(rev["range_revenue"] or 0)
+        prev_rev = float(rev["prev_period_revenue"] or 0)
+        growth = round(((range_rev - prev_rev) / prev_rev * 100) if prev_rev > 0 else 0, 1)
 
     return {"status": "success", "data": {
         "revenue": {
             "today": float(rev["today_revenue"] or 0),
             "week": float(rev["week_revenue"] or 0),
-            "month": float(rev["month_revenue"] or 0),
+            "month": float(rev["range_revenue"] or 0),
             "growth": growth,
         },
         "orders": {
             "today": orders["today_orders"],
             "week": orders["week_orders"],
-            "month": orders["month_orders"],
+            "month": orders["range_orders"],
             "active": orders["active_orders"],
             "unpaid": orders["unpaid_orders"],
         },
         "customers": {
-            "newThisMonth": customers["new_customers_month"],
+            "newThisMonth": customers["new_customers_range"],
             "total": customers["total_customers"],
         },
     }}
@@ -123,20 +135,22 @@ async def get_top_services(
     with get_db() as conn:
         cur = get_cursor(conn)
         if startDate and endDate:
-            date_filter = startDate
+            date_filter_start = startDate
+            date_filter_end = endDate
         else:
-            date_filter = (datetime.now().date() - timedelta(days=days)).isoformat()
+            date_filter_start = (datetime.now().date() - timedelta(days=days)).isoformat()
+            date_filter_end = datetime.now().date().isoformat()
         cur.execute("""
             SELECT os.service_name, 
                    COUNT(*) as order_count,
                    COALESCE(SUM(os.service_price * os.weight_or_count), 0) as total_revenue
             FROM orders.order_services os
             JOIN orders.orders o ON o.order_id = os.order_id
-            WHERE o.laundry_id = %s AND o.created_at::date >= %s
+            WHERE o.laundry_id = %s AND o.created_at::date >= %s AND o.created_at::date <= %s
             GROUP BY os.service_name
             ORDER BY total_revenue DESC
             LIMIT 10
-        """, (laundryId, date_filter))
+        """, (laundryId, date_filter_start, date_filter_end))
         data = [{"service": r["service_name"], "orders": r["order_count"], "revenue": float(r["total_revenue"])} for r in cur.fetchall()]
 
     return {"status": "success", "data": data}
@@ -154,9 +168,11 @@ async def get_employee_performance(
     with get_db() as conn:
         cur = get_cursor(conn)
         if startDate and endDate:
-            date_filter = startDate
+            date_filter_start = startDate
+            date_filter_end = endDate
         else:
-            date_filter = (datetime.now().date() - timedelta(days=days)).isoformat()
+            date_filter_start = (datetime.now().date() - timedelta(days=days)).isoformat()
+            date_filter_end = datetime.now().date().isoformat()
         cur.execute("""
             SELECT o.last_updated_by as emp_id,
                    e.first_name, e.last_name,
@@ -165,11 +181,11 @@ async def get_employee_performance(
             FROM orders.orders o
             LEFT JOIN shop.employees e ON e.emp_id = o.last_updated_by
             LEFT JOIN orders.order_tips ot ON ot.order_id = o.order_id
-            WHERE o.laundry_id = %s AND o.created_at::date >= %s
+            WHERE o.laundry_id = %s AND o.created_at::date >= %s AND o.created_at::date <= %s
               AND o.last_updated_by IS NOT NULL AND o.last_updated_by != ''
             GROUP BY o.last_updated_by, e.first_name, e.last_name
             ORDER BY orders_processed DESC
-        """, (laundryId, date_filter))
+        """, (laundryId, date_filter_start, date_filter_end))
         data = [{
             "empId": r["emp_id"],
             "name": f"{r['first_name'] or ''} {r['last_name'] or ''}".strip() or r["emp_id"],
@@ -192,17 +208,19 @@ async def get_order_breakdown(
     with get_db() as conn:
         cur = get_cursor(conn)
         if startDate and endDate:
-            date_filter = startDate
+            date_filter_start = startDate
+            date_filter_end = endDate
         else:
-            date_filter = (datetime.now().date() - timedelta(days=days)).isoformat()
+            date_filter_start = (datetime.now().date() - timedelta(days=days)).isoformat()
+            date_filter_end = datetime.now().date().isoformat()
 
         # By type
         cur.execute("""
             SELECT order_type, COUNT(*) as count
             FROM orders.orders
-            WHERE laundry_id = %s AND created_at::date >= %s
+            WHERE laundry_id = %s AND created_at::date >= %s AND created_at::date <= %s
             GROUP BY order_type
-        """, (laundryId, date_filter))
+        """, (laundryId, date_filter_start, date_filter_end))
         by_type = {r["order_type"]: r["count"] for r in cur.fetchall()}
 
         # By status
@@ -218,9 +236,9 @@ async def get_order_breakdown(
         cur.execute("""
             SELECT payment_status, COUNT(*) as count
             FROM orders.orders
-            WHERE laundry_id = %s AND created_at::date >= %s
+            WHERE laundry_id = %s AND created_at::date >= %s AND created_at::date <= %s
             GROUP BY payment_status
-        """, (laundryId, date_filter))
+        """, (laundryId, date_filter_start, date_filter_end))
         by_payment = {r["payment_status"]: r["count"] for r in cur.fetchall()}
 
     return {"status": "success", "data": {

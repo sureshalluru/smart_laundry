@@ -31,6 +31,7 @@ const EngagementPage = lazy(() => import('./Pages/EngagementPage'));
 const QuickPOSPage = lazy(() => import('./Pages/QuickPOSPage'));
 const SupportChatPage = lazy(() => import('./Pages/SupportChatPage'));
 const RoutePlannerPage = lazy(() => import('./Pages/RoutePlannerPage'));
+const ReportsPage = lazy(() => import('./Pages/ReportsPage'));
 
 // ── Shared Components ────────────────────────────────────────────────────────
 
@@ -209,6 +210,7 @@ function App() {
     const WrappedQuickPOSPage = withLaundryValidation(QuickPOSPage);
     const WrappedSupportChatPage = withLaundryValidation(SupportChatPage);
     const WrappedRoutePlannerPage = withLaundryValidation(RoutePlannerPage);
+    const WrappedReportsPage = withLaundryValidation(ReportsPage);
 
     return (
         <ChakraProvider>
@@ -364,6 +366,11 @@ function App() {
                                 <WrappedRoutePlannerPage/>
                             </Suspense>
                             </ProtectedRoute>
+                        }/>
+                        <Route path="reports" element={
+                            <Suspense fallback={<LoadingSpinner/>}>
+                                <WrappedReportsPage/>
+                            </Suspense>
                         }/>
                     </Route>
 

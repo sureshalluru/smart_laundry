@@ -691,6 +691,15 @@ const SidebarContent = ({
         >
             Dashboard
         </Button>
+        <Button as="a" href={`/${laundryId}/admin/reports`}
+                leftIcon={<FaClipboardList />}
+                variant="ghost"
+                colorScheme="purple"
+                justifyContent="flex-start"
+                onClick={() => navigate(`/${laundryId}/admin/reports`)}
+        >
+            Financial Reports
+        </Button>
         <Button as="a" href={`/${laundryId}/admin/faq`}
                 leftIcon={<FaClipboardList />}
                 variant="ghost"

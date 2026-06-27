@@ -232,7 +232,7 @@ export default function DashboardPage({ laundryId }) {
             }
 
             const [sumRes, svcRes, empRes, custRes, brkRes] = await Promise.all([
-                axios.get(`${process.env.REACT_APP_AWS_API_URL}/api/dashboard/summary`, { params: { laundryId, days: days || period }, headers }),
+                axios.get(`${process.env.REACT_APP_AWS_API_URL}/api/dashboard/summary`, { params, headers }),
                 axios.get(`${process.env.REACT_APP_AWS_API_URL}/api/dashboard/top-services`, { params, headers }),
                 axios.get(`${process.env.REACT_APP_AWS_API_URL}/api/dashboard/employee-performance`, { params, headers }),
                 axios.get(`${process.env.REACT_APP_AWS_API_URL}/api/dashboard/top-customers`, { params: { laundryId }, headers }),
@@ -344,15 +344,15 @@ export default function DashboardPage({ laundryId }) {
                         <StatNumber fontSize={{ base: 'lg', md: '2xl' }}>${(rev.today || 0).toFixed(2)}</StatNumber>
                         <StatHelpText fontSize="xs">
                             <StatArrow type={(rev.growth || 0) >= 0 ? 'increase' : 'decrease'} />
-                            {Math.abs(rev.growth || 0)}% vs last month
+                            {Math.abs(rev.growth || 0)}% vs prev period
                         </StatHelpText>
                     </Stat>
                 </Box>
                 <Box bg="white" p={4} borderRadius="xl" boxShadow="sm" border="1px solid" borderColor="gray.100">
                     <Stat>
-                        <StatLabel fontSize="xs" color="gray.500">Monthly Revenue</StatLabel>
+                        <StatLabel fontSize="xs" color="gray.500">{period === "custom" ? "Revenue (Custom)" : "Monthly Revenue"}</StatLabel>
                         <StatNumber fontSize={{ base: 'lg', md: '2xl' }}>${(rev.month || 0).toFixed(2)}</StatNumber>
-                        <StatHelpText fontSize="xs">Week: ${(rev.week || 0).toFixed(2)}</StatHelpText>
+                        <StatHelpText fontSize="xs" color="gray.400">Paid orders only</StatHelpText>
                     </Stat>
                 </Box>
                 <Box bg="white" p={4} borderRadius="xl" boxShadow="sm" border="1px solid" borderColor="gray.100">
@@ -366,7 +366,7 @@ export default function DashboardPage({ laundryId }) {
                     <Stat>
                         <StatLabel fontSize="xs" color="gray.500">Customers</StatLabel>
                         <StatNumber fontSize={{ base: 'lg', md: '2xl' }}>{cust.total || 0}</StatNumber>
-                        <StatHelpText fontSize="xs">+{cust.newThisMonth || 0} new this month</StatHelpText>
+                        <StatHelpText fontSize="xs">+{cust.newThisMonth || 0} new this period</StatHelpText>
                     </Stat>
                 </Box>
                 <Box bg="white" p={4} borderRadius="xl" boxShadow="sm" border="1px solid" borderColor="gray.100">
