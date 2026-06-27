@@ -19,6 +19,8 @@ from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 from app.config import settings
 
+logger = logging.getLogger(__name__)
+
 # Rate limiter — per IP address
 limiter = Limiter(key_func=get_remote_address, default_limits=["120/minute"])
 
@@ -245,9 +247,53 @@ async def serve_customer(request: Request, full_path: str):
             return FileResponse(index, headers={"Cache-Control": "no-cache, no-store, must-revalidate"})
         return {"error": "Admin app not built. Run: cd apps/admin && npm run build"}
 
-    # Default: serve customer app
+    # Default: serve customer app with dynamic meta tags for tenant pages
+    # If the path looks like a tenant page (/{laundryId}/site or /{laundryId}/...), inject laundry meta
     index = CUSTOMER_BUILD / "index.html"
     if index.exists():
+        # Check if this is a tenant route (starts with a laundryId segment)
+        parts = full_path.strip("/").split("/")
+        if parts and parts[0] not in ("slb", "static", "manifest.json", "favicon.ico", "robots.txt"):
+            # Likely a tenant page — try to inject laundry name into meta tags
+            try:
+                laundry_id = parts[0]
+                from app.database import get_db, get_cursor
+                with get_db() as conn:
+                    cur = get_cursor(conn)
+                    cur.execute("SELECT laundry_name, laundry_logo FROM shop.laundry_shops WHERE laundry_id = %s", (laundry_id,))
+                    row = cur.fetchone()
+                if row and row["laundry_name"]:
+                    laundry_name = row["laundry_name"]
+                    laundry_logo = row.get("laundry_logo") or ""
+                    html_content = index.read_text(encoding="utf-8")
+                    # Replace generic meta tags with tenant-specific ones
+                    html_content = html_content.replace(
+                        '<meta property="og:title" content="Smart Laundry Basket - All-in-One Laundry Management Platform" />',
+                        f'<meta property="og:title" content="{laundry_name} - Free Pickup &amp; Delivery" />'
+                    )
+                    html_content = html_content.replace(
+                        '<meta property="og:description" content="Run your laundry business smarter. Online orders, POS, route planning, customer engagement, financial reports — all in one platform. Starting at $149/mo." />',
+                        f'<meta property="og:description" content="{laundry_name} - Schedule your free laundry pickup and delivery. Wash &amp; fold, dry cleaning, and more." />'
+                    )
+                    html_content = html_content.replace(
+                        '<title>Smart Laundry Basket - Laundry Management Platform</title>',
+                        f'<title>{laundry_name} - Free Pickup and Delivery</title>'
+                    )
+                    html_content = html_content.replace(
+                        'content="Smart Laundry Basket - All-in-one laundry management platform. Online ordering, free pickup &amp; delivery scheduling, POS, route optimization, customer engagement. Starting at $149/mo."',
+                        f'content="{laundry_name} - Schedule your free laundry pickup and delivery online. Wash and fold, dry cleaning, and more."'
+                    )
+                    if laundry_logo:
+                        html_content = html_content.replace(
+                            '<meta property="og:url" content="https://www.smartlaundrybasket.ai" />',
+                            f'<meta property="og:url" content="https://www.smartlaundrybasket.ai/{laundry_id}/site" />\n    <meta property="og:image" content="{laundry_logo}" />'
+                        )
+                    from fastapi.responses import HTMLResponse
+                    return HTMLResponse(content=html_content, headers={"Cache-Control": "no-cache, no-store, must-revalidate"})
+            except Exception as e:
+                logger.debug(f"Could not inject tenant meta for path {full_path}: {e}")
+                # Fall through to serve static file
+
         return FileResponse(index, headers={"Cache-Control": "no-cache, no-store, must-revalidate"})
 
     # Fallback to admin if customer isn't built
