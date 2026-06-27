@@ -97,7 +97,7 @@ def _send_reminder(cur, customer_id, laundry_id, reminder_type, stage, message, 
     # Log the reminder
     cur.execute("""
         INSERT INTO shop.customer_reminders (laundry_id, customer_id, reminder_type, reminder_stage, promo_code, message_channel)
-        VALUES (%s, %s::text, %s, %s, %s, %s)
+        VALUES (%s, %s::uuid, %s, %s, %s, %s)
     """, (laundry_id, customer_id, reminder_type, stage,
           promo_code, 'sms' if phone else 'email'))
 
