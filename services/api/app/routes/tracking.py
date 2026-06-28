@@ -48,8 +48,8 @@ def is_order_trackable(order_status: str, pickup_service: str, dropoff_service: 
 
     All other combinations return False (tracking unavailable).
     """
-    pickup = (pickup_service or "").strip().lower()
-    dropoff = (dropoff_service or "").strip().lower()
+    pickup = (pickup_service or "").strip().lower().replace(" ", "")
+    dropoff = (dropoff_service or "").strip().lower().replace(" ", "")
 
     return (
         (order_status == "OrderSubmitted" and pickup == "laundrydriver")
@@ -463,10 +463,20 @@ async def get_driver_location(
         assignment = cur.fetchone()
 
         if not assignment:
-            return {"status": "unavailable", "reason": "not_active"}
-
-        driver_id = assignment["driver_id"]
-        customer_sequence_position = assignment["sequence_position"]
+            # Fallback: find the active driver for this laundry (single-driver laundries)
+            cur.execute("""
+                SELECT driver_id FROM routes.driver_locations
+                WHERE laundry_id = %s AND is_active = TRUE
+                ORDER BY updated_at DESC LIMIT 1
+            """, (laundryId,))
+            active_driver = cur.fetchone()
+            if not active_driver:
+                return {"status": "unavailable", "reason": "not_active"}
+            driver_id = active_driver["driver_id"]
+            customer_sequence_position = 1  # treat as first stop when no assignment
+        else:
+            driver_id = assignment["driver_id"]
+            customer_sequence_position = assignment["sequence_position"]
 
         # 3. Fetch driver location
         cur.execute("""

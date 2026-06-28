@@ -129,19 +129,45 @@ const DriverHome = ({ laundryId }) => {
 
   /* ───────────── Effects ───────────── */
 
+  /* ─── Wake Lock: keep screen on during active routes ─── */
+  useEffect(() => {
+    let wakeLock = null;
+    const requestWakeLock = async () => {
+      if ('wakeLock' in navigator && isRouteActive) {
+        try {
+          wakeLock = await navigator.wakeLock.request('screen');
+        } catch (err) {
+          // Wake Lock request failed (e.g., low battery)
+          console.log('Wake Lock failed:', err.message);
+        }
+      }
+    };
+    requestWakeLock();
+
+    // Re-acquire on page visibility change (iOS releases it when tab goes background)
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && isRouteActive) {
+        requestWakeLock();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      if (wakeLock) wakeLock.release().catch(() => {});
+    };
+  }, [isRouteActive]);
+
   /* ─── Location Broadcaster (live tracking) ─── */
   const empId = getUserEmpId();
 
-  // Determine isRouteActive: true when there are assigned stops with active statuses
+  // Determine isRouteActive: true when driver has active delivery/pickup orders
   const isRouteActive = useMemo(() => {
-    if (!assignedOrderIds || assignedOrderIds.size === 0) return false;
-    // Check if any displayed orders are in active states (pending pickup or active delivery)
+    // Active if ANY orders are in delivery/pickup states (regardless of assignments)
     return orders.some(
-      (o) =>
-        assignedOrderIds.has(o.orderId) &&
-        ['ordersubmitted', 'enroutetodelivery'].includes(o.orderStatus?.trim().toLowerCase())
+      (o) => ['ordersubmitted', 'enroutetodelivery'].includes(o.orderStatus?.trim().toLowerCase())
     );
-  }, [orders, assignedOrderIds]);
+  }, [orders]);
 
   // Determine currentStopPosition: sequence_position of the first pending/active stop
   const currentStopPosition = useMemo(() => {
