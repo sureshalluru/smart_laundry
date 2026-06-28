@@ -149,6 +149,7 @@ const OrdersInfo = ({orderOperation, validateEmpCredentials, stripePublicKey, st
     const [isDeliveryOptionModalOpen, setIsDeliveryOptionModalOpen] = useState(false);
     const [selectedDeliveryMethod, setSelectedDeliveryMethod] = useState("");
     const [customDropoffAddress, setCustomDropoffAddress] = useState("");
+    const [customDropoffDate, setCustomDropoffDate] = useState("");
     const [autocomplete, setAutocomplete] = useState(null);
 const [autocompleteRef, setAutocompleteRef] = useState(null);
 const [mapLatLng, setMapLatLng] = useState(null);
@@ -2516,7 +2517,8 @@ const { open: openCancelUber, ModalUI: CancelUberModal } = useCancelUberHandoff(
                                     )}
                                     {!(selectedOrderDetails.orderType === "InStore" || selectedOrderDetails.orderId?.startsWith("IS-")) &&
                                         (selectedOrderDetails.pickupService !== "Uber" ||
-                                            selectedOrderDetails.uberInfo?.laundryPickup?.status === "canceled") && (
+                                            selectedOrderDetails.uberInfo?.laundryPickup?.status === "canceled") &&
+                                        selectedOrderDetails.orderStatus === "OrderSubmitted" && (
                                             <Button
                                             mt={3}
                                             size="sm"
@@ -2564,6 +2566,7 @@ const { open: openCancelUber, ModalUI: CancelUberModal } = useCancelUberHandoff(
 
                                     {/* Place Uber Dropoff: For O- orders OR IS- with dropoffService === "Laundry Driver" */}
                                     {selectedOrderDetails.dropoffService !== "Uber" &&
+                                    selectedOrderDetails.orderStatus !== "Delivered" &&
                                     (
                                         (!selectedOrderDetails.orderId?.startsWith("IS-") /* O- */) ||
                                         selectedOrderDetails.dropoffService === "Laundry Driver" /* IS- with LD */
@@ -2834,6 +2837,13 @@ const { open: openCancelUber, ModalUI: CancelUberModal } = useCancelUberHandoff(
                         onChange={(e) => setCustomDropoffAddress(e.target.value)}
                         />
                     </Autocomplete>
+
+                    <Text fontWeight="semibold" mb={1} mt={3}>Dropoff Date</Text>
+                    <Input
+                        type="date"
+                        value={customDropoffDate}
+                        onChange={(e) => setCustomDropoffDate(e.target.value)}
+                    />
                     </Box>
 
 
@@ -3102,8 +3112,9 @@ useEffect(() => {
 const handleAssignLaundryDriver = async (customAddress) => {
   try {
     const payload = {
-      dropoffService: "Laundry Driver",
-      dropoffAddress: customAddress
+      dropoffService: "LaundryDriver",
+      dropoffAddress: customAddress,
+      dropoffDate: customDropoffDate || null,
     };
 
     console.log("🚚 Assigning Laundry Driver with payload:", payload);

@@ -98,23 +98,30 @@ async def get_stops(
 
     with get_db() as conn:
         cur = get_cursor(conn)
+        logger.info(f"Route planner stops: laundryId={laundryId}, date={route_date}")
         # Fetch orders matching the criteria
         cur.execute("""
             SELECT o.order_id, o.order_status, o.pickup_date, o.dropoff_date,
+                   o.dropoff_service, o.address_id,
                    c.first_name, c.last_name, ca.address AS customer_address
             FROM orders.orders o
             JOIN shop.customers c ON c.customer_id = o.customer_id
             LEFT JOIN shop.customer_addresses ca ON ca.address_id = o.address_id
             WHERE o.laundry_id = %s
-              AND o.order_type = 'Online'
               AND (
-                (o.order_status = 'OrderSubmitted' AND o.pickup_date = %s)
+                (o.order_type = 'Online' AND o.order_status = 'OrderSubmitted' AND o.pickup_date = %s)
                 OR
-                (o.order_status IN ('EnRouteToDelivery', 'ProcessingCompleted') AND o.dropoff_date = %s)
+                (o.order_status IN ('EnRouteToDelivery', 'ProcessingCompleted')
+                 AND o.dropoff_date = %s
+                 AND LOWER(REPLACE(o.dropoff_service, ' ', '')) = 'laundrydriver'
+                 AND o.address_id IS NOT NULL)
               )
         """, (laundryId, route_date, route_date))
 
         rows = cur.fetchall()
+        logger.info(f"Route planner: found {len(rows)} stops for date {route_date}")
+        for r in rows:
+            logger.info(f"  Stop: {r['order_id']} status={r['order_status']} dropoff_service={r.get('dropoff_service')} address_id={r.get('address_id')} dropoff_date={r.get('dropoff_date')}")
         stops = []
 
         for row in rows:

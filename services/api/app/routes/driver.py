@@ -92,11 +92,13 @@ async def driver_orders(
                 JOIN shop.customers c ON c.customer_id = o.customer_id
                 LEFT JOIN shop.customer_addresses ca ON ca.address_id = o.address_id
                 WHERE o.laundry_id = %s
-                  AND o.order_type = 'Online'
                   AND (
-                    (o.order_status IN ('OrderSubmitted','ReadyForIntake') AND o.pickup_date BETWEEN %s AND %s)
+                    (o.order_type = 'Online' AND o.order_status IN ('OrderSubmitted','ReadyForIntake') AND o.pickup_date BETWEEN %s AND %s)
                     OR
-                    (o.order_status IN ('EnRouteToDelivery', 'ProcessingCompleted') AND o.dropoff_date BETWEEN %s AND %s)
+                    (o.order_status IN ('EnRouteToDelivery', 'ProcessingCompleted')
+                     AND o.dropoff_date BETWEEN %s AND %s
+                     AND LOWER(REPLACE(o.dropoff_service, ' ', '')) = 'laundrydriver'
+                     AND o.address_id IS NOT NULL)
                   )
                 ORDER BY COALESCE(o.pickup_date, o.dropoff_date) ASC
             """, (laundryId, start, end, start, end))

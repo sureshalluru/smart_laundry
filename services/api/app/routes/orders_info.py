@@ -255,8 +255,63 @@ async def post_orders_info(
             return {"statusCode": 200, "body": {"message": "updateOrder not yet implemented"}}
 
         elif operation == 'updateOrderInfo':
-            # TODO: port update_order_info logic
-            return {"statusCode": 200, "body": {"message": "updateOrderInfo not yet implemented"}}
+            # Update order delivery info (dropoff service, address, date, etc.)
+            dropoff_service = body.get("dropoffService")
+            dropoff_address = body.get("dropoffAddress")
+            dropoff_date = body.get("dropoffDate")
+
+            logger.info(f"updateOrderInfo: orderId={orderId}, dropoffService={dropoff_service}, dropoffAddress={dropoff_address}, dropoffDate={dropoff_date}")
+
+            if not dropoff_service and not dropoff_address and not dropoff_date:
+                return {"statusCode": 200, "body": {"message": "No changes detected."}}
+
+            with get_db() as conn:
+                cur = get_cursor(conn)
+
+                update_parts = []
+                params = []
+
+                if dropoff_service:
+                    update_parts.append("dropoff_service = %s")
+                    params.append(dropoff_service)
+
+                if dropoff_date:
+                    update_parts.append("dropoff_date = %s")
+                    params.append(dropoff_date)
+
+                if dropoff_address:
+                    # Save or update the delivery address
+                    cur.execute("SELECT address_id, customer_id FROM orders.orders WHERE order_id = %s", (orderId,))
+                    order_row = cur.fetchone()
+                    customer_id = order_row["customer_id"] if order_row else None
+                    existing_address_id = order_row["address_id"] if order_row else None
+
+                    if existing_address_id:
+                        # Update existing address
+                        cur.execute("""
+                            UPDATE shop.customer_addresses SET address = %s, updated_at = NOW()
+                            WHERE address_id = %s
+                        """, (dropoff_address, existing_address_id))
+                    else:
+                        # Create new address and link to order
+                        import uuid
+                        new_address_id = str(uuid.uuid4())[:12]
+                        cur.execute("""
+                            INSERT INTO shop.customer_addresses (address_id, customer_id, address)
+                            VALUES (%s, %s, %s)
+                        """, (new_address_id, customer_id, dropoff_address))
+                        update_parts.append("address_id = %s")
+                        params.append(new_address_id)
+
+                if update_parts:
+                    update_parts.append("updated_at = NOW()")
+                    params.append(orderId)
+                    cur.execute(f"""
+                        UPDATE orders.orders SET {', '.join(update_parts)}
+                        WHERE order_id = %s
+                    """, params)
+
+            return {"statusCode": 200, "body": {"message": "Order delivery info updated successfully."}}
 
         elif operation == 'captureInStorePayment':
             # TODO: port instore payment logic
@@ -642,6 +697,35 @@ async def update_order_endpoint(
 
             if coupon is not None:
                 update_fields["coupon"] = coupon
+
+            # Handle delivery scheduling (dropoff service, address, date)
+            dropoff_service = body.get("dropoffService")
+            dropoff_address = body.get("dropoffAddress")
+            dropoff_date = body.get("dropoffDate")
+
+            if dropoff_service:
+                update_fields["dropoff_service"] = dropoff_service
+            if dropoff_date:
+                update_fields["dropoff_date"] = dropoff_date
+
+            # Save/create delivery address if provided
+            if dropoff_address:
+                existing_address_id = current_order.get("address_id")
+                customer_id = current_order.get("customer_id")
+                if existing_address_id:
+                    cur.execute("""
+                        UPDATE shop.customer_addresses SET address = %s, updated_at = NOW()
+                        WHERE address_id = %s
+                    """, (dropoff_address, existing_address_id))
+                else:
+                    import uuid
+                    new_address_id = str(uuid.uuid4())[:12]
+                    cur.execute("""
+                        INSERT INTO shop.customer_addresses (address_id, customer_id, address)
+                        VALUES (%s, %s, %s)
+                    """, (new_address_id, customer_id, dropoff_address))
+                    update_fields["address_id"] = new_address_id
+                logger.info(f"Delivery scheduled for {orderId}: service={dropoff_service}, date={dropoff_date}, address={dropoff_address}")
 
             set_clause = ", ".join(f"{k} = %s" for k in update_fields.keys())
             values = list(update_fields.values()) + [orderId]

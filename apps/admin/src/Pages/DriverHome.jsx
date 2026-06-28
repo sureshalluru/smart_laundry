@@ -108,6 +108,7 @@ const DriverHome = ({ laundryId }) => {
   const [pendingAction, setPendingAction] = useState(null); // 'upload' | 'missed'
   const [fileInputKey, setFileInputKey] = useState(Date.now());
   const [includeUberOrders, setIncludeUberOrders] = useState(false);
+  const [laundryPhone, setLaundryPhone] = useState('');
 
   /* Optimized-route modal */
   const {
@@ -174,6 +175,23 @@ const DriverHome = ({ laundryId }) => {
       });
     }
   }, [permissionDenied, isRouteActive, toast]);
+
+  // Fetch laundry contact info
+  useEffect(() => {
+    const fetchLaundryContact = async () => {
+      try {
+        const res = await axios.get(
+          `${process.env.REACT_APP_AWS_API_URL}/api/laundry/get-info`,
+          { params: { laundryId }, headers: { Authorization: `Bearer ${authToken}` } }
+        );
+        const info = res.data?.body?.laundryInfo || res.data?.laundryInfo || {};
+        setLaundryPhone(info.phone || info.phoneNumber || '');
+      } catch (err) {
+        // Non-critical, ignore
+      }
+    };
+    fetchLaundryContact();
+  }, [laundryId, authToken]);
 
   /* Check for route assignments for the current driver + date */
   useEffect(() => {
@@ -324,7 +342,8 @@ const DriverHome = ({ laundryId }) => {
       if (s === 'ordersubmitted' || s === 'readyforintake') {
         if (isOnline) {
           // Online: show only if pickup is handled by LaundryDriver AND pickup date is selected
-          if (pickupSvc !== 'laundrydriver') return false;
+          const normalizedPickup = pickupSvc?.replace(/\s/g, '') || '';
+          if (normalizedPickup !== 'laundrydriver') return false;
           return selectedDateValues.includes(pickupDate);
         }
         if (isInstore) {
@@ -337,7 +356,8 @@ const DriverHome = ({ laundryId }) => {
       // Dropoff leg statuses
       if (s === 'enroutetodelivery' || s === 'delivered' || s === 'processingcompleted') {
         // For both online and in-store, include only LaundryDriver dropoffs on matching dropoff date
-        if (dropoffSvc !== 'laundrydriver') return false;
+        const normalizedDropoff = dropoffSvc?.replace(/\s/g, '') || '';
+        if (normalizedDropoff !== 'laundrydriver') return false;
         return selectedDateValues.includes(dropoffDate);
       }
 
@@ -1091,6 +1111,19 @@ const DriverHome = ({ laundryId }) => {
           accept="image/*"
           onChange={handleFileSelect}
         />
+
+        {/* Laundry Contact Info */}
+        <Box mt={6} p={4} bg="gray.50" borderRadius="md" borderWidth="1px" textAlign="center">
+          <Text fontSize="xs" color="gray.500" fontWeight="bold" mb={1}>Need Help? Contact Laundry</Text>
+          <Text fontSize="sm" color="gray.600">
+            Call or text the laundry if you have questions about pickups or deliveries.
+          </Text>
+          {laundryPhone && (
+            <Link href={`tel:${laundryPhone}`} color="blue.600" fontWeight="bold" fontSize="sm" mt={1} display="block">
+              📞 {laundryPhone}
+            </Link>
+          )}
+        </Box>
       </Box>
     </SidebarLayout>
   );
