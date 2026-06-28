@@ -168,6 +168,8 @@ def _employee_login(body: dict):
     device_fingerprint = body.get("deviceFingerprint", "")
     laundry_id = body.get("laundryId")
 
+    logger.info(f"Employee login attempt: emp_id={emp_id}, laundry_id={laundry_id}, fingerprint={device_fingerprint[:20]}...")
+
     if not emp_id or not passcode:
         raise HTTPException(status_code=400, detail="Employee ID and passcode required")
 
@@ -244,6 +246,7 @@ def _employee_login(body: dict):
         "laundryId": emp["laundry_id"],
         "name": f"{emp['first_name']} {emp['last_name']}".strip(),
     }
+    logger.info(f"Employee login SUCCESS: requested={emp_id}, matched={emp['emp_id']}, role={emp['role']}, JWT sub={emp['emp_id']}")
     return {
         "status": "success",
         "accessToken": create_access_token(token_data),

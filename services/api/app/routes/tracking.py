@@ -162,28 +162,11 @@ async def start_route(
     2. Sends SMS to the first customer with a tracking link
     Returns the first order details.
     """
-    # Resolve driver_id: try empId claim first, then sub, then look up emp_id from cognito sub
-    driver_id = current_user.get("empId") or current_user.get("custom:empId")
+    # Resolve driver_id: try empId claim first, then sub
+    driver_id = current_user.get("empId") or current_user.get("custom:empId") or current_user.get("sub", "")
     laundry_id = current_user.get("laundryId") or current_user.get("custom:laundryId")
-    sub = current_user.get("sub", "")
 
-    # If driver_id looks like a UUID (Cognito sub), resolve actual emp_id from DB
-    if not driver_id or (len(driver_id) > 20 and '-' in driver_id):
-        driver_id = sub  # Will use sub for now, but also try to find emp_id
-        with get_db() as conn:
-            cur = get_cursor(conn)
-            # Try to find employee by matching the sub to emp_id or cognito_sub
-            cur.execute("""
-                SELECT emp_id FROM shop.employees
-                WHERE laundry_id = %s AND is_active = TRUE
-                ORDER BY emp_id LIMIT 1
-            """, (laundry_id,))
-            # For now, if only one active employee/driver, use them
-            # TODO: Add proper cognito_sub → emp_id mapping
-            emp_row = cur.fetchone()
-            if emp_row:
-                driver_id = emp_row["emp_id"]
-                logger.info(f"start-route: resolved driver_id from DB: {driver_id} (sub was {sub})")
+    logger.info(f"start-route: JWT claims: sub={current_user.get('sub')}, empId={current_user.get('empId')}, resolved driver_id={driver_id}")
 
     if not driver_id or not laundry_id:
         raise HTTPException(
