@@ -9,6 +9,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+public_router = APIRouter()  # Public endpoints (no auth required)
 
 
 STALENESS_THRESHOLD = timedelta(minutes=2)
@@ -419,7 +420,7 @@ async def deactivate_tracking(
     return {"status": "success"}
 
 
-@router.get("/driver")
+@public_router.get("/driver")
 async def get_driver_location(
     orderId: str = Query(...),
     laundryId: str = Query(...),
@@ -437,19 +438,19 @@ async def get_driver_location(
         order = cur.fetchone()
 
         if not order:
+            logger.warning(f"tracking/driver: order {orderId} not found for laundry {laundryId}")
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Order not found",
             )
 
-        # Check trackable state:
-        # OrderSubmitted with pickup_service='LaundryDriver' OR
-        # EnRouteToDelivery with dropoff_service='LaundryDriver'
         order_status = order["order_status"]
         pickup_service = (order.get("pickup_service") or "LaundryDriver").strip()
         dropoff_service = (order.get("dropoff_service") or "LaundryDriver").strip()
+        logger.info(f"tracking/driver: order={orderId}, status={order_status}, pickup_svc={pickup_service}, dropoff_svc={dropoff_service}")
 
         if not is_order_trackable(order_status, pickup_service, dropoff_service):
+            logger.info(f"tracking/driver: FAIL at step 1 - not trackable. status={order_status}, pickup={pickup_service}, dropoff={dropoff_service}")
             return {"status": "unavailable", "reason": "not_active"}
 
         # 2. Look up driver assignment from routes.route_assignments
@@ -471,12 +472,15 @@ async def get_driver_location(
             """, (laundryId,))
             active_driver = cur.fetchone()
             if not active_driver:
+                logger.info(f"tracking/driver: FAIL at step 2 - no assignment AND no active driver for laundry {laundryId}")
                 return {"status": "unavailable", "reason": "not_active"}
             driver_id = active_driver["driver_id"]
-            customer_sequence_position = 1  # treat as first stop when no assignment
+            customer_sequence_position = 1
+            logger.info(f"tracking/driver: no assignment, using active driver fallback: {driver_id}")
         else:
             driver_id = assignment["driver_id"]
             customer_sequence_position = assignment["sequence_position"]
+            logger.info(f"tracking/driver: found assignment, driver={driver_id}, seq={customer_sequence_position}")
 
         # 3. Fetch driver location
         cur.execute("""
@@ -487,21 +491,24 @@ async def get_driver_location(
         location = cur.fetchone()
 
         if not location:
+            logger.info(f"tracking/driver: FAIL at step 3 - no active location for driver {driver_id}")
             return {"status": "unavailable", "reason": "not_active"}
 
-        # 4. Check staleness: if updated_at > 2 minutes ago, return stale_data
+        # 4. Check staleness
         updated_at = location["updated_at"]
         if updated_at.tzinfo is None:
             updated_at = updated_at.replace(tzinfo=timezone.utc)
-        if is_location_stale(updated_at):
+        now = datetime.now(timezone.utc)
+        age_seconds = (now - updated_at).total_seconds()
+        logger.info(f"tracking/driver: driver={driver_id}, location age={age_seconds:.0f}s, lat={location['latitude']}, lng={location['longitude']}")
+
+        if is_location_stale(updated_at, now):
+            logger.info(f"tracking/driver: FAIL at step 4 - stale data ({age_seconds:.0f}s old, threshold=120s)")
             return {"status": "unavailable", "reason": "stale_data"}
 
-        # 5. Check sequential activation:
-        # Driver's current_stop_position must be >= (customer's sequence_position - 1)
-        # OR driver has only 1 remaining stop
+        # 5. Sequential activation check
         driver_current_stop = location["current_stop_position"]
 
-        # Count remaining (non-completed) stops for this driver on the same route date
         cur.execute("""
             SELECT COUNT(*) as remaining_stops
             FROM routes.route_assignments
@@ -515,11 +522,11 @@ async def get_driver_location(
         remaining_row = cur.fetchone()
         remaining_stops = remaining_row["remaining_stops"] if remaining_row else 0
 
-        # Sequential activation check
         if not is_tracking_activated(driver_current_stop, customer_sequence_position, remaining_stops):
+            logger.info(f"tracking/driver: FAIL at step 5 - not_your_turn. driver_pos={driver_current_stop}, customer_seq={customer_sequence_position}, remaining={remaining_stops}")
             return {"status": "unavailable", "reason": "not_your_turn"}
 
-        # 6. Get driver name from shop.employees
+        # 6. Get driver name
         cur.execute("""
             SELECT first_name FROM shop.employees
             WHERE emp_id = %s
@@ -527,6 +534,7 @@ async def get_driver_location(
         emp = cur.fetchone()
         driver_name = emp["first_name"] if emp else "Driver"
 
+        logger.info(f"tracking/driver: SUCCESS - returning active location for driver {driver_name}")
         # 7. Return active driver location
         return {
             "status": "active",

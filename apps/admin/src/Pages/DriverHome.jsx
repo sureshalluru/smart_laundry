@@ -142,30 +142,19 @@ const DriverHome = ({ laundryId }) => {
 
   /* ─── Wake Lock: keep screen on during active routes ─── */
   useEffect(() => {
-    let wakeLock = null;
-    const requestWakeLock = async () => {
-      if ('wakeLock' in navigator && isRouteActive) {
-        try {
-          wakeLock = await navigator.wakeLock.request('screen');
-        } catch (err) {
-          // Wake Lock request failed (e.g., low battery)
-          console.log('Wake Lock failed:', err.message);
-        }
-      }
+    if (!isRouteActive) return;
+    let wl = null;
+    const acquire = async () => {
+      try {
+        if ('wakeLock' in navigator) wl = await navigator.wakeLock.request('screen');
+      } catch (e) { /* ignore */ }
     };
-    requestWakeLock();
-
-    // Re-acquire on page visibility change (iOS releases it when tab goes background)
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible' && isRouteActive) {
-        requestWakeLock();
-      }
-    };
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-
+    acquire();
+    const onVis = () => { if (document.visibilityState === 'visible') acquire(); };
+    document.addEventListener('visibilitychange', onVis);
     return () => {
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-      if (wakeLock) wakeLock.release().catch(() => {});
+      document.removeEventListener('visibilitychange', onVis);
+      if (wl) wl.release().catch(() => {});
     };
   }, [isRouteActive]);
 
@@ -222,11 +211,9 @@ const DriverHome = ({ laundryId }) => {
           `${process.env.REACT_APP_AWS_API_URL}/api/admin/laundry-products-info`,
           { params: { operation: 'viewShopInfo', laundryId }, headers: { Authorization: `Bearer ${authToken}` } }
         );
-        const info = res.data?.body?.data || {};
+        const info = res.data?.body || {};
         setLaundryPhone(info.phone || info.phoneNumber || '');
-        // Build address from parts
-        const parts = [info.street, info.city, info.state, info.zipCode].filter(Boolean);
-        setLaundryAddress(parts.join(', '));
+        setLaundryAddress(info.address || '');
       } catch (err) {
         // Non-critical, ignore
       }

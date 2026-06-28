@@ -141,6 +141,7 @@ app.include_router(route_planning.router, prefix="/api/routes", tags=["Route Pla
 app.include_router(onboarding_verification.router, prefix="/api/platform/onboard", tags=["Onboarding Verification"])
 app.include_router(reports.router, prefix="/api/admin/reports", tags=["Financial Reports"])
 app.include_router(tracking.router, prefix="/api/tracking", tags=["Driver Tracking"])
+app.include_router(tracking.public_router, prefix="/api/tracking", tags=["Driver Tracking Public"])
 
 
 # Block bot scanners probing for PHP/WordPress/exploit files

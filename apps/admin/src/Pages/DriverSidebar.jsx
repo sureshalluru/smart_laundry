@@ -97,10 +97,9 @@ import {
           const info = await fetchLaundryInfo(laundryId);
           
           if (info) {
-            const addrParts = [info.street, info.city, info.state, info.zipCode].filter(Boolean);
             setLaundryInfo({
               name: info.name || info.laundryName,
-              address: addrParts.join(', '),
+              address: info.address || '',
               phone: info.phone,
               logo: info.logo || info.laundryLogo,
             });
