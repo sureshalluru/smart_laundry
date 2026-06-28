@@ -1270,6 +1270,19 @@ const MyOrders = ({ customerId, laundryId, laundryTimeZone }) => {
                                         </HStack>
                                     </Box>
                                 )}
+c
+                                {/* Track Driver Button - show when order is in trackable state */}
+                                {((orderDetails.orderStatus === 'OrderSubmitted' && orderDetails.pickupService === 'LaundryDriver') ||
+                                  (orderDetails.orderStatus === 'EnRouteToDelivery' && orderDetails.dropoffService === 'LaundryDriver')) && (
+                                    <Button
+                                        colorScheme="teal"
+                                        size="lg"
+                                        mt={[2, 4]}
+                                        onClick={() => navigate(`/${laundryId}/user/track/${orderDetails.orderId}`)}
+                                    >
+                                        Track Driver
+                                    </Button>
+                                )}
 
                                 {orderDetails.orderStatus === 'OrderSubmitted' && displayCancelOrder(orderDetails, laundryTimeZone) && (
                                     <Button

@@ -13,6 +13,7 @@ from app.migrations import add_route_assignments
 from app.migrations import add_performance_indexes
 from app.migrations import add_referral_fields
 from app.migrations import add_service_catalog
+from app.migrations import add_driver_locations
 
 logger = logging.getLogger(__name__)
 
@@ -30,4 +31,5 @@ def run_all():
     add_performance_indexes.run()
     add_referral_fields.run()
     add_service_catalog.run()
+    add_driver_locations.run()
     logger.info("All migrations complete.")

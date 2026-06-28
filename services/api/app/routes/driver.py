@@ -40,38 +40,80 @@ async def driver_orders(
 
     with get_db() as conn:
         cur = get_cursor(conn)
+
+        # Get the authenticated driver's emp_id from JWT
+        driver_id = current_user.get("sub", "") or current_user.get("empId", "")
+        logger.info(f"Driver orders request: driver_id={driver_id}, laundryId={laundryId}, dates={start} to {end}")
+
+        # Check if this driver has route assignments for any of these dates
         cur.execute("""
-            SELECT o.order_id, o.customer_id, o.address_id, o.order_type, o.order_status,
-                   o.payment_status, o.pickup_date, o.pickup_time_interval,
-                   o.dropoff_date, o.dropoff_time_interval,
-                   o.laundry_bags, o.special_instructions, o.total_cost, o.grand_total,
-                   o.created_at, o.updated_at,
-                   c.first_name, c.last_name, c.phone_number,
-                   ca.address AS customer_address,
-                   ca.address_instructions AS delivery_instructions,
-                   ca.door_number
-            FROM orders.orders o
-            JOIN shop.customers c ON c.customer_id = o.customer_id
-            LEFT JOIN shop.customer_addresses ca ON ca.address_id = o.address_id
-            WHERE o.laundry_id = %s
-              AND o.order_type = 'Online'
-              AND (
-                (o.order_status IN ('OrderSubmitted','ReadyForIntake') AND o.pickup_date BETWEEN %s AND %s)
-                OR
-                (o.order_status IN ('EnRouteToDelivery') AND o.dropoff_date BETWEEN %s AND %s)
-              )
-            ORDER BY COALESCE(o.pickup_date, o.dropoff_date) ASC
-        """, (laundryId, start, end, start, end))
+            SELECT order_id FROM routes.route_assignments
+            WHERE laundry_id = %s AND UPPER(driver_id) = UPPER(%s)
+              AND route_date BETWEEN %s AND %s AND status != 'completed'
+        """, (laundryId, driver_id, start, end))
+        assigned_order_ids = {row["order_id"] for row in cur.fetchall()}
+        logger.info(f"Driver {driver_id} has {len(assigned_order_ids)} assigned orders: {assigned_order_ids}")
+
+        # Fetch orders: either assigned orders OR all orders if no assignments
+        if assigned_order_ids:
+            # Driver has assignments — fetch those specific orders regardless of date
+            placeholders = ",".join(["%s"] * len(assigned_order_ids))
+            cur.execute(f"""
+                SELECT o.order_id, o.customer_id, o.address_id, o.order_type, o.order_status,
+                       o.payment_status, o.pickup_date, o.pickup_time_interval,
+                       o.dropoff_date, o.dropoff_time_interval,
+                       o.laundry_bags, o.special_instructions, o.total_cost, o.grand_total,
+                       o.created_at, o.updated_at,
+                       o.pickup_service, o.dropoff_service,
+                       c.first_name, c.last_name, c.phone_number,
+                       ca.address AS customer_address,
+                       ca.address_instructions AS delivery_instructions,
+                       ca.door_number
+                FROM orders.orders o
+                JOIN shop.customers c ON c.customer_id = o.customer_id
+                LEFT JOIN shop.customer_addresses ca ON ca.address_id = o.address_id
+                WHERE o.order_id IN ({placeholders})
+                ORDER BY COALESCE(o.pickup_date, o.dropoff_date) ASC
+            """, list(assigned_order_ids))
+        else:
+            # No assignments — show all orders for the date range (backward compatible)
+            cur.execute("""
+                SELECT o.order_id, o.customer_id, o.address_id, o.order_type, o.order_status,
+                       o.payment_status, o.pickup_date, o.pickup_time_interval,
+                       o.dropoff_date, o.dropoff_time_interval,
+                       o.laundry_bags, o.special_instructions, o.total_cost, o.grand_total,
+                       o.created_at, o.updated_at,
+                       o.pickup_service, o.dropoff_service,
+                       c.first_name, c.last_name, c.phone_number,
+                       ca.address AS customer_address,
+                       ca.address_instructions AS delivery_instructions,
+                       ca.door_number
+                FROM orders.orders o
+                JOIN shop.customers c ON c.customer_id = o.customer_id
+                LEFT JOIN shop.customer_addresses ca ON ca.address_id = o.address_id
+                WHERE o.laundry_id = %s
+                  AND o.order_type = 'Online'
+                  AND (
+                    (o.order_status IN ('OrderSubmitted','ReadyForIntake') AND o.pickup_date BETWEEN %s AND %s)
+                    OR
+                    (o.order_status IN ('EnRouteToDelivery', 'ProcessingCompleted') AND o.dropoff_date BETWEEN %s AND %s)
+                  )
+                ORDER BY COALESCE(o.pickup_date, o.dropoff_date) ASC
+            """, (laundryId, start, end, start, end))
 
         rows = cur.fetchall()
+        logger.info(f"Driver {driver_id}: fetched {len(rows)} order rows from DB")
         orders = []
         for r in rows:
             d = serialize_row(r)
             d['customerName'] = f"{d.pop('firstName', '')} {d.pop('lastName', '')}".strip()
             d['customerPhone'] = d.pop('phoneNumber', '')
-            d.setdefault('pickupService', 'LaundryDriver')
-            d.setdefault('dropoffService', 'LaundryDriver')
+            d.setdefault('pickupService', d.pop('pickup_service', None) or 'LaundryDriver')
+            d.setdefault('dropoffService', d.pop('dropoff_service', None) or 'LaundryDriver')
+            d['isAssigned'] = d.get('orderId') in assigned_order_ids
             orders.append(d)
+
+        logger.info(f"Driver {driver_id}: returning {len(orders)} orders")
 
     return {"statusCode": 200, "body": {"orders": orders}}
 

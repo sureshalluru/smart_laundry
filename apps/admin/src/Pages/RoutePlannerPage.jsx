@@ -189,14 +189,20 @@ const RoutePlannerPage = ({ laundryId }) => {
 
   // Assign routes (save + optimize order)
   const handleAssign = async () => {
-    if (clusters.length === 0) {
+    // For single driver with no clusters, auto-assign all stops to that driver
+    let assignClusters = clusters;
+    if (clusters.length === 0 && selectedDrivers.length === 1 && stops.length > 0) {
+      assignClusters = [{ clusterIndex: 0, stops: stops.map((s) => s.orderId) }];
+    }
+
+    if (assignClusters.length === 0) {
       toast({ title: 'Run optimization first', status: 'warning', duration: 3000 });
       return;
     }
 
     setAssigning(true);
     try {
-      const assignments = clusters.map((cluster, idx) => ({
+      const assignments = assignClusters.map((cluster, idx) => ({
         driverId: selectedDrivers[idx] || selectedDrivers[0],
         orderIds: cluster.stops || [],
       }));
@@ -351,14 +357,28 @@ const RoutePlannerPage = ({ laundryId }) => {
                   </Text>
 
                   {selectedDrivers.length === 1 ? (
-                    <Button
-                      colorScheme="blue"
-                      size="sm"
-                      width="100%"
-                      onClick={handleSingleDriverRoute}
-                    >
-                      Open in Google Maps
-                    </Button>
+                    <>
+                      <Button
+                        colorScheme="blue"
+                        size="sm"
+                        width="100%"
+                        mb={2}
+                        onClick={handleSingleDriverRoute}
+                      >
+                        Open in Google Maps
+                      </Button>
+                      <Button
+                        colorScheme="blue"
+                        size="sm"
+                        width="100%"
+                        mb={2}
+                        onClick={handleAssign}
+                        isLoading={assigning}
+                        isDisabled={stops.length === 0}
+                      >
+                        Assign Routes
+                      </Button>
+                    </>
                   ) : (
                     <>
                       <Button

@@ -382,6 +382,8 @@ async def update_products_services(
                     SET description = %s, discount_type = %s, discount_value = %s,
                         minimum_order_value = %s, apply_on_whole_order = %s,
                         is_active = %s, linked_frequency = %s, is_online_frequency_promo = %s,
+                        start_date = COALESCE(%s, start_date),
+                        end_date = COALESCE(%s, end_date),
                         updated_at = NOW()
                     WHERE laundry_id = %s AND promo_code = %s
                 """, (
@@ -393,6 +395,8 @@ async def update_products_services(
                     promo.get("isActive", True),
                     promo.get("linkedFrequency"),
                     promo.get("isOnlineFrequencyPromo", False),
+                    promo.get("startDate") or None,
+                    promo.get("endDate") or None,
                     laundryId,
                     promo.get("promoCode", ""),
                 ))

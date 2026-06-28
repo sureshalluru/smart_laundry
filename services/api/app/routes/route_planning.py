@@ -106,10 +106,11 @@ async def get_stops(
             JOIN shop.customers c ON c.customer_id = o.customer_id
             LEFT JOIN shop.customer_addresses ca ON ca.address_id = o.address_id
             WHERE o.laundry_id = %s
+              AND o.order_type = 'Online'
               AND (
                 (o.order_status = 'OrderSubmitted' AND o.pickup_date = %s)
                 OR
-                (o.order_status = 'EnRouteToDelivery' AND o.dropoff_date = %s)
+                (o.order_status IN ('EnRouteToDelivery', 'ProcessingCompleted') AND o.dropoff_date = %s)
               )
         """, (laundryId, route_date, route_date))
 
@@ -166,7 +167,7 @@ async def get_drivers(
             SELECT emp_id, first_name, last_name, role
             FROM shop.employees
             WHERE laundry_id = %s
-              AND role = 'Driver'
+              AND role::text ILIKE '%%driver%%'
               AND is_active = TRUE
             ORDER BY first_name
         """, (laundryId,))
@@ -182,7 +183,6 @@ async def get_drivers(
                 ORDER BY role, first_name
             """, (laundryId,))
             rows = cur.fetchall()
-        rows = cur.fetchall()
 
     drivers = [
         {

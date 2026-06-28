@@ -39,6 +39,8 @@ class SuppressPollingFilter(logging.Filter):
             return False
         if "/api/admin/item-tracking/status" in msg:
             return False
+        if "/api/tracking/driver" in msg:
+            return False
         if "/health" in msg:
             return False
         # Suppress bot scanner probes
@@ -77,6 +79,7 @@ from app.routes import (
     route_planning,
     onboarding_verification,
     reports,
+    tracking,
 )
 
 app = FastAPI(
@@ -137,6 +140,7 @@ app.include_router(item_tracking.track_router, prefix="/api", tags=["Item Tracki
 app.include_router(route_planning.router, prefix="/api/routes", tags=["Route Planning"])
 app.include_router(onboarding_verification.router, prefix="/api/platform/onboard", tags=["Onboarding Verification"])
 app.include_router(reports.router, prefix="/api/admin/reports", tags=["Financial Reports"])
+app.include_router(tracking.router, prefix="/api/tracking", tags=["Driver Tracking"])
 
 
 # Block bot scanners probing for PHP/WordPress/exploit files

@@ -33,6 +33,8 @@ import { fetchDriverOrders } from './DriverOrders';
 import DateFilter from './DriverDateFilter';
 import SidebarLayout from './DriverSidebar';
 import LocationAutocompleteInput from '../hooks/LocationAutocompleteInput';
+import { useLocationBroadcaster } from '../hooks/useLocationBroadcaster';
+import { getUserEmpId } from '../utils/permissions';
 import DriverNoDelivery from '../images/DriverNoDelivery.png';
 
 /* ───────────────────────── Helper: convert File → base64 ───────────────────────── */
@@ -125,29 +127,119 @@ const DriverHome = ({ laundryId }) => {
 
   /* ───────────── Effects ───────────── */
 
+  /* ─── Location Broadcaster (live tracking) ─── */
+  const empId = getUserEmpId();
+
+  // Determine isRouteActive: true when there are assigned stops with active statuses
+  const isRouteActive = useMemo(() => {
+    if (!assignedOrderIds || assignedOrderIds.size === 0) return false;
+    // Check if any displayed orders are in active states (pending pickup or active delivery)
+    return orders.some(
+      (o) =>
+        assignedOrderIds.has(o.orderId) &&
+        ['ordersubmitted', 'enroutetodelivery'].includes(o.orderStatus?.trim().toLowerCase())
+    );
+  }, [orders, assignedOrderIds]);
+
+  // Determine currentStopPosition: sequence_position of the first pending/active stop
+  const currentStopPosition = useMemo(() => {
+    if (!routeAssignments || !assignedOrderIds || assignedOrderIds.size === 0) return 1;
+    const activeStops = orders
+      .filter(
+        (o) =>
+          assignedOrderIds.has(o.orderId) &&
+          ['ordersubmitted', 'enroutetodelivery'].includes(o.orderStatus?.trim().toLowerCase())
+      )
+      .sort((a, b) => (routeAssignments[a.orderId] || 999) - (routeAssignments[b.orderId] || 999));
+    return activeStops.length > 0 ? (routeAssignments[activeStops[0].orderId] || 1) : 1;
+  }, [orders, routeAssignments, assignedOrderIds]);
+
+  const { permissionDenied } = useLocationBroadcaster({
+    laundryId,
+    driverId: empId,
+    isRouteActive,
+    currentStopPosition,
+  });
+
+  // Show a toast reminder if location permission was denied and route is active
+  useEffect(() => {
+    if (permissionDenied && isRouteActive) {
+      toast({
+        title: 'Location Sharing Disabled',
+        description: 'Enable location access so customers can track your position.',
+        status: 'warning',
+        duration: 6000,
+        isClosable: true,
+        position: 'top',
+      });
+    }
+  }, [permissionDenied, isRouteActive, toast]);
+
   /* Check for route assignments for the current driver + date */
   useEffect(() => {
     const checkRouteAssignments = async () => {
       if (!selectedDateValues.length) return;
-      const dateStr = selectedDateValues[0]; // Use the primary selected date
-      const empId = localStorage.getItem('empId');
-      if (!empId) return;
+      const empId = getUserEmpId();
 
       try {
-        const response = await axios.get(
-          `${process.env.REACT_APP_AWS_API_URL}/api/routes/assignments`,
-          {
-            params: { laundryId, date: dateStr, driverId: empId },
-            headers: { Authorization: `Bearer ${authToken}` },
+        // Check all selected dates for route assignments
+        const allStops = [];
+        for (const dateStr of selectedDateValues) {
+          // Fetch assignments — try with empId first, then without if no results
+          let response = await axios.get(
+            `${process.env.REACT_APP_AWS_API_URL}/api/routes/assignments`,
+            {
+              params: { laundryId, date: dateStr, ...(empId ? { driverId: empId } : {}) },
+              headers: { Authorization: `Bearer ${authToken}` },
+            }
+          );
+          let assignments = response.data?.assignments || {};
+
+          // If empId search returned results, use them keyed by empId
+          let driverStops = empId ? assignments[empId] : null;
+
+          // If no results with empId, fetch all and find this driver's stops
+          // by matching against orders we can see
+          if (!driverStops || driverStops.length === 0) {
+            if (empId) {
+              // Retry without driverId filter to get all assignments
+              response = await axios.get(
+                `${process.env.REACT_APP_AWS_API_URL}/api/routes/assignments`,
+                {
+                  params: { laundryId, date: dateStr },
+                  headers: { Authorization: `Bearer ${authToken}` },
+                }
+              );
+              assignments = response.data?.assignments || {};
+            }
+            // Take the first driver's assignments (for single-driver laundries this is fine)
+            // Or match by checking which assignments contain orders from our orders list
+            const allDriverIds = Object.keys(assignments);
+            for (const dId of allDriverIds) {
+              const stops = assignments[dId];
+              if (stops && stops.length > 0) {
+                // Check if any of these orders are in our visible orders
+                const matchesOurOrders = stops.some((s) =>
+                  orders.some((o) => o.orderId === s.orderId)
+                );
+                if (matchesOurOrders) {
+                  driverStops = stops;
+                  break;
+                }
+              }
+            }
           }
-        );
-        const assignments = response.data?.assignments || {};
-        const driverStops = assignments[empId];
-        if (driverStops && driverStops.length > 0) {
-          // Build lookup maps
+
+          if (driverStops && driverStops.length > 0) {
+            allStops.push(...driverStops);
+          }
+        }
+
+        if (allStops.length > 0) {
+          // Build lookup maps from all dates
           const seqMap = {};
           const idSet = new Set();
-          driverStops.forEach((s) => {
+          allStops.forEach((s) => {
             seqMap[s.orderId] = s.sequencePosition;
             idSet.add(s.orderId);
           });
@@ -214,6 +306,7 @@ const DriverHome = ({ laundryId }) => {
         'ordersubmitted',
         'readyforintake',
         'enroutetodelivery',
+        'processingcompleted',
         'delivered',
       ];
       if (!allowedStatuses.includes(s)) return false;
@@ -242,7 +335,7 @@ const DriverHome = ({ laundryId }) => {
       }
 
       // Dropoff leg statuses
-      if (s === 'enroutetodelivery' || s === 'delivered') {
+      if (s === 'enroutetodelivery' || s === 'delivered' || s === 'processingcompleted') {
         // For both online and in-store, include only LaundryDriver dropoffs on matching dropoff date
         if (dropoffSvc !== 'laundrydriver') return false;
         return selectedDateValues.includes(dropoffDate);
@@ -311,7 +404,7 @@ const DriverHome = ({ laundryId }) => {
   }, [laundryId, selectedDateValues, authToken, assignedOrderIds]);
 
   const handleClaimOrder = async (orderId) => {
-    const empId = localStorage.getItem('empId');
+    const empId = getUserEmpId();
     if (!empId || !selectedDateValues.length) return;
     setClaimingOrderId(orderId);
     try {
@@ -485,8 +578,10 @@ const DriverHome = ({ laundryId }) => {
   window.open(url, '_blank');
 };
 
-  /* slice orders for pagination */
-  const displayedOrders = orders.slice(0, currentPage * pageSize);
+  /* slice orders for pagination — backend already filters by driver assignments */
+  const displayedOrders = useMemo(() => {
+    return orders.slice(0, currentPage * pageSize);
+  }, [orders, currentPage, pageSize]);
 
   /* Orders eligible for routing: pickup & delivery in-progress */
   const routeOrders = orders.filter((o) =>
@@ -534,6 +629,42 @@ const DriverHome = ({ laundryId }) => {
             </Button>
           )}
         </Flex>
+
+        {/* Start Route button - shown when driver has delivery/pickup orders to start */}
+        {orders.length > 0 && orders.some(
+          (o) => ['enroutetodelivery', 'processingcompleted', 'ordersubmitted'].includes(o.orderStatus?.trim().toLowerCase())
+        ) && (
+          <Button
+            colorScheme="orange"
+            size="md"
+            width="100%"
+            mb={3}
+            isLoading={loadingOrderIds['start_route']}
+            onClick={async () => {
+              setLoadingOrderIds(p => ({ ...p, start_route: true }));
+              try {
+                // Let the backend find the right date from pending assignments
+                const response = await axios.post(
+                  `${process.env.REACT_APP_AWS_API_URL}/api/tracking/start-route`,
+                  {},
+                  { headers: { Authorization: `Bearer ${authToken}` } }
+                );
+                if (response.data.status === 'success') {
+                  toast({ title: '🚗 Route Started!', description: 'First customer notified.', status: 'success', duration: 4000 });
+                  navigate(0); // Refresh to show updated statuses
+                } else {
+                  toast({ title: response.data.message || 'No stops to start', status: 'info', duration: 3000 });
+                }
+              } catch (err) {
+                toast({ title: 'Error starting route', status: 'error', duration: 3000 });
+              } finally {
+                setLoadingOrderIds(p => ({ ...p, start_route: false }));
+              }
+            }}
+          >
+            🚀 Start Route
+          </Button>
+        )}
 
         {/* Orders list */}
         {loading ? (
@@ -692,6 +823,12 @@ const DriverHome = ({ laundryId }) => {
                               { params: { operation: 'updateOrder', orderId: order.orderId, laundryId, empId: '' }, headers: { Authorization: `Bearer ${authToken}` } }
                             );
                             toast({ title: '✅ Pickup Confirmed!', status: 'success', duration: 3000 });
+                            // Fire-and-forget: deactivate tracking for this order
+                            axios.post(
+                              `${process.env.REACT_APP_AWS_API_URL}/api/tracking/deactivate`,
+                              { orderId: order.orderId },
+                              { headers: { Authorization: `Bearer ${authToken}` } }
+                            ).catch(() => {}); // silently ignore errors
                             setOrders((prev) =>
                               prev.map((o) => (o.orderId === order.orderId ? { ...o, orderStatus: 'ReadyForIntake', laundryBags: bags } : o))
                             );
@@ -715,6 +852,8 @@ const DriverHome = ({ laundryId }) => {
                         mt={2}
                         width="100%"
                         isLoading={loadingOrderIds[`deliver_${order.orderId}`]}
+                        isDisabled={!photoUploaded[order.orderId]}
+                        title={!photoUploaded[order.orderId] ? 'Upload delivery photo first' : ''}
                         onClick={async () => {
                           setLoadingOrderIds(p => ({ ...p, [`deliver_${order.orderId}`]: true }));
                           try {
@@ -724,6 +863,19 @@ const DriverHome = ({ laundryId }) => {
                               { params: { operation: 'updateOrder', orderId: order.orderId, laundryId, empId: '' }, headers: { Authorization: `Bearer ${authToken}` } }
                             );
                             toast({ title: '✅ Marked as Delivered!', status: 'success', duration: 3000 });
+                            // Fire-and-forget: deactivate tracking for this order
+                            axios.post(
+                              `${process.env.REACT_APP_AWS_API_URL}/api/tracking/deactivate`,
+                              { orderId: order.orderId },
+                              { headers: { Authorization: `Bearer ${authToken}` } }
+                            ).catch(() => {});
+                            // Fire-and-forget: notify next customer in route
+                            const dateStr = selectedDateValues[0] || format(new Date(), 'yyyy-MM-dd');
+                            axios.post(
+                              `${process.env.REACT_APP_AWS_API_URL}/api/tracking/notify-next`,
+                              { date: dateStr, completedOrderId: order.orderId },
+                              { headers: { Authorization: `Bearer ${authToken}` } }
+                            ).catch(() => {});
                             navigate(0); // Refresh
                           } catch (err) {
                             toast({ title: 'Error marking delivered', status: 'error', duration: 3000 });

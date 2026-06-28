@@ -63,6 +63,7 @@ const PromotionsPage = ({ validateEmpCredentials, fetchLaundryServices, empPrefi
   const [availableServices, setAvailableServices] = useState([]);
   const [isPromoUpdating, setIsPromoUpdating] = useState(false);
   const [isEmployeeValidating, setIsEmployeeValidating] = useState(false);
+  const [editingPromo, setEditingPromo] = useState(null); // Promo currently being edited
   const [newPromotion, setNewPromotion] = useState({
     promoName: "",
     description: "",
@@ -89,6 +90,11 @@ const PromotionsPage = ({ validateEmpCredentials, fetchLaundryServices, empPrefi
     isOpen: isAddPromotionOpen,
     onOpen: onAddPromotionOpen,
     onClose: onAddPromotionClose,
+  } = useDisclosure();
+  const {
+    isOpen: isEditPromoOpen,
+    onOpen: onEditPromoOpen,
+    onClose: onEditPromoClose,
   } = useDisclosure();
   const authToken = localStorage.getItem('idToken');
 
@@ -301,6 +307,42 @@ const PromotionsPage = ({ validateEmpCredentials, fetchLaundryServices, empPrefi
     setPromotions(promotions.filter((promo) => promo.promoCode !== promoCode));
   };
 
+  // Handle open edit promo modal
+  const handleOpenEditPromo = (promo) => {
+    setEditingPromo({
+      promoCode: promo.promoCode,
+      promoName: promo.promoName || '',
+      description: promo.description || '',
+      discountType: promo.discountType || 'percentage',
+      discountValue: promo.discountValue || 0,
+      startDate: promo.startDate ? promo.startDate.split('T')[0] : '',
+      endDate: promo.endDate ? promo.endDate.split('T')[0] : '',
+      minimumOrderValue: promo.minimumOrderValue || 0,
+      isActive: promo.isActive !== undefined ? promo.isActive : true,
+    });
+    onEditPromoOpen();
+  };
+
+  // Handle save edited promo
+  const handleSaveEditedPromo = () => {
+    if (!editingPromo) return;
+    // Update the promotions list in UI
+    setPromotions(promotions.map((p) =>
+      p.promoCode === editingPromo.promoCode ? { ...p, ...editingPromo } : p
+    ));
+    // Track the edit for the save payload
+    const existingEditIndex = promotionsToEdit.findIndex(p => p.promoCode === editingPromo.promoCode);
+    if (existingEditIndex >= 0) {
+      const updated = [...promotionsToEdit];
+      updated[existingEditIndex] = editingPromo;
+      setPromotionsToEdit(updated);
+    } else {
+      setPromotionsToEdit([...promotionsToEdit, editingPromo]);
+    }
+    onEditPromoClose();
+    setEditingPromo(null);
+  };
+
   // Handle save changes
   const handleSaveChanges = async () => {
     if (
@@ -338,8 +380,14 @@ const PromotionsPage = ({ validateEmpCredentials, fetchLaundryServices, empPrefi
         isActive: promo.isActive !== undefined ? promo.isActive : true, // Promotion active status, default to true
       })),
       promotionsToUpdate: promotionsToEdit.map((promo) => ({
-        promoCode: promo.promoCode || "", // Promotion code
-        description: promo.description || "", // Description of the promotion
+        promoCode: promo.promoCode || "",
+        description: promo.description || "",
+        discountType: promo.discountType || "percentage",
+        discountValue: parseFloat(promo.discountValue) || 0,
+        minimumOrderValue: parseFloat(promo.minimumOrderValue) || 0,
+        isActive: promo.isActive !== undefined ? promo.isActive : true,
+        startDate: promo.startDate || null,
+        endDate: promo.endDate || null,
       })),
       promotionsToRemove: promotionsToDelete || [], // Promotions to remove, default to empty array
     };
@@ -475,6 +523,15 @@ const PromotionsPage = ({ validateEmpCredentials, fetchLaundryServices, empPrefi
                   </Td>
                   {editMode && (
                     <Td>
+                      <IconButton
+                        icon={<EditIcon />}
+                        aria-label="Edit Promotion"
+                        size="sm"
+                        variant="ghost"
+                        colorScheme="blue"
+                        mr={1}
+                        onClick={() => handleOpenEditPromo(promo)}
+                      />
                       <IconButton
                         icon={<DeleteIcon />}
                         aria-label="Delete Promotion"
@@ -906,6 +963,109 @@ const PromotionsPage = ({ validateEmpCredentials, fetchLaundryServices, empPrefi
     <ModalFooter>
       <Button colorScheme="green" onClick={handleAddPromotion}>
         Add
+      </Button>
+    </ModalFooter>
+  </ModalContent>
+</Modal>
+
+{/* Edit Promotion Modal */}
+<Modal isOpen={isEditPromoOpen} onClose={() => { onEditPromoClose(); setEditingPromo(null); }}>
+  <ModalOverlay />
+  <ModalContent>
+    <ModalHeader>Edit Promotion</ModalHeader>
+    <ModalCloseButton />
+    <ModalBody>
+      {editingPromo && (
+        <Stack spacing={4}>
+          <Box>
+            <Text fontWeight="bold" fontSize="sm" color="gray.600">Promo Code</Text>
+            <Text>{editingPromo.promoCode}</Text>
+          </Box>
+          <Box>
+            <Text fontWeight="bold" fontSize="sm" color="gray.600">Name</Text>
+            <Text>{editingPromo.promoName}</Text>
+          </Box>
+          <Divider />
+          <FormControl>
+            <FormLabel>Discount Value</FormLabel>
+            <Input
+              type="number"
+              value={editingPromo.discountValue}
+              onChange={(e) => setEditingPromo({ ...editingPromo, discountValue: e.target.value })}
+            />
+          </FormControl>
+          <FormControl>
+            <FormLabel>Discount Type</FormLabel>
+            <Menu>
+              <MenuButton as={Button} size="sm" rightIcon="▼">
+                {editingPromo.discountType === 'percentage' ? 'Percentage' : 'Fixed Amount'}
+              </MenuButton>
+              <MenuList>
+                <MenuItem onClick={() => setEditingPromo({ ...editingPromo, discountType: 'percentage' })}>
+                  Percentage
+                </MenuItem>
+                <MenuItem onClick={() => setEditingPromo({ ...editingPromo, discountType: 'amount' })}>
+                  Fixed Amount
+                </MenuItem>
+              </MenuList>
+            </Menu>
+          </FormControl>
+          <FormControl>
+            <FormLabel>Start Date</FormLabel>
+            <Input
+              type="date"
+              value={editingPromo.startDate}
+              onChange={(e) => setEditingPromo({ ...editingPromo, startDate: e.target.value })}
+            />
+          </FormControl>
+          <FormControl>
+            <FormLabel>End Date</FormLabel>
+            <Input
+              type="date"
+              value={editingPromo.endDate}
+              onChange={(e) => setEditingPromo({ ...editingPromo, endDate: e.target.value })}
+            />
+          </FormControl>
+          <FormControl>
+            <FormLabel>Description</FormLabel>
+            <Input
+              value={editingPromo.description}
+              onChange={(e) => setEditingPromo({ ...editingPromo, description: e.target.value })}
+            />
+          </FormControl>
+          <FormControl>
+            <FormLabel>Minimum Order Value</FormLabel>
+            <Input
+              type="number"
+              value={editingPromo.minimumOrderValue}
+              onChange={(e) => setEditingPromo({ ...editingPromo, minimumOrderValue: e.target.value })}
+            />
+          </FormControl>
+          <FormControl>
+            <FormLabel>Active Status</FormLabel>
+            <Menu>
+              <MenuButton as={Button} size="sm" rightIcon="▼">
+                {editingPromo.isActive ? 'Active' : 'Inactive'}
+              </MenuButton>
+              <MenuList>
+                <MenuItem onClick={() => setEditingPromo({ ...editingPromo, isActive: true })}>
+                  Active
+                </MenuItem>
+                <MenuItem onClick={() => setEditingPromo({ ...editingPromo, isActive: false })}>
+                  Inactive
+                </MenuItem>
+              </MenuList>
+            </Menu>
+          </FormControl>
+        </Stack>
+      )}
+    </ModalBody>
+    <ModalFooter>
+      <Button variant="ghost" mr={3} onClick={() => { onEditPromoClose(); setEditingPromo(null); }}>
+        Cancel
+      </Button>
+      <Button colorScheme="blue" onClick={handleSaveEditedPromo}>
+        Save
       </Button>
     </ModalFooter>
   </ModalContent>

@@ -22,6 +22,7 @@ import OnboardingPage from './Pages/OnboardingPage';
 import SareeRollingPage from './Pages/SareeRollingPage';
 import ItemTrackingUpload from './Pages/ItemTrackingUpload';
 import OrderTrackingPhotos from './Pages/OrderTrackingPhotos';
+import TrackingPage from './Pages/TrackingPage';
 import { Navigate } from 'react-router-dom';
 import theme from './theme';
 
@@ -80,6 +81,11 @@ function App() {
                                     <Route index element={<Address />} />
                                     <Route path="site" element={<LaundryLandingWrapper />} />
                                     <Route path="login" element={<AuthenticationPage />} />
+                                    <Route path="user/track/:orderId" element={
+                                        <CustomerAuthCheck>
+                                            <TrackingPage />
+                                        </CustomerAuthCheck>
+                                    } />
                                     <Route path="user/*" element={
                                         <CustomerAuthCheck>
                                             <LaundryHomePage />
