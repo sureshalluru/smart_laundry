@@ -133,6 +133,24 @@ const AdminLayout = ({ validateEmpCredentials, empPrefix }) => {
     
             if (isValidated) {
                 if ((isDriverAccess && role === "Delivery Driver") || (!isDriverAccess && (role === "Manager" || role === "Admin"))) {
+                    // Re-login as this employee to get a fresh JWT with their emp_id
+                    try {
+                        const loginResponse = await axios.post(`${process.env.REACT_APP_AWS_API_URL}/api/auth/login`, {
+                            employeeId: fullEmpId,
+                            passcode: passcode,
+                            laundryId: laundryId,
+                            deviceFingerprint: 'admin-panel',
+                        });
+                        if (loginResponse.data?.status === 'success') {
+                            localStorage.setItem('auth', JSON.stringify(loginResponse.data));
+                            localStorage.setItem('idToken', loginResponse.data.accessToken);
+                            localStorage.setItem('empRole', role);
+                            axios.defaults.headers.common['Authorization'] = `Bearer ${loginResponse.data.accessToken}`;
+                        }
+                    } catch (loginErr) {
+                        console.warn('Re-login after validation failed, using existing token:', loginErr.message);
+                    }
+
                     toast({
                         title: "Validation Success",
                         description: `Access granted. Role: ${role}`,
