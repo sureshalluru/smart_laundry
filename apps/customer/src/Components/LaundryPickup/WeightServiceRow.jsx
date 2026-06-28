@@ -93,7 +93,7 @@ export default function WeightServiceRow({ service, cartItem, dispatch }) {
       {/* Clarification: customer doesn't need to weigh */}
       <Box bg="green.50" border="1px solid" borderColor="green.200" borderRadius="lg" px={3} py={2} mb={3}>
         <Text fontSize="xs" color="green.700" fontWeight="500">
-          📋 No need to weigh at home! We'll weigh your laundry at the store and send a photo with the exact weight. Minimum order is 25 lbs. You'll only be charged for actual weight.
+          📋 No need to weigh at home! We'll weigh your laundry at the store and send a photo with the exact weight. Minimum order is 20 lbs. You'll only be charged for actual weight.
         </Text>
       </Box>
 
@@ -130,7 +130,7 @@ export default function WeightServiceRow({ service, cartItem, dispatch }) {
             borderColor="blue.200"
             _focus={{ borderColor: 'blue.500' }}
           />
-          <Text fontSize="xs" color="gray.500" mt={1}>estimated lbs (min 25)</Text>
+          <Text fontSize="xs" color="gray.500" mt={1}>estimated lbs (min 20)</Text>
         </VStack>
 
         <IconButton

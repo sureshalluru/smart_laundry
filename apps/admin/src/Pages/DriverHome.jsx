@@ -663,10 +663,13 @@ const DriverHome = ({ laundryId }) => {
             onClick={async () => {
               setLoadingOrderIds(p => ({ ...p, start_route: true }));
               try {
-                // Let the backend find the right date from pending assignments
+                // Pass the first delivery-eligible order from what the driver sees
+                const firstDeliveryOrder = orders.find(
+                  (o) => ['enroutetodelivery', 'processingcompleted', 'ordersubmitted'].includes(o.orderStatus?.trim().toLowerCase())
+                );
                 const response = await axios.post(
                   `${process.env.REACT_APP_AWS_API_URL}/api/tracking/start-route`,
-                  {},
+                  { orderId: firstDeliveryOrder?.orderId || null },
                   { headers: { Authorization: `Bearer ${authToken}` } }
                 );
                 if (response.data.status === 'success') {

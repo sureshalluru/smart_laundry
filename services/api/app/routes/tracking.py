@@ -161,6 +161,10 @@ async def start_route(
     1. Moves the first delivery order in sequence to 'EnRouteToDelivery' (if not already)
     2. Sends SMS to the first customer with a tracking link
     Returns the first order details.
+
+    Accepts optional body params:
+    - orderId: specific order to notify (from frontend's visible orders)
+    - date: route date override
     """
     # Resolve driver_id: try empId claim first, then sub
     driver_id = current_user.get("empId") or current_user.get("custom:empId") or current_user.get("sub", "")
@@ -174,78 +178,79 @@ async def start_route(
             detail="Missing empId or laundryId in token claims",
         )
 
+    explicit_order_id = body.get("orderId")
     date_str = body.get("date")
-    if not date_str:
-        # If no date provided, find the earliest pending assignment date for this driver
-        with get_db() as conn:
-            cur = get_cursor(conn)
-            cur.execute("""
-                SELECT route_date FROM routes.route_assignments
-                WHERE laundry_id = %s AND UPPER(driver_id) = UPPER(%s) AND status != 'completed'
-                ORDER BY route_date ASC LIMIT 1
-            """, (laundry_id, driver_id))
-            row = cur.fetchone()
-            if row:
-                date_str = str(row["route_date"])
-                logger.info(f"start-route: found assignment date {date_str} for driver {driver_id}")
-            else:
-                logger.warning(f"start-route: NO assignments found for driver_id={driver_id}, laundry_id={laundry_id}")
-                # Don't return error yet — fallback will try to find any pending order
 
     with get_db() as conn:
         cur = get_cursor(conn)
+        first_stop = None
 
-        # Get the first pending stop for this driver (by sequence if assigned, otherwise first by date)
-        if date_str:
-            cur.execute("""
-                SELECT ra.order_id, ra.sequence_position, o.order_status, o.customer_id,
-                       c.phone_number, c.first_name, s.user_domain, s.laundry_name
-                FROM routes.route_assignments ra
-                JOIN orders.orders o ON o.order_id = ra.order_id
-                JOIN shop.customers c ON c.customer_id = o.customer_id
-                JOIN shop.laundry_shops s ON s.laundry_id = o.laundry_id
-                WHERE ra.laundry_id = %s AND UPPER(ra.driver_id) = UPPER(%s) AND ra.route_date = %s
-                  AND ra.status != 'completed'
-                  AND o.order_status IN ('EnRouteToDelivery', 'ProcessingCompleted', 'OrderSubmitted')
-                ORDER BY ra.sequence_position ASC
-                LIMIT 1
-            """, (laundry_id, driver_id, date_str))
-        else:
-            # No date — find any pending assignment
-            cur.execute("""
-                SELECT ra.order_id, ra.sequence_position, o.order_status, o.customer_id,
-                       c.phone_number, c.first_name, s.user_domain, s.laundry_name
-                FROM routes.route_assignments ra
-                JOIN orders.orders o ON o.order_id = ra.order_id
-                JOIN shop.customers c ON c.customer_id = o.customer_id
-                JOIN shop.laundry_shops s ON s.laundry_id = o.laundry_id
-                WHERE ra.laundry_id = %s AND UPPER(ra.driver_id) = UPPER(%s)
-                  AND ra.status != 'completed'
-                  AND o.order_status IN ('EnRouteToDelivery', 'ProcessingCompleted', 'OrderSubmitted')
-                ORDER BY ra.route_date ASC, ra.sequence_position ASC
-                LIMIT 1
-            """, (laundry_id, driver_id))
-
-        first_stop = cur.fetchone()
-        logger.info(f"start-route: assignment query result: {first_stop is not None}, driver_id={driver_id}, date_str={date_str}")
-
-        # Fallback: if no route assignments, find any pending order for this laundry
-        if not first_stop:
-            logger.info(f"start-route: no assignment found, trying fallback query for laundry_id={laundry_id}")
+        # ─── Path 1: Frontend provided a specific orderId — use it directly ───
+        if explicit_order_id:
+            logger.info(f"start-route: using explicit orderId={explicit_order_id} from frontend")
             cur.execute("""
                 SELECT o.order_id, o.order_status, o.customer_id,
                        c.phone_number, c.first_name, s.user_domain, s.laundry_name
                 FROM orders.orders o
                 JOIN shop.customers c ON c.customer_id = o.customer_id
                 JOIN shop.laundry_shops s ON s.laundry_id = o.laundry_id
-                WHERE o.laundry_id = %s
-                  AND o.order_type = 'Online'
-                  AND o.order_status IN ('EnRouteToDelivery', 'ProcessingCompleted', 'OrderSubmitted')
-                ORDER BY COALESCE(o.pickup_date, o.dropoff_date) ASC
-                LIMIT 1
-            """, (laundry_id,))
+                WHERE o.order_id = %s AND o.laundry_id = %s
+            """, (explicit_order_id, laundry_id))
             first_stop = cur.fetchone()
-            logger.info(f"start-route: fallback query result: {first_stop is not None}")
+            if first_stop:
+                logger.info(f"start-route: found order {explicit_order_id}, customer phone={first_stop['phone_number']}")
+            else:
+                logger.warning(f"start-route: explicit orderId={explicit_order_id} not found for laundry_id={laundry_id}")
+
+        # ─── Path 2: No explicit orderId — discover from route assignments ───
+        if not first_stop:
+            if not date_str:
+                # Find the earliest pending assignment date for this driver
+                cur.execute("""
+                    SELECT route_date FROM routes.route_assignments
+                    WHERE laundry_id = %s AND UPPER(driver_id) = UPPER(%s) AND status != 'completed'
+                    ORDER BY route_date ASC LIMIT 1
+                """, (str(laundry_id), driver_id))
+                row = cur.fetchone()
+                if row:
+                    date_str = str(row["route_date"])
+                    logger.info(f"start-route: found assignment date {date_str} for driver {driver_id}")
+                else:
+                    logger.warning(f"start-route: NO assignments found for driver_id={driver_id}, laundry_id={laundry_id}")
+
+            # Get the first pending stop for this driver (by sequence if assigned, otherwise first by date)
+            if date_str:
+                cur.execute("""
+                    SELECT ra.order_id, ra.sequence_position, o.order_status, o.customer_id,
+                           c.phone_number, c.first_name, s.user_domain, s.laundry_name
+                    FROM routes.route_assignments ra
+                    JOIN orders.orders o ON o.order_id = ra.order_id
+                    JOIN shop.customers c ON c.customer_id = o.customer_id
+                    JOIN shop.laundry_shops s ON s.laundry_id = o.laundry_id
+                    WHERE ra.laundry_id = %s AND UPPER(ra.driver_id) = UPPER(%s) AND ra.route_date = %s
+                      AND ra.status != 'completed'
+                      AND o.order_status IN ('EnRouteToDelivery', 'ProcessingCompleted', 'OrderSubmitted')
+                    ORDER BY ra.sequence_position ASC
+                    LIMIT 1
+                """, (laundry_id, driver_id, date_str))
+            else:
+                # No date — find any pending assignment
+                cur.execute("""
+                    SELECT ra.order_id, ra.sequence_position, o.order_status, o.customer_id,
+                           c.phone_number, c.first_name, s.user_domain, s.laundry_name
+                    FROM routes.route_assignments ra
+                    JOIN orders.orders o ON o.order_id = ra.order_id
+                    JOIN shop.customers c ON c.customer_id = o.customer_id
+                    JOIN shop.laundry_shops s ON s.laundry_id = o.laundry_id
+                    WHERE ra.laundry_id = %s AND UPPER(ra.driver_id) = UPPER(%s)
+                      AND ra.status != 'completed'
+                      AND o.order_status IN ('EnRouteToDelivery', 'ProcessingCompleted', 'OrderSubmitted')
+                    ORDER BY ra.route_date ASC, ra.sequence_position ASC
+                    LIMIT 1
+                """, (laundry_id, driver_id))
+
+            first_stop = cur.fetchone()
+            logger.info(f"start-route: assignment query result: {first_stop is not None}, driver_id={driver_id}, date_str={date_str}")
 
         if not first_stop:
             return {"status": "no_stops", "message": "No pending delivery stops found."}
