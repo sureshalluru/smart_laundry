@@ -109,6 +109,7 @@ const DriverHome = ({ laundryId }) => {
   const [fileInputKey, setFileInputKey] = useState(Date.now());
   const [includeUberOrders, setIncludeUberOrders] = useState(false);
   const [laundryPhone, setLaundryPhone] = useState('');
+  const [laundryAddress, setLaundryAddress] = useState('');
 
   /* Optimized-route modal */
   const {
@@ -181,11 +182,14 @@ const DriverHome = ({ laundryId }) => {
     const fetchLaundryContact = async () => {
       try {
         const res = await axios.get(
-          `${process.env.REACT_APP_AWS_API_URL}/api/laundry/get-info`,
-          { params: { laundryId }, headers: { Authorization: `Bearer ${authToken}` } }
+          `${process.env.REACT_APP_AWS_API_URL}/api/admin/laundry-products-info`,
+          { params: { operation: 'viewShopInfo', laundryId }, headers: { Authorization: `Bearer ${authToken}` } }
         );
-        const info = res.data?.body?.laundryInfo || res.data?.laundryInfo || {};
+        const info = res.data?.body?.data || {};
         setLaundryPhone(info.phone || info.phoneNumber || '');
+        // Build address from parts
+        const parts = [info.street, info.city, info.state, info.zipCode].filter(Boolean);
+        setLaundryAddress(parts.join(', '));
       } catch (err) {
         // Non-critical, ignore
       }
@@ -1121,6 +1125,11 @@ const DriverHome = ({ laundryId }) => {
           <Text fontSize="sm" color="gray.600">
             Call or text the laundry if you have questions about pickups or deliveries.
           </Text>
+          {laundryAddress && (
+            <Text fontSize="sm" color="gray.700" mt={1}>
+              📍 {laundryAddress}
+            </Text>
+          )}
           {laundryPhone && (
             <Link href={`tel:${laundryPhone}`} color="blue.600" fontWeight="bold" fontSize="sm" mt={1} display="block">
               📞 {laundryPhone}

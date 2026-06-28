@@ -573,19 +573,37 @@ async def get_customer_orders(
 @router.get("/get-order-id-info")
 async def get_customer_order_detail(
     operation: str = Query(...),
-    customerId: str = Query(...),
+    customerId: Optional[str] = Query(None),
     orderId: str = Query(...),
     laundryId: Optional[str] = Query(None),
 ):
     """Get single order details for customer."""
     with get_db() as conn:
         cur = get_cursor(conn)
-        cur.execute("""
-            SELECT o.*, ot.tip_amount, ot.tip_percentage, ot.tip_type, ot.tip_method
-            FROM orders.orders o
-            LEFT JOIN orders.order_tips ot ON ot.order_id = o.order_id
-            WHERE o.order_id = %s AND o.customer_id = %s
-        """, (orderId, customerId))
+        # If customerId is provided, use it for stricter lookup
+        if customerId:
+            cur.execute("""
+                SELECT o.*, ot.tip_amount, ot.tip_percentage, ot.tip_type, ot.tip_method
+                FROM orders.orders o
+                LEFT JOIN orders.order_tips ot ON ot.order_id = o.order_id
+                WHERE o.order_id = %s AND o.customer_id = %s
+            """, (orderId, customerId))
+        else:
+            # Fallback: lookup by orderId + laundryId (for tracking page links)
+            if laundryId:
+                cur.execute("""
+                    SELECT o.*, ot.tip_amount, ot.tip_percentage, ot.tip_type, ot.tip_method
+                    FROM orders.orders o
+                    LEFT JOIN orders.order_tips ot ON ot.order_id = o.order_id
+                    WHERE o.order_id = %s AND o.laundry_id = %s
+                """, (orderId, laundryId))
+            else:
+                cur.execute("""
+                    SELECT o.*, ot.tip_amount, ot.tip_percentage, ot.tip_type, ot.tip_method
+                    FROM orders.orders o
+                    LEFT JOIN orders.order_tips ot ON ot.order_id = o.order_id
+                    WHERE o.order_id = %s
+                """, (orderId,))
         order = cur.fetchone()
         if not order:
             return {"status": "error", "message": "Order not found"}

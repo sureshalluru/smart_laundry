@@ -82,9 +82,7 @@ function App() {
                                     <Route path="site" element={<LaundryLandingWrapper />} />
                                     <Route path="login" element={<AuthenticationPage />} />
                                     <Route path="user/track/:orderId" element={
-                                        <CustomerAuthCheck>
-                                            <TrackingPage />
-                                        </CustomerAuthCheck>
+                                        <TrackingPage />
                                     } />
                                     <Route path="user/*" element={
                                         <CustomerAuthCheck>

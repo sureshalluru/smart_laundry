@@ -97,11 +97,12 @@ import {
           const info = await fetchLaundryInfo(laundryId);
           
           if (info) {
+            const addrParts = [info.street, info.city, info.state, info.zipCode].filter(Boolean);
             setLaundryInfo({
-              name: info.name,
-              address: info.address,
+              name: info.name || info.laundryName,
+              address: addrParts.join(', '),
               phone: info.phone,
-              logo: info.logo,
+              logo: info.logo || info.laundryLogo,
             });
           }
         };
@@ -245,10 +246,10 @@ import {
 
         <Box as="footer"  bg="teal.600" textAlign="center">
             <Text fontSize={['sm', 'md']} color="white">
-                📍 {laundryInfo?.laundryAddress || "123 Main Street, City, State"}
+                📍 {laundryInfo?.address || "123 Main Street, City, State"}
             </Text>
             <Text fontSize={['sm', 'md']} color="white">
-                📞 {laundryInfo?.phoneNumber || "(123) 456-7890"}
+                📞 {laundryInfo?.phone || "(123) 456-7890"}
             </Text>
         </Box>
 
