@@ -17,7 +17,7 @@ import {
  * Shows service name, price/lb, +/- weight buttons, and Add/Remove.
  */
 export default function WeightServiceRow({ service, cartItem, dispatch }) {
-  const [weight, setWeight] = useState(cartItem ? cartItem.quantity : 25);
+  const [weight, setWeight] = useState(cartItem ? cartItem.quantity : '');
 
   const increment = (amount = 1) => {
     const newWeight = Math.round((weight + amount) * 10) / 10;
@@ -82,9 +82,12 @@ export default function WeightServiceRow({ service, cartItem, dispatch }) {
             <Text fontSize="xs" color="gray.500">{service.description}</Text>
           )}
         </VStack>
-        <Text fontSize="lg" fontWeight="800" color="blue.600">
-          ${parseFloat(service.price).toFixed(2)}/lb
-        </Text>
+        <VStack align="flex-end" spacing={0}>
+          <Text fontSize="lg" fontWeight="800" color="blue.600">
+            ${parseFloat(service.price).toFixed(2)}/lb
+          </Text>
+          <Text fontSize="xs" color="gray.500" fontWeight="500">Min. 20 lb</Text>
+        </VStack>
       </Flex>
 
       {/* Clarification: customer doesn't need to weigh */}

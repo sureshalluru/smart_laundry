@@ -219,7 +219,7 @@ export default function ChatWidget({ customerId, laundryId, customerName, custom
 
             {/* Floating button */}
             {!isOpen && (
-                <Box position="fixed" bottom="20px" right="20px" zIndex="1400">
+                <Box position="fixed" bottom="80px" right="20px" zIndex="1400">
                     <IconButton
                         icon={<FiMessageCircle />}
                         size="lg"
