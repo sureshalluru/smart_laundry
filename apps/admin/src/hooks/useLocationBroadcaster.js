@@ -97,12 +97,25 @@ export function useLocationBroadcaster({ laundryId, driverId, isRouteActive, cur
           setPermissionDenied(true);
           setIsTracking(false);
           setLastError('Location permission denied');
+
+          // Detect platform for specific instructions
+          const ua = navigator.userAgent;
+          const isIOS = /iPad|iPhone|iPod/.test(ua);
+          const isChrome = /Chrome/.test(ua) && !/Edge/.test(ua);
+          let instructions = '';
+          if (isIOS) {
+            instructions = 'Go to Settings → Safari → Location → set to "Allow". Then refresh this page.';
+          } else if (isChrome) {
+            instructions = 'Tap the lock/tune icon in the address bar → Permissions → Location → Allow. Then refresh.';
+          } else {
+            instructions = 'Tap the lock/Aa icon in your address bar → Site Settings → Location → Allow. Then refresh.';
+          }
+
           toast({
-            title: 'Location Permission Required',
-            description:
-              'Location sharing is required for live tracking. Please enable location access in your browser settings.',
+            title: '📍 Location Permission Required',
+            description: instructions,
             status: 'warning',
-            duration: 8000,
+            duration: 15000,
             isClosable: true,
             position: 'top',
           });

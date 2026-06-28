@@ -129,6 +129,17 @@ const DriverHome = ({ laundryId }) => {
 
   /* ───────────── Effects ───────────── */
 
+  /* ─── Location Broadcaster (live tracking) ─── */
+  const empId = getUserEmpId();
+
+  // Determine isRouteActive: true when driver has active delivery/pickup orders
+  const isRouteActive = useMemo(() => {
+    // Active if ANY orders are in delivery/pickup states (regardless of assignments)
+    return orders.some(
+      (o) => ['ordersubmitted', 'enroutetodelivery'].includes(o.orderStatus?.trim().toLowerCase())
+    );
+  }, [orders]);
+
   /* ─── Wake Lock: keep screen on during active routes ─── */
   useEffect(() => {
     let wakeLock = null;
@@ -158,17 +169,6 @@ const DriverHome = ({ laundryId }) => {
     };
   }, [isRouteActive]);
 
-  /* ─── Location Broadcaster (live tracking) ─── */
-  const empId = getUserEmpId();
-
-  // Determine isRouteActive: true when driver has active delivery/pickup orders
-  const isRouteActive = useMemo(() => {
-    // Active if ANY orders are in delivery/pickup states (regardless of assignments)
-    return orders.some(
-      (o) => ['ordersubmitted', 'enroutetodelivery'].includes(o.orderStatus?.trim().toLowerCase())
-    );
-  }, [orders]);
-
   // Determine currentStopPosition: sequence_position of the first pending/active stop
   const currentStopPosition = useMemo(() => {
     if (!routeAssignments || !assignedOrderIds || assignedOrderIds.size === 0) return 1;
@@ -192,11 +192,22 @@ const DriverHome = ({ laundryId }) => {
   // Show a toast reminder if location permission was denied and route is active
   useEffect(() => {
     if (permissionDenied && isRouteActive) {
+      const ua = navigator.userAgent;
+      const isIOS = /iPad|iPhone|iPod/.test(ua);
+      const isChrome = /Chrome/.test(ua) && !/Edge/.test(ua);
+      let instructions = '';
+      if (isIOS) {
+        instructions = 'Go to Settings → Safari → Location → set to "Allow". Then refresh this page.';
+      } else if (isChrome) {
+        instructions = 'Tap the lock/tune icon in the address bar → Permissions → Location → Allow. Then refresh.';
+      } else {
+        instructions = 'Tap the lock/Aa icon in your address bar → Site Settings → Location → Allow. Then refresh.';
+      }
       toast({
-        title: 'Location Sharing Disabled',
-        description: 'Enable location access so customers can track your position.',
+        title: '📍 Location Required for Tracking',
+        description: instructions,
         status: 'warning',
-        duration: 6000,
+        duration: 15000,
         isClosable: true,
         position: 'top',
       });
