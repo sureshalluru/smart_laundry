@@ -634,16 +634,6 @@ const SidebarContent = ({
 
         {/* Driver Access - visible to Driver, Manager, Admin */}
         {hasPermission(role, FEATURES.DRIVER_ROUTE) && (
-        <>
-        <Button as="a" href={`/${laundryId}/driver/home`}
-            leftIcon={<FaTruck />}
-            variant="ghost"
-            colorScheme="green"
-            justifyContent="flex-start"
-            onClick={() => navigate(`/${laundryId}/driver/home`)}
-        >
-            Driver Home
-        </Button>
         <Button
             leftIcon={<FaUsers />}
             variant="ghost"
@@ -653,7 +643,6 @@ const SidebarContent = ({
         >
             Driver Access Only
         </Button>
-        </>
         )}
 
         {/* Employee Reviews - visible to Manager, Admin */}
