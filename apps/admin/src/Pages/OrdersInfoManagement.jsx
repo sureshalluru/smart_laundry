@@ -1,4 +1,4 @@
-import React, {useEffect, useState, useRef} from 'react';
+﻿import React, {useEffect, useState, useRef} from 'react';
 import axios from 'axios';
 import {useParams} from 'react-router-dom';
 import {ChevronDownIcon, CloseIcon, InfoIcon } from '@chakra-ui/icons';
@@ -88,6 +88,7 @@ import InvoiceModal from './InvoiceModal';
 import InvoicePreview from './InvoicePreview';
 import {roundToTwo} from "../utils/decimalUtils";
 import {printViaIframe} from "../utils/printUtils";
+import { generateTicketHtml } from '../utils/ticketPrint';
 import { toZonedTime, format, zonedTimeToUtc, utcToZonedTime} from 'date-fns-tz';
 import { addMinutes } from "date-fns";
 import { Autocomplete } from "@react-google-maps/api";
@@ -234,13 +235,13 @@ const getInstantPickupWindow = (laundryTimeZone) => {
     const openActionsDrawer = (order) => {
         setIsActionsDrawerOpen((prev) => ({
             ...prev,
-            [order.orderId]: !prev[order.orderId] // ✅ Toggle only for this order
+            [order.orderId]: !prev[order.orderId] // âœ… Toggle only for this order
         }));
-        setSelectedOrder(prev => (prev?.orderId === order.orderId ? null : order)); // ✅ Ensure only one order is selected
+        setSelectedOrder(prev => (prev?.orderId === order.orderId ? null : order)); // âœ… Ensure only one order is selected
     };
 
     const closeActionsDrawer = () => {
-        console.log("Closing Drawer");  // ✅ Debugging Log
+        console.log("Closing Drawer");  // âœ… Debugging Log
         setIsActionsDrawerOpen(false);
         setSelectedOrder(null);
     };
@@ -892,7 +893,7 @@ useEffect(() => {
         console.log("laundry details", laundryDetails);
 
         if (laundryDetails) {
-        console.log("🧺 Laundry Address:", laundryDetails.address);
+        console.log("ðŸ§º Laundry Address:", laundryDetails.address);
 
         setShopDetails({
             name: laundryDetails.laundryName || "",
@@ -905,7 +906,7 @@ useEffect(() => {
         setUberEnv(laundryDetails.uberEnv || "");
         }
     } catch (err) {
-        console.error("❌ Failed to fetch laundry details:", err);
+        console.error("âŒ Failed to fetch laundry details:", err);
     }
     };
 
@@ -1610,7 +1611,7 @@ const { open: openCancelUber, ModalUI: CancelUberModal } = useCancelUberHandoff(
         // Replace the adjustedStatusOptions and status change handler with:
         const isOnlineOrder = selectedOrderDetails?.orderId.startsWith("O-");
         const isProcessingCompleted = orderStatusMap[selectedOrderDetails?.orderId] === "ProcessingCompleted";
-        const isMenuDisabled = false; // Never disable — individual menu items handle blocking
+        const isMenuDisabled = false; // Never disable â€” individual menu items handle blocking
 
         // Adjust status options dynamically
         let adjustedStatusOptions = [...statusOptions];
@@ -2122,7 +2123,7 @@ const { open: openCancelUber, ModalUI: CancelUberModal } = useCancelUberHandoff(
                                                     colorScheme="teal"
                                                     onClick={() => document.getElementById('scalePhotoInput').click()}
                                                 >
-                                                    📷 Upload Scale Photo
+                                                    ðŸ“· Upload Scale Photo
                                                 </Button>
                                                 <input
                                                     id="scalePhotoInput"
@@ -2152,7 +2153,7 @@ const { open: openCancelUber, ModalUI: CancelUberModal } = useCancelUberHandoff(
                                                     }}
                                                 />
                                                 {selectedOrderDetails.imageUrl && (
-                                                    <Text fontSize="xs" color="green.500">✓ Photo on file</Text>
+                                                    <Text fontSize="xs" color="green.500">âœ“ Photo on file</Text>
                                                 )}
                                             </HStack>
                                         </Box>
@@ -2161,7 +2162,7 @@ const { open: openCancelUber, ModalUI: CancelUberModal } = useCancelUberHandoff(
                                     {/* Laundry Photos Display */}
                                     {(selectedOrderDetails.imageUrl || selectedOrderDetails.weightImageUrl) && (
                                         <Box mb={4} p={3} bg="gray.50" borderRadius="md">
-                                            <Text fontSize={fontSize} fontWeight="600" mb={2}>📷 Laundry Photos</Text>
+                                            <Text fontSize={fontSize} fontWeight="600" mb={2}>ðŸ“· Laundry Photos</Text>
                                             <HStack spacing={3} flexWrap="wrap">
                                                 {selectedOrderDetails.imageUrl && (
                                                     <Box>
@@ -2374,10 +2375,10 @@ const { open: openCancelUber, ModalUI: CancelUberModal } = useCancelUberHandoff(
                                             )}
                                         </Box>
 
-                                        {/* Total Weight (for records — especially per-bag orders) */}
+                                        {/* Total Weight (for records â€” especially per-bag orders) */}
                                         <Box flex="1">
                                             <HStack mb={1}>
-                                                <Text fontWeight="semibold" fontSize={fontSize}>⚖️ Total Weight (lbs)</Text>
+                                                <Text fontWeight="semibold" fontSize={fontSize}>âš–ï¸ Total Weight (lbs)</Text>
                                                 {selectedOrderDetails.pricingType === 'per_bag' && (
                                                     <Badge colorScheme="purple" fontSize="xs">Per Bag</Badge>
                                                 )}
@@ -2417,7 +2418,7 @@ const { open: openCancelUber, ModalUI: CancelUberModal } = useCancelUberHandoff(
                                     </Flex>
                                 </Box>
 
-                                {/* Item Tracking — QR code for employee phone upload */}
+                                {/* Item Tracking â€” QR code for employee phone upload */}
                                 <ItemTrackingPanel
                                     orderId={selectedOrderDetails?.orderId}
                                     laundryId={laundryId}
@@ -3117,7 +3118,7 @@ const handleAssignLaundryDriver = async (customAddress) => {
       dropoffDate: customDropoffDate || null,
     };
 
-    console.log("🚚 Assigning Laundry Driver with payload:", payload);
+    console.log("ðŸšš Assigning Laundry Driver with payload:", payload);
 
     const response = await axios.put(
       `${process.env.REACT_APP_AWS_API_URL}/api/admin/update-order`,
@@ -3168,7 +3169,7 @@ const handleAssignLaundryDriver = async (customAddress) => {
       throw new Error("Unexpected response");
     }
   } catch (error) {
-    console.error("❌ Failed to update dropoff method:", error);
+    console.error("âŒ Failed to update dropoff method:", error);
     toast({
       title: "Error",
       description: "Failed to assign Laundry Driver. Please try again.",
@@ -3290,7 +3291,7 @@ const handleAssignLaundryDriver = async (customAddress) => {
                 // Show payment warning if auto-capture failed
                 if (serverUpdatedOrder?.paymentWarning) {
                     toast({
-                        title: "⚠️ Payment Failed",
+                        title: "âš ï¸ Payment Failed",
                         description: serverUpdatedOrder.paymentWarning,
                         status: "warning",
                         duration: 10000,
@@ -3432,164 +3433,42 @@ const handleAssignLaundryDriver = async (customAddress) => {
 
     const handlePrintTicket = async (order) => {
         try {
-            // Start the spinner
             setTicketLoading(true);
 
-            const totalBags = order.laundryBags;
+            // Fetch shop details (same pattern as handlePrintReceipt)
+            const shop = await fetchShopDetails(laundryId);
 
-            const generateTicketContent = (bagNumber, totalBags) => {
-                const orderSummary = [
-                    ...order.services.map((service) => {
-                        const serviceName = service.service || "Unnamed Service";
-                        const normalizedServiceName = serviceName.toLowerCase();
-                        const inputWeight =
-                            service.inputWeight ??
-                            serviceNames.find((s) => s.serviceName.toLowerCase() === normalizedServiceName)?.inputWeight;
-                        const countOrWeight = service.weightOrCount || "N/A";
-                        const displayCount = inputWeight ? "1" : countOrWeight;
-                        const unit = inputWeight ? `${countOrWeight} lbs` : "pieces";
-
-                        return `<tr>
-                                <td>${displayCount}</td>
-                                <td>${serviceName} ${inputWeight ? `(${unit})` : ""}</td>
-                                </tr>`;
-                    }),
-                    ...order.products.map((product) => {
-                        const productName = product.productName || "Unnamed Product";
-                        const count = product.productCount || "N/A";
-
-                        return `<tr>
-                                <td>${count}</td>
-                                <td>${productName}</td>
-                                </tr>`;
-                    }),
-                ].join("");
-
-                return `
-                    <div class="ticket">
-                        <div class="ticket-header">Ticket ${bagNumber}/${totalBags} (Bag)</div>
-                        <div class="ticket-section">
-                            <span>Order ID:</span> ${order.orderId}
-                        </div>
-                        <div class="ticket-section">
-                            <span>Due:</span> ${order.dropoffDate || 'N/A'}
-                        </div>
-                        <div class="ticket-section">
-                            <span>Customer:</span> ${order.customerName || 'N/A'}
-                        </div>
-                        <div class="ticket-section">
-                            <span>Employee:</span> ${order.employeeName || 'N/A'}
-                        </div>
-                        <div class="summary">
-                            <span>Order Summary:</span>
-                            <table>
-                                <thead>
-                                    <tr>
-                                        <th>Qty</th>
-                                        <th>Item Name</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    ${orderSummary || '<tr><td colspan="2">No services or products added</td></tr>'}
-                                </tbody>
-                            </table>
-                        </div>
-                        <div class="qr-code" id="qrcode-${bagNumber}"></div>
-                    </div>
-                `;
-            };
-
-            const htmlContent = `
-                <html>
-                    <head>
-                        <style>
-                            @page {
-                                size: auto;
-                                margin: 0;
-                            }
-                            @font-face {
-                                font-family: 'BoldFont';
-                                src: url('https://fonts.gstatic.com/s/arial/v11/Arial-Bold.woff2') format('woff2');
-                                font-weight: bold;
-                                font-style: normal;
-                            }
-                            body {
-                                font-family: 'BoldFont', sans-serif;
-                                font-size: 14px; /* Increased font size for readability */
-                                font-weight: bold; /* All text in bold */
-                                margin: 0;
-                                padding: 0;
-                                width: 80mm;
-                            }
-                            .ticket {
-                                padding: 10px;
-                                box-sizing: border-box;
-                                width: 80mm;
-                            }
-                            .ticket-header {
-                                text-align: center;
-                                font-size: 16px; /* Larger font size for headers */
-                                margin-bottom: 10px;
-                            }
-                            .ticket-section {
-                                font-size: 14px;
-                                margin-bottom: 5px;
-                            }
-                            .summary {
-                                font-size: 14px;
-                                margin-top: 10px;
-                            }
-                            table {
-                                width: 100%;
-                                border-collapse: collapse;
-                            }
-                            th, td {
-                                padding: 5px 0;
-                            }
-                            .qr-code {
-                                text-align: center;
-                                margin-top: 10px;
-                            }
-                            hr {
-                                border: none;
-                                border-top: 1px dashed #000;
-                                margin: 10px 0;
-                            }
-                        </style>
-                    </head>
-                    <body>
-                        ${Array.from({length: totalBags}, (_, i) =>
-                generateTicketContent(i + 1, totalBags)
-            ).join("<hr>")}
-                        <script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js"></script>
-                        <script>
-                            // QR code generation only - printing is handled by the iframe utility
-                            ${Array.from({length: totalBags})
-                .map(
-                    (_, i) => `QRCode.toDataURL('${order.orderId}', { width: 100, height: 100 }, (err, url) => {
-                                        const qrContainer = document.getElementById('qrcode-${i + 1}');
-                                        if (err) {
-                                            console.error('QR Code generation failed:', err);
-                                            if (qrContainer) qrContainer.innerHTML = '<p>QR Code unavailable</p>';
-                                        } else {
-                                            const img = document.createElement('img');
-                                            img.src = url;
-                                            if (qrContainer) qrContainer.appendChild(img);
-                                        }
-                                    });`
-                )
-                .join("\n")}
-                        </script>
-                    </body>
-                </html>
-            `;
+            const htmlContent = generateTicketHtml({
+                orderId: order.orderId,
+                laundryId,
+                userDomain: shop.userDomain || null,
+                bags: order.laundryBags || 1,
+                storeName: shop.name,
+                storeAddress: shop.address,
+                storePhone: shop.phone,
+                storeEmail: shop.email,
+                customerName: order.customerName,
+                customerPhone: order.customerPhone,
+                employeeName: order.employeeName,
+                dueDate: order.dropoffDate,
+                dueTimeInterval: order.dropoffTimeInterval || '',
+                orderDate: order.pickupDate || '',
+                services: order.services,
+                products: order.products,
+                subTotal: order.subTotal,
+                coupon: order.coupon || 'None',
+                discountedPrice: order.discountedPrice || '0.00',
+                tipAmount: order.tip?.tipAmount || '0.00',
+                grandTotal: order.grandTotal,
+                balanceDue: order.balanceDue || order.grandTotal,
+                notes: order.specialInstructions || '',
+            });
 
             await printViaIframe(htmlContent, { delay: 800 });
         } catch (error) {
             console.error("Error printing ticket:", error);
             alert("Failed to print ticket. Please try again.");
         } finally {
-            // Stop the spinner
             setTicketLoading(false);
         }
     };
@@ -3795,136 +3674,33 @@ const handleAssignLaundryDriver = async (customAddress) => {
             setPrintLoading(true);
 
             // Fetch shop details dynamically
-            const shopDetails = await fetchShopDetails(laundryId); //TODO: Fetch these details from the useContext rather than the API Call.
-            // console.log("shopDetails: ", shopDetails);
+            const shopDetails = await fetchShopDetails(laundryId);
 
-            // console.log("Order object:", order); // Debugging order object
-
-            const services = order?.services ?? [];
-            const products = order?.products ?? [];
-            const items = [...services, ...products]; // Combine services and products
-            const customerName = order?.customerName || "N/A";
-            const customerPhone = order?.customerPhone || "N/A";
-            // const employeeName = order?.employeeName || "N/A";
-            const itemCount = items.length || 0;
-            const pieceCount = items.reduce((sum, item) => sum + (item.quantity || 1), 0); // Sum of all `quantity` values
-            const tip = order?.tip.tipAmount || "0.00";
-            const balanceDue = order?.balanceDue || "0.00";
-            const coupon = order?.coupon || "None"; // Add coupon field
-            const notes = order?.specialInstructions || "";
-            const discountedPrice = order?.discountedPrice || "0.00";
-            const grandTotal = order?.grandTotal || "0.00";
-            const subTotal = order?.subTotal || "0.00";
-
-            const htmlContent = `
-                <html>
-                    <head>
-                        <title>Order Receipt</title>
-                        <style>
-                            @page {
-                                size: auto; /* Dynamically adjust page size to content */
-                                margin: 0; /* Remove default margins */
-                            }
-                            body {
-                                font-family: "Courier New", monospace;
-                                margin: 0;
-                                padding: 0;
-                                width: 80mm; /* Epson printer standard width */
-                                font-size: 14px; /* Increased font size for readability */
-                                font-weight: bold; /* Make all text bold */
-                            }
-                            .receipt {
-                                padding: 10px;
-                                box-sizing: border-box;
-                                width: 80mm; /* Match paper width */
-                            }
-                            .center {
-                                text-align: center;
-                            }
-                            .line {
-                                border-top: 1px dashed #000;
-                                margin: 5px 0;
-                            }
-                            table {
-                                width: 100%;
-                                border-collapse: collapse;
-                            }
-                            th, td {
-                                text-align: left;
-                                padding: 2px 0;
-                                font-weight: bold; /* Ensure all table text is bold */
-                            }
-                            .price {
-                                text-align: right;
-                            }
-                        </style>
-                    </head>
-                    <body>
-                        <div class="receipt">
-                            <div class="center">Order Receipt</div>
-                            <div class="center">${shopDetails.name || "N/A"}</div>
-                            <div class="center">${shopDetails.address || "N/A"}</div>
-                            <div class="center">${shopDetails.phone || "N/A"}</div>
-                            <div class="center">${shopDetails.email || "N/A"}</div>
-                            <div class="line"></div>
-                            <div><span>Order:</span> ${order.orderId}</div>
-                            <div><span>Due by:</span> ${order.dropoffDate || "N/A"}<br> ${order.dropoffTimeInterval || "N/A"}</div>
-                            <div><span>Order Date:</span> ${order.pickupDate || "N/A"} ${order.pickupTimeInterval || ""}</div>
-                            <div class="line"></div>
-                            <div>${customerName}<br>${customerPhone}</div>
-                            <div class="line"></div>
-                            <table>
-                                <thead>
-                                    <tr>
-                                        <th>Qty</th>
-                                        <th>Item Name</th>
-                                        <th class="price">Price</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    ${items
-                .map((item) => {
-                    const serviceName = item.service || item.productName || "Unnamed Item";
-                    const normalizedServiceName = serviceName.toLowerCase();
-                    const inputWeight =
-                        item.inputWeight ??
-                        (serviceNames.find(
-                            (s) => s.serviceName.toLowerCase() === normalizedServiceName
-                        )?.inputWeight || 0);
-                    const countOrWeight = item.weightOrCount || item.productCount || 1;
-                    const displayCount = inputWeight ? `${countOrWeight} lbs` : countOrWeight; // Display 1 for lbs
-                    const weight = inputWeight ? "lb" : "";
-                    const unitPrice = item.servicePrice || item.productPrice || "0.00";
-                    const serviceCost = roundToTwo(unitPrice * countOrWeight);
-
-                    return `
-                                            <tr>
-                                                <td>${displayCount}</td>
-                                                <td>${serviceName} ($${unitPrice}/${weight})</td>
-                                                <td class="price">$${serviceCost}</td>
-                                            </tr>`;
-                })
-                .join("")}
-                                </tbody>
-                            </table>
-                            <div class="line"></div>
-                            <div>Order Item Count: ${itemCount}</div>
-                            <div>Order Piece Count: ${pieceCount}</div>
-                            <div class="line"></div>
-                            <div>Sub Total: <span class="price">$${subTotal}</span></div>
-                            <div>Discount(${coupon}): <span class="price">$${discountedPrice}</span></div>
-                            <div>Tip: <span class="price">$${tip}</span></div>
-                            <div>Grand Total: <span class="price">$${grandTotal}</span></div>
-                            <div>Balance Due: <span class="price">$${balanceDue}</span></div>
-                            <div class="line"></div>
-                            <div>Order Notes: ${notes}</div>
-                            <div class="line"></div>
-                            <div class="center">Thank you for your order!</div>
-                            <div class="line"></div>
-                        </div>
-                    </body>
-                </html>
-            `;
+            const htmlContent = generateTicketHtml({
+                orderId: order.orderId,
+                laundryId,
+                userDomain: shopDetails.userDomain || null,
+                bags: 1, // Receipt is always single page
+                storeName: shopDetails.name,
+                storeAddress: shopDetails.address,
+                storePhone: shopDetails.phone,
+                storeEmail: shopDetails.email,
+                customerName: order.customerName || 'N/A',
+                customerPhone: order.customerPhone || 'N/A',
+                employeeName: order.employeeName || 'N/A',
+                dueDate: order.dropoffDate || 'N/A',
+                dueTimeInterval: order.dropoffTimeInterval || 'N/A',
+                orderDate: `${order.pickupDate || 'N/A'} ${order.pickupTimeInterval || ''}`,
+                services: order.services || [],
+                products: order.products || [],
+                subTotal: order.subTotal || '0.00',
+                coupon: order.coupon || 'None',
+                discountedPrice: order.discountedPrice || '0.00',
+                tipAmount: order.tip?.tipAmount || '0.00',
+                grandTotal: order.grandTotal || '0.00',
+                balanceDue: order.balanceDue || '0.00',
+                notes: order.specialInstructions || '',
+            });
 
             await printViaIframe(htmlContent, { delay: 500 });
         } catch (error) {
@@ -4368,7 +4144,7 @@ const handleAssignLaundryDriver = async (customAddress) => {
                     </Flex>
                 )}
 
-                {/* ✅ Call the Drawer Component Here */}
+                {/* âœ… Call the Drawer Component Here */}
                 <OrderActionsDrawer
                     isOpen={isActionsDrawerOpen}
                     onClose={closeActionsDrawer}

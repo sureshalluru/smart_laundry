@@ -9,6 +9,8 @@ import {fetchLaundryServices} from './Pages/LaundryInfoManagement';
 import {LoadScript} from '@react-google-maps/api';
 import ProtectedRoute from './utils/ProtectedRoute';
 import { FEATURES } from './utils/permissions';
+import { EmployeeAuthProvider } from './Context/EmployeeAuthContext';
+import EmployeeAuthGuard from './Context/EmployeeAuthGuard';
 
 // Lazy-load pages
 const AdminHomeLayout = lazy(() => import('./Components/AdminHome/AdminHomeLayout'));
@@ -32,6 +34,8 @@ const QuickPOSPage = lazy(() => import('./Pages/QuickPOSPage'));
 const SupportChatPage = lazy(() => import('./Pages/SupportChatPage'));
 const RoutePlannerPage = lazy(() => import('./Pages/RoutePlannerPage'));
 const ReportsPage = lazy(() => import('./Pages/ReportsPage'));
+const MobileOrderPage = lazy(() => import('./Pages/MobileOrderPage'));
+const EmployeeLoginPage = lazy(() => import('./Pages/EmployeeLoginPage'));
 
 // ── Shared Components ────────────────────────────────────────────────────────
 
@@ -178,221 +182,257 @@ function App() {
     const auth = useAuth();
 
     if (auth.isLoading) return <LoadingSpinner/>;
-    // Don't show global error for login failures — let login page handle them
-    // if (auth.error) return <ErrorDisplay error={auth.error}/>;
-
-    if (!auth.isAuthenticated) {
-        return (
-            <ChakraProvider>
-                <Suspense fallback={<LoadingSpinner/>}>
-                    <StoreAdminLogin/>
-                </Suspense>
-            </ChakraProvider>
-        );
-    }
-
-    // Create wrapped components
-    const WrappedAdminHomeLayout = withLaundryValidation(AdminHomeLayout);
-    const WrappedAdminHomePage = withLaundryValidation(AdminHomePage);
-    const WrappedOrderInfoManagement = withLaundryValidation(OrderInfoManagement);
-    const WrappedAdminCreateOrder = withLaundryValidation(AdminCreateOrder);
-    const WrappedOrderProducts = withLaundryValidation(OrderProducts);
-    const WrappedLaundryInfoManagement = withLaundryValidation(LaundryInfoManagement);
-    const WrappedPromotionsPage = withLaundryValidation(PromotionsPage);
-    const WrappedManagerDashboardPage = withLaundryValidation(ManagerDashboardPage);
-    const WrappedDriverHome = withLaundryValidation(DriverHome);
-    const WrappedEmployeeReviews = withLaundryValidation(EmployeeReviews);
-    const WrappedChatPage = withLaundryValidation(ChatPage);
-    const WrappedZipInterestPage = withLaundryValidation(ZipInterestPage);
-    const WrappedDashboardPage = withLaundryValidation(DashboardPage);
-    const WrappedFAQPage = withLaundryValidation(FAQPage);
-    const WrappedEngagementPage = withLaundryValidation(EngagementPage);
-    const WrappedQuickPOSPage = withLaundryValidation(QuickPOSPage);
-    const WrappedSupportChatPage = withLaundryValidation(SupportChatPage);
-    const WrappedRoutePlannerPage = withLaundryValidation(RoutePlannerPage);
-    const WrappedReportsPage = withLaundryValidation(ReportsPage);
 
     return (
         <ChakraProvider>
-            <LoadScript
-                googleMapsApiKey={process.env.REACT_APP_GOOGLE_MAPS_API_KEY}
-                libraries={['places']}
-            >
-                <Routes>
-                    {/* Admin Routes */}
-                    <Route path="/:laundryId/admin" element={
+            <Routes>
+                {/* ── Employee/Mobile routes (no admin auth required) ───────── */}
+                <Route path="/:laundryId/admin/employee-login" element={
+                    <EmployeeAuthProvider>
+                        <Suspense fallback={<LoadingSpinner/>}>
+                            <EmployeeLoginPage/>
+                        </Suspense>
+                    </EmployeeAuthProvider>
+                }/>
+                <Route path="/:laundryId/admin/order/:orderId" element={
+                    <EmployeeAuthProvider>
                         <LaundryValidationProvider>
-                            <Suspense fallback={<LoadingSpinner/>}>
-                                <WrappedAdminHomeLayout validateEmpCredentials={validateEmpCredentials}/>
-                            </Suspense>
+                            <EmployeeAuthGuard>
+                                <Suspense fallback={<LoadingSpinner/>}>
+                                    <MobileOrderPage/>
+                                </Suspense>
+                            </EmployeeAuthGuard>
                         </LaundryValidationProvider>
-                    }>
-                        <Route index element={
-                            <ProtectedRoute feature={FEATURES.ORDERS}>
-                                <ResponsiveDefaultRedirect/>
-                            </ProtectedRoute>
-                        }/>
-                        <Route path="home" element={
-                            <Suspense fallback={<LoadingSpinner/>}>
-                                <WrappedAdminHomePage/>
-                            </Suspense>
-                        }/>
-                        <Route path="active-orders" element={
-                            <ProtectedRoute feature={FEATURES.ORDERS}>
-                            <Suspense fallback={<LoadingSpinner/>}>
-                                <WrappedOrderInfoManagement orderOperation="active"
-                                                            validateEmpCredentials={validateEmpCredentials}/>
-                            </Suspense>
-                            </ProtectedRoute>
-                        }/>
-                        <Route path="completed-orders" element={
-                            <ProtectedRoute feature={FEATURES.ORDERS}>
-                            <Suspense fallback={<LoadingSpinner/>}>
-                                <WrappedOrderInfoManagement orderOperation="completed"/>
-                            </Suspense>
-                            </ProtectedRoute>
-                        }/>
-                        <Route path="canceled-orders" element={
-                            <ProtectedRoute feature={FEATURES.ORDERS}>
-                            <Suspense fallback={<LoadingSpinner/>}>
-                                <WrappedOrderInfoManagement orderOperation="canceled"/>
-                            </Suspense>
-                            </ProtectedRoute>
-                        }/>
-                        <Route path="create-order" element={
-                            <Suspense fallback={<LoadingSpinner/>}>
-                                <WrappedAdminCreateOrder/>
-                            </Suspense>
-                        }/>
-                        <Route path="order-products" element={
-                            <Suspense fallback={<LoadingSpinner/>}>
-                                <WrappedOrderProducts/>
-                            </Suspense>
-                        }/>
-                        <Route path="services" element={
-                            <ProtectedRoute feature={FEATURES.PRICING}>
-                            <Suspense fallback={<LoadingSpinner/>}>
-                                <WrappedLaundryInfoManagement validateEmpCredentials={validateEmpCredentials} type="services"/>
-                            </Suspense>
-                            </ProtectedRoute>
-                        }/>
-                        <Route path="products" element={
-                            <Suspense fallback={<LoadingSpinner/>}>
-                                <WrappedLaundryInfoManagement validateEmpCredentials={validateEmpCredentials} type="products"/>
-                            </Suspense>
-                        }/>
-                        <Route path="zipCodes" element={
-                            <Suspense fallback={<LoadingSpinner/>}>
-                                <WrappedLaundryInfoManagement validateEmpCredentials={validateEmpCredentials} type="zipCodes"/>
-                            </Suspense>
-                        }/>
-                        <Route path="logoAndDomain" element={
-                            <Suspense fallback={<LoadingSpinner/>}>
-                                <WrappedLaundryInfoManagement validateEmpCredentials={validateEmpCredentials} type="logoAndDomain"/>
-                            </Suspense>
-                        }/>
-                        <Route path="deliverySchedule" element={
-                            <Suspense fallback={<LoadingSpinner/>}>
-                                <WrappedLaundryInfoManagement validateEmpCredentials={validateEmpCredentials} type="deliverySchedule"/>
-                            </Suspense>
-                        }/>
-                        <Route path="settings" element={
-                            <Suspense fallback={<LoadingSpinner/>}>
-                                <WrappedLaundryInfoManagement validateEmpCredentials={validateEmpCredentials} type="systemSettings"/>
-                            </Suspense>
-                        }/>
-                        <Route path="websiteServices" element={
-                            <Suspense fallback={<LoadingSpinner/>}>
-                                <WrappedLaundryInfoManagement validateEmpCredentials={validateEmpCredentials} type="websiteServices"/>
-                            </Suspense>
-                        }/>
-                        <Route path="promotions" element={
-                            <Suspense fallback={<LoadingSpinner/>}>
-                                <WrappedPromotionsPage
-                                    validateEmpCredentials={validateEmpCredentials}
-                                    fetchLaundryServices={fetchLaundryServices}/>
-                            </Suspense>
-                        }/>
-                        <Route path="manager-page" element={
-                            <Suspense fallback={<LoadingSpinner/>}>
-                                <WrappedManagerDashboardPage/>
-                            </Suspense>
-                        }/>
-                        <Route path="employee-reviews" element={
-                            <Suspense fallback={<LoadingSpinner/>}>
-                                <WrappedEmployeeReviews/>
-                            </Suspense>
-                        }/>
-                        <Route path="chat" element={
-                            <Suspense fallback={<LoadingSpinner/>}>
-                                <WrappedChatPage/>
-                            </Suspense>
-                        }/>
-                        <Route path="zip-interest" element={
-                            <Suspense fallback={<LoadingSpinner/>}>
-                                <WrappedZipInterestPage/>
-                            </Suspense>
-                        }/>
-                        <Route path="dashboard" element={
-                            <ProtectedRoute feature={FEATURES.DASHBOARD}>
-                            <Suspense fallback={<LoadingSpinner/>}>
-                                <WrappedDashboardPage/>
-                            </Suspense>
-                            </ProtectedRoute>
-                        }/>
-                        <Route path="faq" element={
-                            <Suspense fallback={<LoadingSpinner/>}>
-                                <WrappedFAQPage/>
-                            </Suspense>
-                        }/>
-                        <Route path="engagement" element={
-                            <Suspense fallback={<LoadingSpinner/>}>
-                                <WrappedEngagementPage/>
-                            </Suspense>
-                        }/>
-                        <Route path="pos" element={
-                            <Suspense fallback={<LoadingSpinner/>}>
-                                <WrappedQuickPOSPage/>
-                            </Suspense>
-                        }/>
-                        <Route path="support-chat" element={
-                            <Suspense fallback={<LoadingSpinner/>}>
-                                <WrappedSupportChatPage/>
-                            </Suspense>
-                        }/>
-                        <Route path="route-planner" element={
-                            <ProtectedRoute feature={FEATURES.ROUTE_PLANNING}>
-                            <Suspense fallback={<LoadingSpinner/>}>
-                                <WrappedRoutePlannerPage/>
-                            </Suspense>
-                            </ProtectedRoute>
-                        }/>
-                        <Route path="reports" element={
-                            <Suspense fallback={<LoadingSpinner/>}>
-                                <WrappedReportsPage/>
-                            </Suspense>
-                        }/>
-                    </Route>
+                    </EmployeeAuthProvider>
+                }/>
 
-                    {/* Driver Route */}
-                    <Route path="/:laundryId/driver/home" element={
-                        <LaundryValidationProvider>
-                            <Suspense fallback={<LoadingSpinner/>}>
-                                <WrappedDriverHome validateEmpCredentials={validateEmpCredentials}/>
-                            </Suspense>
-                        </LaundryValidationProvider>
+                {/* ── Admin routes (require admin store-level auth) ─────────── */}
+                <Route path="/:laundryId/admin" element={
+                    <AdminAuthGate>
+                        <LoadScript
+                            googleMapsApiKey={process.env.REACT_APP_GOOGLE_MAPS_API_KEY}
+                            libraries={['places']}
+                        >
+                            <LaundryValidationProvider>
+                                <Suspense fallback={<LoadingSpinner/>}>
+                                    <WrappedAdminHomeLayout validateEmpCredentials={validateEmpCredentials}/>
+                                </Suspense>
+                            </LaundryValidationProvider>
+                        </LoadScript>
+                    </AdminAuthGate>
+                }>
+                    <Route index element={
+                        <ProtectedRoute feature={FEATURES.ORDERS}>
+                            <ResponsiveDefaultRedirect/>
+                        </ProtectedRoute>
                     }/>
+                    <Route path="home" element={
+                        <Suspense fallback={<LoadingSpinner/>}>
+                            <WrappedAdminHomePage/>
+                        </Suspense>
+                    }/>
+                    <Route path="active-orders" element={
+                        <ProtectedRoute feature={FEATURES.ORDERS}>
+                        <Suspense fallback={<LoadingSpinner/>}>
+                            <WrappedOrderInfoManagement orderOperation="active"
+                                                        validateEmpCredentials={validateEmpCredentials}/>
+                        </Suspense>
+                        </ProtectedRoute>
+                    }/>
+                    <Route path="completed-orders" element={
+                        <ProtectedRoute feature={FEATURES.ORDERS}>
+                        <Suspense fallback={<LoadingSpinner/>}>
+                            <WrappedOrderInfoManagement orderOperation="completed"/>
+                        </Suspense>
+                        </ProtectedRoute>
+                    }/>
+                    <Route path="canceled-orders" element={
+                        <ProtectedRoute feature={FEATURES.ORDERS}>
+                        <Suspense fallback={<LoadingSpinner/>}>
+                            <WrappedOrderInfoManagement orderOperation="canceled"/>
+                        </Suspense>
+                        </ProtectedRoute>
+                    }/>
+                    <Route path="create-order" element={
+                        <Suspense fallback={<LoadingSpinner/>}>
+                            <WrappedAdminCreateOrder/>
+                        </Suspense>
+                    }/>
+                    <Route path="order-products" element={
+                        <Suspense fallback={<LoadingSpinner/>}>
+                            <WrappedOrderProducts/>
+                        </Suspense>
+                    }/>
+                    <Route path="services" element={
+                        <ProtectedRoute feature={FEATURES.PRICING}>
+                        <Suspense fallback={<LoadingSpinner/>}>
+                            <WrappedLaundryInfoManagement validateEmpCredentials={validateEmpCredentials} type="services"/>
+                        </Suspense>
+                        </ProtectedRoute>
+                    }/>
+                    <Route path="products" element={
+                        <Suspense fallback={<LoadingSpinner/>}>
+                            <WrappedLaundryInfoManagement validateEmpCredentials={validateEmpCredentials} type="products"/>
+                        </Suspense>
+                    }/>
+                    <Route path="zipCodes" element={
+                        <Suspense fallback={<LoadingSpinner/>}>
+                            <WrappedLaundryInfoManagement validateEmpCredentials={validateEmpCredentials} type="zipCodes"/>
+                        </Suspense>
+                    }/>
+                    <Route path="logoAndDomain" element={
+                        <Suspense fallback={<LoadingSpinner/>}>
+                            <WrappedLaundryInfoManagement validateEmpCredentials={validateEmpCredentials} type="logoAndDomain"/>
+                        </Suspense>
+                    }/>
+                    <Route path="deliverySchedule" element={
+                        <Suspense fallback={<LoadingSpinner/>}>
+                            <WrappedLaundryInfoManagement validateEmpCredentials={validateEmpCredentials} type="deliverySchedule"/>
+                        </Suspense>
+                    }/>
+                    <Route path="settings" element={
+                        <Suspense fallback={<LoadingSpinner/>}>
+                            <WrappedLaundryInfoManagement validateEmpCredentials={validateEmpCredentials} type="systemSettings"/>
+                        </Suspense>
+                    }/>
+                    <Route path="websiteServices" element={
+                        <Suspense fallback={<LoadingSpinner/>}>
+                            <WrappedLaundryInfoManagement validateEmpCredentials={validateEmpCredentials} type="websiteServices"/>
+                        </Suspense>
+                    }/>
+                    <Route path="promotions" element={
+                        <Suspense fallback={<LoadingSpinner/>}>
+                            <WrappedPromotionsPage
+                                validateEmpCredentials={validateEmpCredentials}
+                                fetchLaundryServices={fetchLaundryServices}/>
+                        </Suspense>
+                    }/>
+                    <Route path="manager-page" element={
+                        <Suspense fallback={<LoadingSpinner/>}>
+                            <WrappedManagerDashboardPage/>
+                        </Suspense>
+                    }/>
+                    <Route path="employee-reviews" element={
+                        <Suspense fallback={<LoadingSpinner/>}>
+                            <WrappedEmployeeReviews/>
+                        </Suspense>
+                    }/>
+                    <Route path="chat" element={
+                        <Suspense fallback={<LoadingSpinner/>}>
+                            <WrappedChatPage/>
+                        </Suspense>
+                    }/>
+                    <Route path="zip-interest" element={
+                        <Suspense fallback={<LoadingSpinner/>}>
+                            <WrappedZipInterestPage/>
+                        </Suspense>
+                    }/>
+                    <Route path="dashboard" element={
+                        <ProtectedRoute feature={FEATURES.DASHBOARD}>
+                        <Suspense fallback={<LoadingSpinner/>}>
+                            <WrappedDashboardPage/>
+                        </Suspense>
+                        </ProtectedRoute>
+                    }/>
+                    <Route path="faq" element={
+                        <Suspense fallback={<LoadingSpinner/>}>
+                            <WrappedFAQPage/>
+                        </Suspense>
+                    }/>
+                    <Route path="engagement" element={
+                        <Suspense fallback={<LoadingSpinner/>}>
+                            <WrappedEngagementPage/>
+                        </Suspense>
+                    }/>
+                    <Route path="pos" element={
+                        <Suspense fallback={<LoadingSpinner/>}>
+                            <WrappedQuickPOSPage/>
+                        </Suspense>
+                    }/>
+                    <Route path="support-chat" element={
+                        <Suspense fallback={<LoadingSpinner/>}>
+                            <WrappedSupportChatPage/>
+                        </Suspense>
+                    }/>
+                    <Route path="route-planner" element={
+                        <ProtectedRoute feature={FEATURES.ROUTE_PLANNING}>
+                        <Suspense fallback={<LoadingSpinner/>}>
+                            <WrappedRoutePlannerPage/>
+                        </Suspense>
+                        </ProtectedRoute>
+                    }/>
+                    <Route path="reports" element={
+                        <Suspense fallback={<LoadingSpinner/>}>
+                            <WrappedReportsPage/>
+                        </Suspense>
+                    }/>
+                </Route>
 
-                    {/* Bare /admin redirect — find user's laundry and redirect */}
-                    <Route path="/admin" element={<AdminRedirect />} />
-                    <Route path="/admin/*" element={<AdminRedirect />} />
+                {/* Driver Route */}
+                <Route path="/:laundryId/driver/home" element={
+                    <AdminAuthGate>
+                        <LoadScript
+                            googleMapsApiKey={process.env.REACT_APP_GOOGLE_MAPS_API_KEY}
+                            libraries={['places']}
+                        >
+                            <LaundryValidationProvider>
+                                <Suspense fallback={<LoadingSpinner/>}>
+                                    <WrappedDriverHome validateEmpCredentials={validateEmpCredentials}/>
+                                </Suspense>
+                            </LaundryValidationProvider>
+                        </LoadScript>
+                    </AdminAuthGate>
+                }/>
 
-                    <Route path="/invalid" element={<NoPage/>}/>
-                    <Route path="*" element={<NoPage/>}/>
-                </Routes>
-            </LoadScript>
+                {/* Bare /admin redirect — find user's laundry and redirect */}
+                <Route path="/admin" element={<AdminRedirect />} />
+                <Route path="/admin/*" element={<AdminRedirect />} />
+
+                <Route path="/invalid" element={<NoPage/>}/>
+                <Route path="*" element={<NoPage/>}/>
+            </Routes>
         </ChakraProvider>
     );
 }
+
+/**
+ * AdminAuthGate — Wrapper that checks admin (store-level) auth.
+ * If not authenticated, shows the StoreAdminLogin page.
+ * If authenticated, renders children.
+ */
+function AdminAuthGate({ children }) {
+    const auth = useAuth();
+
+    if (!auth.isAuthenticated) {
+        return (
+            <Suspense fallback={<LoadingSpinner/>}>
+                <StoreAdminLogin/>
+            </Suspense>
+        );
+    }
+
+    return children;
+}
+
+// Create wrapped components (hoisted outside render for stable references)
+const WrappedAdminHomeLayout = withLaundryValidation(AdminHomeLayout);
+const WrappedAdminHomePage = withLaundryValidation(AdminHomePage);
+const WrappedOrderInfoManagement = withLaundryValidation(OrderInfoManagement);
+const WrappedAdminCreateOrder = withLaundryValidation(AdminCreateOrder);
+const WrappedOrderProducts = withLaundryValidation(OrderProducts);
+const WrappedLaundryInfoManagement = withLaundryValidation(LaundryInfoManagement);
+const WrappedPromotionsPage = withLaundryValidation(PromotionsPage);
+const WrappedManagerDashboardPage = withLaundryValidation(ManagerDashboardPage);
+const WrappedDriverHome = withLaundryValidation(DriverHome);
+const WrappedEmployeeReviews = withLaundryValidation(EmployeeReviews);
+const WrappedChatPage = withLaundryValidation(ChatPage);
+const WrappedZipInterestPage = withLaundryValidation(ZipInterestPage);
+const WrappedDashboardPage = withLaundryValidation(DashboardPage);
+const WrappedFAQPage = withLaundryValidation(FAQPage);
+const WrappedEngagementPage = withLaundryValidation(EngagementPage);
+const WrappedQuickPOSPage = withLaundryValidation(QuickPOSPage);
+const WrappedSupportChatPage = withLaundryValidation(SupportChatPage);
+const WrappedRoutePlannerPage = withLaundryValidation(RoutePlannerPage);
+const WrappedReportsPage = withLaundryValidation(ReportsPage);
 
 export default App;

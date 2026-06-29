@@ -43,6 +43,16 @@
     "test": "react-scripts test",
     "eject": "react-scripts eject"
   },
+  "jest": {
+    "transformIgnorePatterns": [
+      "node_modules/(?!(fast-check|pure-rand)/)"
+    ],
+    "moduleNameMapper": {
+      "^pure-rand/generator/(.*)$": "<rootDir>/node_modules/pure-rand/lib/generator/$1.js",
+      "^pure-rand/utils/(.*)$": "<rootDir>/node_modules/pure-rand/lib/utils/$1.js",
+      "^pure-rand/distribution/(.*)$": "<rootDir>/node_modules/pure-rand/lib/distribution/$1.js"
+    }
+  },
   "eslintConfig": {
     "extends": [
       "react-app",
@@ -62,6 +72,7 @@
     ]
   },
   "devDependencies": {
-    "@babel/plugin-proposal-private-property-in-object": "^7.21.11"
+    "@babel/plugin-proposal-private-property-in-object": "^7.21.11",
+    "fast-check": "^4.8.0"
   }
 }

@@ -9,6 +9,7 @@ import axios from 'axios';
 import { FaArrowLeft, FaCheck, FaTimes, FaMinus, FaPlus, FaPrint, FaSearch } from 'react-icons/fa';
 import { QuickPOSPaymentModalWrapper } from '../Components/QuickPOS/QuickPOSPaymentModal';
 import RegisterCustomer from '../hooks/RegisterCustomer';
+import { generateTicketHtml } from '../utils/ticketPrint';
 
 const popIn = keyframes`
   0% { transform: scale(0.95); opacity: 0.7; }
@@ -46,6 +47,9 @@ export default function QuickPOSPage({ laundryId, stripePublicKey, stripeTermina
   const [isRegistering, setIsRegistering] = useState(false);
   const toast = useToast();
 
+  // Shop details for ticket printing
+  const [shopDetails, setShopDetails] = useState({ storeName: 'N/A', storeAddress: 'N/A', storePhone: 'N/A', storeEmail: 'N/A' });
+
   // Service search/filter
   const [serviceSearch, setServiceSearch] = useState('');
 
@@ -54,7 +58,15 @@ export default function QuickPOSPage({ laundryId, stripePublicKey, stripeTermina
       try {
         const res = await axios.get(`${process.env.REACT_APP_AWS_API_URL}/api/laundry/get-info-api`,
           { params: { operation: 'getLaundryInfo', laundryId }, headers: { Authorization: `Bearer ${authToken}` } });
-        if (res.data.status === 'success') setServices(res.data.laundryServices || []);
+        if (res.data.status === 'success') {
+          setServices(res.data.laundryServices || []);
+          setShopDetails({
+            storeName: res.data.laundryName || 'N/A',
+            storeAddress: res.data.address || 'N/A',
+            storePhone: res.data.phone || 'N/A',
+            storeEmail: res.data.email || 'N/A',
+          });
+        }
       } catch (err) { console.error(err); }
     };
     fetchServices();
@@ -140,75 +152,40 @@ export default function QuickPOSPage({ laundryId, stripePublicKey, stripeTermina
   const tipAmount = parseFloat(tip.tipAmount) || 0;
   const total = subtotal + tipAmount;
 
-  // Print — matches the regular order ticket format from OrdersInfoManagement
+  // Print — uses shared ticket utility for unified format
   const printTicket = (printOrderId) => {
-    const orderSummary = cart.map(i => {
-      const qty = i.isWeight ? 1 : i.quantity;
-      const unit = i.isWeight ? `${parseFloat(i.inputWeight) || 0} lbs` : '';
-      return `<tr><td>${qty}</td><td>${i.serviceName}${unit ? ` (${unit})` : ''}</td></tr>`;
-    }).join('');
+    const employeeName = localStorage.getItem('empRole') || 'POS Staff';
 
-    const htmlContent = `
-      <html>
-        <head>
-          <style>
-            @page { size: auto; margin: 0; }
-            body {
-              font-family: Arial, sans-serif;
-              font-size: 14px;
-              font-weight: bold;
-              margin: 0;
-              padding: 0;
-              width: 80mm;
-            }
-            .ticket { padding: 10px; box-sizing: border-box; width: 80mm; }
-            .ticket-header { text-align: center; font-size: 16px; margin-bottom: 10px; }
-            .ticket-section { font-size: 14px; margin-bottom: 5px; }
-            .summary { font-size: 14px; margin-top: 10px; }
-            table { width: 100%; border-collapse: collapse; }
-            th, td { padding: 5px 0; }
-            .qr-code { text-align: center; margin-top: 10px; }
-            hr { border: none; border-top: 1px dashed #000; margin: 10px 0; }
-            .totals { margin-top: 10px; text-align: right; }
-          </style>
-        </head>
-        <body>
-          ${Array.from({length: bags}, (_, i) => `
-            <div class="ticket">
-              <div class="ticket-header">Ticket ${i + 1}/${bags} (Bag)</div>
-              <div class="ticket-section"><span>Order ID:</span> ${printOrderId}</div>
-              <div class="ticket-section"><span>Due:</span> ${needBy === 'asap' ? 'ASAP' : needBy}</div>
-              <div class="ticket-section"><span>Customer:</span> ${customerName || customerPhone}</div>
-              <div class="summary">
-                <span>Order Summary:</span>
-                <table>
-                  <thead><tr><th>Qty</th><th>Item Name</th></tr></thead>
-                  <tbody>${orderSummary}</tbody>
-                </table>
-              </div>
-              <hr/>
-              <div class="totals">
-                <div>Subtotal: $${subtotal.toFixed(2)}</div>
-                ${tipAmount > 0 ? `<div>Tip: $${tipAmount.toFixed(2)}</div>` : ''}
-                <div style="font-size:16px;">TOTAL: $${total.toFixed(2)}</div>
-              </div>
-              <div class="qr-code" id="qrcode-${i + 1}"></div>
-            </div>
-            ${i < bags - 1 ? '<hr>' : ''}
-          `).join('')}
-          <script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js"></script>
-          <script>
-            ${Array.from({length: bags}, (_, i) => `
-              QRCode.toDataURL('${printOrderId}', { width: 100, height: 100 }, (err, url) => {
-                const qr = document.getElementById('qrcode-${i + 1}');
-                if (!err && qr) { const img = document.createElement('img'); img.src = url; qr.appendChild(img); }
-              });
-            `).join('\n')}
-            setTimeout(() => { }, 800);
-          </script>
-        </body>
-      </html>
-    `;
+    const htmlContent = generateTicketHtml({
+      orderId: printOrderId,
+      laundryId,
+      userDomain: null, // uses window.location.origin fallback
+      bags,
+      storeName: shopDetails.storeName,
+      storeAddress: shopDetails.storeAddress,
+      storePhone: shopDetails.storePhone,
+      storeEmail: shopDetails.storeEmail,
+      customerName: customerName || customerPhone,
+      customerPhone: customerPhone,
+      employeeName,
+      dueDate: needBy === 'asap' ? 'ASAP' : needBy,
+      dueTimeInterval: '',
+      orderDate: new Date().toLocaleString(),
+      services: cart.map(i => ({
+        service: i.serviceName,
+        weightOrCount: i.isWeight ? (parseFloat(i.inputWeight) || 0) : i.quantity,
+        inputWeight: i.isWeight,
+        servicePrice: i.price,
+      })),
+      products: [],
+      subTotal: subtotal.toFixed(2),
+      coupon: 'None',
+      discountedPrice: '0.00',
+      tipAmount: tipAmount.toFixed(2),
+      grandTotal: total.toFixed(2),
+      balanceDue: total.toFixed(2),
+      notes: '',
+    });
 
     // Print via hidden iframe — avoids popup window, cleaner UX
     const iframe = document.createElement('iframe');
@@ -463,7 +440,7 @@ export default function QuickPOSPage({ laundryId, stripePublicKey, stripeTermina
             onClick={() => setIsPaymentModalOpen(true)}
             isDisabled={!cart.length || customerPhone.length < 10 || (isNewCustomer && !customerId)}
             opacity={(!cart.length || customerPhone.length < 10 || (isNewCustomer && !customerId)) ? 0.5 : 1}>
-            {!cart.length ? '⬅️ Add items' : customerPhone.length < 10 ? '📱 Enter phone' : (isNewCustomer && !customerId) ? '👤 Register customer' : `✅ Complete — $${total.toFixed(2)}`}
+            {!cart.length ? '⬅️ Add items' : customerPhone.length < 10 ? '📱 Enter phone' : (isNewCustomer && !customerId) ? '👤 Register customer' : `✅ Complete — ${total.toFixed(2)}`}
           </Button>
         </Box>
       </Box>

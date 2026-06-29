@@ -76,7 +76,7 @@ async def validate_credentials(
     with get_db() as conn:
         cur = get_cursor(conn)
         cur.execute("""
-            SELECT emp_id, laundry_id, role, passcode
+            SELECT emp_id, laundry_id, role, passcode, first_name, last_name
             FROM shop.employees
             WHERE emp_id = %s AND laundry_id = %s AND is_active = TRUE
         """, (emp_id, laundry_id))
@@ -85,7 +85,8 @@ async def validate_credentials(
         if not emp or emp["passcode"] != passcode:
             return {"body": {"isValidated": False, "empId": emp_id, "role": None, "error": "Invalid credentials"}}
 
-        return {"body": {"isValidated": True, "empId": emp["emp_id"], "role": emp["role"]}}
+        full_name = f"{emp['first_name']} {emp['last_name']}".strip()
+        return {"body": {"isValidated": True, "empId": emp["emp_id"], "role": emp["role"], "fullName": full_name}}
 
 
 @router.delete("/delete")

@@ -1,7 +1,8 @@
 import React from "react";
 import {
-    Grid,
+    Box,
     VStack,
+    Text,
     Tooltip,
     IconButton,
     Drawer,
@@ -12,19 +13,15 @@ import {
     DrawerCloseButton,
     useBreakpointValue
 } from "@chakra-ui/react";
+import { QRCodeSVG } from "qrcode.react";
 import { FaHistory, FaTicketAlt, FaReceipt, FaFileInvoice  } from "react-icons/fa";
 import {NotificationButton} from "./SendNotification";
+import { buildOrderUrl } from "../utils/ticketPrint";
 import axios from "axios";
 
 const OrderActionsDrawer = ({ isOpen, onClose, order, handleOrderHistory, handlePrintTicket, handlePrintReceipt, setSelectedOrder, setInvoiceModalOpen, setPaymentInstructions, setSendEmail, laundryId }) => {
     const drawerSize = useBreakpointValue({ base: "xs", sm: "xs", md: "sm", lg: "xs", xl: "xs" });
     const drawerMaxHeight = useBreakpointValue({ base: "70vh", sm: "65vh", md: "60vh" });
-    const drawerWidth = useBreakpointValue({
-        base: "auto",  // Adjusts dynamically on smaller screens
-        md: "fit-content",
-        lg: "fit-content",
-        xl: "fit-content"
-    });
 
 
     if (!order) return null;
@@ -125,7 +122,7 @@ const OrderActionsDrawer = ({ isOpen, onClose, order, handleOrderHistory, handle
 
                             {order.orderId.startsWith("IS-") && <NotificationButton order={order} />}
 
-                            {/* Send Invoice button — only for pay-by-invoice orders */}
+                            {/* Send Invoice button - only for pay-by-invoice orders */}
                             {order.payByInvoice && order.paymentStatus !== "Paid" && order.paymentStatus !== "Invoice Sent" && (
                                 <Tooltip label="Send Invoice (Net 30)" placement="top">
                                     <IconButton
@@ -141,9 +138,9 @@ const OrderActionsDrawer = ({ isOpen, onClose, order, handleOrderHistory, handle
                                                     { headers: { Authorization: `Bearer ${localStorage.getItem('idToken')}` } }
                                                 );
                                                 if (res.data.status === 'success') {
-                                                    alert(`✅ Invoice sent to ${order.customerEmail}\nAmount: $${res.data.amountDue}\nPayment link: ${res.data.invoiceUrl}`);
+                                                    alert(`Invoice sent to ${order.customerEmail}\nAmount: ${res.data.amountDue}\nPayment link: ${res.data.invoiceUrl}`);
                                                 } else {
-                                                    alert(`❌ ${res.data.message}`);
+                                                    alert(`${res.data.message}`);
                                                 }
                                             } catch (err) {
                                                 alert(`Error: ${err.response?.data?.message || err.message}`);
@@ -153,6 +150,29 @@ const OrderActionsDrawer = ({ isOpen, onClose, order, handleOrderHistory, handle
                                     />
                                 </Tooltip>
                             )}
+
+                            {/* QR Code - scan to open order on phone */}
+                            <Tooltip label="Scan to open on phone" placement="top">
+                                <Box
+                                    display="flex"
+                                    flexDirection="column"
+                                    alignItems="center"
+                                    mt={3}
+                                    p={2}
+                                    bg="white"
+                                    borderRadius="md"
+                                    boxShadow="sm"
+                                >
+                                    <QRCodeSVG
+                                        value={buildOrderUrl(laundryId, order.orderId, null)}
+                                        size={130}
+                                        level="M"
+                                    />
+                                    <Text fontSize="xs" color="gray.600" mt={1} textAlign="center">
+                                        Scan with phone
+                                    </Text>
+                                </Box>
+                            </Tooltip>
 
                         </VStack>
                     )}
