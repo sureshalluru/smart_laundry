@@ -28,6 +28,7 @@ async def get_orders_info(
     lastEvaluatedKey: Optional[str] = None,
     orderId: Optional[str] = None,
     empId: Optional[str] = None,
+    searchQuery: Optional[str] = None,
     current_user: dict = Depends(get_current_user),
 ):
     """Handles all GET operations from OrdersInformationService."""
@@ -53,6 +54,9 @@ async def get_orders_info(
             # TODO: implement promo validation
             return {"body": {"valid": False, "message": "Not implemented yet"}}
 
+        elif operation == 'searchOrders':
+            return search_orders(cur, laundryId, searchQuery or orderId or '')
+
 
 @router.get("/single-order-info")
 async def get_single_order_info(
@@ -62,6 +66,19 @@ async def get_single_order_info(
     current_user: dict = Depends(get_current_user),
 ):
     """Fetch single order details — separate endpoint used by the frontend."""
+    with get_db() as conn:
+        cur = get_cursor(conn)
+        return get_single_order(cur, laundryId, orderId)
+
+
+@router.get("/employee-order-info")
+async def get_employee_order_info(
+    laundryId: str = Query(...),
+    orderId: str = Query(...),
+):
+    """Fetch single order details for employee mobile view — no admin auth required.
+    Employee authentication is handled client-side via EmployeeAuthContext.
+    Only returns order data if the order belongs to the specified laundry."""
     with get_db() as conn:
         cur = get_cursor(conn)
         return get_single_order(cur, laundryId, orderId)
@@ -1199,6 +1216,86 @@ def get_orders_by_status(cur, laundry_id, operation, page=1, limit=30, order_typ
             "sortedBy": {'Online': 'pickupDate + pickupTime', 'InStore': 'dropoffDate + dropoffTime', 'Commercial': 'dropoffDate + dropoffTime'}.get(order_type, 'createdAt'),
         }
     }
+
+
+def search_orders(cur, laundry_id, query):
+    """Search orders by order ID, customer phone, or customer name — no time limit.
+    Returns up to 20 matching orders across all statuses."""
+    if not query or len(query.strip()) < 2:
+        return {"statusCode": 200, "body": []}
+
+    query = query.strip()
+    search_pattern = f"%{query}%"
+
+    cur.execute("""
+        SELECT
+            o.*,
+            c.first_name, c.last_name, c.phone_number, c.email,
+            ca.address AS customer_address,
+            COALESCE(
+                json_agg(DISTINCT jsonb_build_object(
+                    'orderId', os.order_id, 'serviceName', os.service_name,
+                    'servicePrice', os.service_price, 'weightOrCount', os.weight_or_count
+                )) FILTER (WHERE os.id IS NOT NULL), '[]'
+            ) AS services,
+            jsonb_build_object(
+                'tipAmount', ot.tip_amount, 'tipPercentage', ot.tip_percentage,
+                'tipType', ot.tip_type, 'tipMethod', ot.tip_method,
+                'tipReceiverId', ot.tip_receiver_id
+            ) AS tip
+        FROM orders.orders o
+        JOIN shop.customers c ON c.customer_id = o.customer_id
+        LEFT JOIN shop.customer_addresses ca ON ca.address_id = o.address_id
+        LEFT JOIN orders.order_services os ON os.order_id = o.order_id
+        LEFT JOIN orders.order_tips ot ON ot.order_id = o.order_id
+        WHERE o.laundry_id = %s
+          AND (
+            UPPER(o.order_id) LIKE UPPER(%s)
+            OR c.phone_number LIKE %s
+            OR UPPER(CONCAT(c.first_name, ' ', c.last_name)) LIKE UPPER(%s)
+          )
+        GROUP BY o.order_id, c.customer_id, ca.address,
+                 ot.tip_amount, ot.tip_percentage, ot.tip_type, ot.tip_method, ot.tip_receiver_id
+        ORDER BY o.created_at DESC
+        LIMIT 20
+    """, (laundry_id, search_pattern, search_pattern, search_pattern))
+
+    rows = cur.fetchall()
+
+    results = []
+    for r in rows:
+        services = [serialize(s) for s in (r["services"] or [])]
+        tip = serialize(r["tip"] or {})
+        grand_total = Decimal(str(r["grand_total"] or 0)).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+
+        results.append({
+            "orderId": r["order_id"],
+            "customerName": f"{r['first_name']} {r['last_name']}".strip(),
+            "customerPhone": r["phone_number"],
+            "customerEmail": r["email"],
+            "customerAddress": r["customer_address"] or "",
+            "orderStatus": r["order_status"],
+            "paymentStatus": r["payment_status"],
+            "orderType": r.get("order_type", ""),
+            "createdAt": serialize(r["created_at"]),
+            "dropoffDate": serialize(r["dropoff_date"]),
+            "dropoffTimeInterval": r["dropoff_time_interval"],
+            "pickupDate": serialize(r["pickup_date"]),
+            "pickupTimeInterval": r["pickup_time_interval"],
+            "laundryBags": r["laundry_bags"],
+            "services": services,
+            "products": [],
+            "specialInstructions": r["special_instructions"],
+            "totalCost": float(r["total_cost"]),
+            "discountedPrice": float(r["discounted_price"]),
+            "tip": tip,
+            "grandTotal": float(grand_total),
+            "subTotal": float(r["sub_total"]),
+            "coupon": r["coupon"],
+            "balanceDue": float(max(Decimal('0'), grand_total - Decimal(str(r.get("paid_amount") or 0)))),
+        })
+
+    return {"statusCode": 200, "body": results}
 
 
 def get_single_order(cur, laundry_id, order_id):

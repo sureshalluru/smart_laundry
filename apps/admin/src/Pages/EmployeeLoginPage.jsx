@@ -7,8 +7,6 @@ import {
   FormLabel,
   Heading,
   Input,
-  InputGroup,
-  InputLeftAddon,
   Text,
   VStack,
   useColorModeValue,
@@ -122,15 +120,13 @@ export default function EmployeeLoginPage() {
 
             <FormControl isRequired>
               <FormLabel>Employee ID</FormLabel>
-              <InputGroup size="lg">
-                <InputLeftAddon>EMP-</InputLeftAddon>
-                <Input
-                  placeholder="Your ID"
-                  value={empId}
-                  onChange={(e) => setEmpId(e.target.value)}
-                  autoComplete="username"
-                />
-              </InputGroup>
+              <Input
+                placeholder="Enter your employee ID"
+                value={empId}
+                onChange={(e) => setEmpId(e.target.value)}
+                size="lg"
+                autoComplete="username"
+              />
             </FormControl>
 
             <FormControl isRequired>

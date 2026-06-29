@@ -10,6 +10,7 @@ import { FaArrowLeft, FaCheck, FaTimes, FaMinus, FaPlus, FaPrint, FaSearch } fro
 import { QuickPOSPaymentModalWrapper } from '../Components/QuickPOS/QuickPOSPaymentModal';
 import RegisterCustomer from '../hooks/RegisterCustomer';
 import { generateTicketHtml } from '../utils/ticketPrint';
+import { fetchShopDetails } from './AdminHomePage';
 
 const popIn = keyframes`
   0% { transform: scale(0.95); opacity: 0.7; }
@@ -60,16 +61,22 @@ export default function QuickPOSPage({ laundryId, stripePublicKey, stripeTermina
           { params: { operation: 'getLaundryInfo', laundryId }, headers: { Authorization: `Bearer ${authToken}` } });
         if (res.data.status === 'success') {
           setServices(res.data.laundryServices || []);
-          setShopDetails({
-            storeName: res.data.laundryName || 'N/A',
-            storeAddress: res.data.address || 'N/A',
-            storePhone: res.data.phone || 'N/A',
-            storeEmail: res.data.email || 'N/A',
-          });
         }
       } catch (err) { console.error(err); }
     };
+    const loadShopDetails = async () => {
+      try {
+        const shop = await fetchShopDetails(laundryId);
+        setShopDetails({
+          storeName: shop.name || 'N/A',
+          storeAddress: shop.address || 'N/A',
+          storePhone: shop.phone || 'N/A',
+          storeEmail: shop.email || 'N/A',
+        });
+      } catch (err) { console.error('Failed to fetch shop details:', err); }
+    };
     fetchServices();
+    loadShopDetails();
   }, [laundryId, authToken]);
 
   // Phone lookup

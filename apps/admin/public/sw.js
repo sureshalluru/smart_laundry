@@ -12,8 +12,24 @@ self.addEventListener('activate', (event) => {
 });
 
 // Network-first strategy — always fetch from network, fall back to cache
+// For navigation requests (HTML pages), return a basic response if offline
+// so the SPA can handle routing client-side
 self.addEventListener('fetch', (event) => {
+  // Skip cross-origin requests to avoid CORS issues in the SW
+  if (!event.request.url.startsWith(self.location.origin)) {
+    return;
+  }
+
   event.respondWith(
-    fetch(event.request).catch(() => caches.match(event.request))
+    fetch(event.request)
+      .catch(() => caches.match(event.request))
+      .then((response) => {
+        if (response) return response;
+        // For navigation requests, serve the app shell so React Router handles it
+        if (event.request.mode === 'navigate') {
+          return caches.match('/index.html') || fetch('/index.html');
+        }
+        return new Response('', { status: 408, statusText: 'Offline' });
+      })
   );
 });

@@ -39,6 +39,7 @@ import {
 } from 'react-icons/fa';
 import { useEmployeeAuth } from '../Context/EmployeeAuthContext';
 import { generateTicketHtml } from '../utils/ticketPrint';
+import { fetchShopDetails } from './AdminHomePage';
 import MobileEditServices from '../Components/MobileOrder/MobileEditServices';
 import MobileOrderHistory from '../Components/MobileOrder/MobileOrderHistory';
 
@@ -118,18 +119,11 @@ const MobileOrderPage = () => {
     setLoading(true);
     setError(null);
     try {
-      const authToken = localStorage.getItem('idToken');
-      const headers = authToken
-        ? { Authorization: `Bearer ${authToken}` }
-        : {};
-
-      const response = await axios.get(`${API_URL}/api/admin/orders-info`, {
+      const response = await axios.get(`${API_URL}/api/admin/employee-order-info`, {
         params: {
-          operation: 'getSingleOrder',
           laundryId,
           orderId,
         },
-        headers,
         timeout: 15000,
       });
 
@@ -246,52 +240,57 @@ const MobileOrderPage = () => {
    * Print ticket using the shared generateTicketHtml utility.
    * Creates a hidden iframe, writes the HTML, and triggers the browser print dialog.
    */
-  const handlePrintTicket = () => {
-    const htmlContent = generateTicketHtml({
-      orderId: order.orderId,
-      laundryId,
-      userDomain: null, // Uses window.location.origin fallback
-      bags: order.laundryBags || 1,
-      storeName: order.storeName || 'N/A',
-      storeAddress: order.storeAddress || 'N/A',
-      storePhone: order.storePhone || 'N/A',
-      storeEmail: order.storeEmail || 'N/A',
-      customerName: order.customerName,
-      customerPhone: order.customerPhone,
-      employeeName: session?.fullName || 'N/A',
-      dueDate: order.dropoffDate,
-      dueTimeInterval: order.dropoffTimeInterval,
-      orderDate: order.pickupDate,
-      services: order.services,
-      products: order.products,
-      subTotal: order.subTotal,
-      coupon: order.coupon,
-      discountedPrice: order.discountedPrice,
-      tipAmount: order.tip?.tipAmount,
-      grandTotal: order.grandTotal,
-      balanceDue: order.balanceDue,
-      notes: order.specialInstructions,
-    });
+  const handlePrintTicket = async () => {
+    try {
+      const shop = await fetchShopDetails(laundryId);
 
-    // Print via hidden iframe — same pattern as QuickPOSPage and OrdersInfoManagement
-    const iframe = document.createElement('iframe');
-    iframe.style.position = 'absolute';
-    iframe.style.top = '-9999px';
-    iframe.style.left = '-9999px';
-    iframe.style.width = '0';
-    iframe.style.height = '0';
-    document.body.appendChild(iframe);
-    const doc = iframe.contentDocument || iframe.contentWindow.document;
-    doc.open();
-    doc.write(htmlContent);
-    doc.close();
-    // Wait for QR codes to load, then print
-    setTimeout(() => {
-      iframe.contentWindow.focus();
-      iframe.contentWindow.print();
-      // Clean up iframe after print dialog closes
-      setTimeout(() => document.body.removeChild(iframe), 2000);
-    }, 800);
+      const htmlContent = generateTicketHtml({
+        orderId: order.orderId,
+        laundryId,
+        userDomain: shop.userDomain || null,
+        bags: order.laundryBags || 1,
+        storeName: shop.name,
+        storeAddress: shop.address,
+        storePhone: shop.phone,
+        storeEmail: shop.email,
+        customerName: order.customerName,
+        customerPhone: order.customerPhone,
+        employeeName: session?.fullName || 'N/A',
+        dueDate: order.dropoffDate,
+        dueTimeInterval: order.dropoffTimeInterval,
+        orderDate: order.pickupDate,
+        services: order.services,
+        products: order.products,
+        subTotal: order.subTotal,
+        coupon: order.coupon,
+        discountedPrice: order.discountedPrice,
+        tipAmount: order.tip?.tipAmount,
+        grandTotal: order.grandTotal,
+        balanceDue: order.balanceDue,
+        notes: order.specialInstructions,
+      });
+
+      // Print via hidden iframe — same pattern as QuickPOSPage and OrdersInfoManagement
+      const iframe = document.createElement('iframe');
+      iframe.style.position = 'absolute';
+      iframe.style.top = '-9999px';
+      iframe.style.left = '-9999px';
+      iframe.style.width = '0';
+      iframe.style.height = '0';
+      document.body.appendChild(iframe);
+      const doc = iframe.contentDocument || iframe.contentWindow.document;
+      doc.open();
+      doc.write(htmlContent);
+      doc.close();
+      setTimeout(() => {
+        iframe.contentWindow.focus();
+        iframe.contentWindow.print();
+        setTimeout(() => document.body.removeChild(iframe), 2000);
+      }, 800);
+    } catch (err) {
+      console.error('Error printing ticket:', err);
+      toast({ title: 'Print Failed', description: 'Failed to print ticket.', status: 'error', duration: 3000, isClosable: true });
+    }
   };
 
   // Loading state

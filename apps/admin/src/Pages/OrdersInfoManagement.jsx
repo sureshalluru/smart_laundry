@@ -325,6 +325,35 @@ const getInstantPickupWindow = (laundryTimeZone) => {
         fetchData();
     }, [laundryId, orderOperation]);
 
+    // Server-side search — queries ALL orders (no time limit) when user types 3+ characters
+    useEffect(() => {
+        if (!searchTerm || searchTerm.trim().length < 3) return;
+
+        const searchTimeout = setTimeout(async () => {
+            try {
+                const url = `${process.env.REACT_APP_AWS_API_URL}/api/admin/orders-info`;
+                const response = await axios.get(url, {
+                    params: { operation: 'searchOrders', laundryId, searchQuery: searchTerm.trim() },
+                    headers: { 'Authorization': `Bearer ${authToken}` },
+                    timeout: 10000,
+                });
+                const searchResults = response.data?.body || [];
+                if (Array.isArray(searchResults) && searchResults.length > 0) {
+                    // Merge search results with existing orders (deduplicate by orderId)
+                    const existingIds = new Set(orders.map(o => o.orderId));
+                    const newOrders = searchResults.filter(o => !existingIds.has(o.orderId));
+                    if (newOrders.length > 0) {
+                        setOrders(prev => [...prev, ...newOrders]);
+                    }
+                }
+            } catch (err) {
+                console.error('Server-side search failed:', err);
+            }
+        }, 500); // 500ms debounce
+
+        return () => clearTimeout(searchTimeout);
+    }, [searchTerm, laundryId, authToken]);
+
     useEffect(() => {
         const filtered = orders.filter((order) => {
             // Normalize strings for case-insensitive comparison
