@@ -903,7 +903,7 @@ const DriverHome = ({ laundryId }) => {
                         mt={2}
                         width="100%"
                         isLoading={loadingOrderIds[`deliver_${order.orderId}`]}
-                        isDisabled={!photoUploaded[order.orderId]}
+                        isDisabled={false}
                         title={!photoUploaded[order.orderId] ? 'Upload delivery photo first' : ''}
                         onClick={async () => {
                           setLoadingOrderIds(p => ({ ...p, [`deliver_${order.orderId}`]: true }));

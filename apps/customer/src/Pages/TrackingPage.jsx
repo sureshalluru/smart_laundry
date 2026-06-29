@@ -93,15 +93,16 @@ export default function TrackingPage() {
           },
         });
 
-        const order = response.data?.order || response.data;
-        const status = order.orderStatus || order.status;
+        const order = response.data?.body?.data || response.data?.order || response.data;
+        const status = order.orderStatus || order.order_status || order.status;
         setOrderStatus(status);
 
         // Determine trackability
-        const pickupTrackable =
-          status === 'OrderSubmitted' && order.pickup_service === 'LaundryDriver';
-        const deliveryTrackable =
-          status === 'EnRouteToDelivery' && order.dropoff_service === 'LaundryDriver';
+        const pickupSvc = (order.pickupService || order.pickup_service || '').replace(/\s/g, '').toLowerCase();
+        const dropoffSvc = (order.dropoffService || order.dropoff_service || '').replace(/\s/g, '').toLowerCase();
+
+        const pickupTrackable = status === 'OrderSubmitted' && pickupSvc === 'laundrydriver';
+        const deliveryTrackable = status === 'EnRouteToDelivery' && dropoffSvc === 'laundrydriver';
 
         setIsTrackable(pickupTrackable || deliveryTrackable);
 
