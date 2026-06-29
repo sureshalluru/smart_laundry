@@ -72,10 +72,10 @@ export default function PieceServiceRow({ service, cartItem, dispatch }) {
             {service.serviceName}
           </Text>
           <Text fontSize="md" fontWeight="800" color="blue.600">
-            ${parseFloat(service.price).toFixed(2)}/bag
+            ${parseFloat(service.price).toFixed(2)}/item
           </Text>
           <Text fontSize="xs" color="gray.500" mt={1}>
-            🛍️ Send in any bag (trash bag works!) — we'll return folded in a clean plastic bag
+            Price per item
           </Text>
         </Box>
         <HStack spacing={2}>

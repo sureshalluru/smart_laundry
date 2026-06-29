@@ -557,7 +557,6 @@ const DriverHome = ({ laundryId }) => {
         setLoadingOrderIds((p) => ({ ...p, [`miss_${orderId}`]: false }));
       }
     }
-    navigate(0)
     setPendingUploadOrderId(null);
     setPendingAction(null);
   };

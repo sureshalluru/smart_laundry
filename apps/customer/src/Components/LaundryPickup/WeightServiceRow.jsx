@@ -17,7 +17,7 @@ import {
  * Shows service name, price/lb, +/- weight buttons, and Add/Remove.
  */
 export default function WeightServiceRow({ service, cartItem, dispatch }) {
-  const [weight, setWeight] = useState(cartItem ? cartItem.quantity : '');
+  const [weight, setWeight] = useState(cartItem ? cartItem.quantity : 1);
 
   const increment = (amount = 1) => {
     const newWeight = Math.round((weight + amount) * 10) / 10;
@@ -130,7 +130,7 @@ export default function WeightServiceRow({ service, cartItem, dispatch }) {
             borderColor="blue.200"
             _focus={{ borderColor: 'blue.500' }}
           />
-          <Text fontSize="xs" color="gray.500" mt={1}>estimated lbs (min 20)</Text>
+          <Text fontSize="xs" color="gray.500" mt={1}>estimated lbs</Text>
         </VStack>
 
         <IconButton
