@@ -62,6 +62,7 @@ export default function TrackingPage() {
   const [customerAddress, setCustomerAddress] = useState(null);
   const [loading, setLoading] = useState(true);
   const [orderError, setOrderError] = useState(null);
+  const [orderDetails, setOrderDetails] = useState(null);
 
   // Tracking state
   const [driverPosition, setDriverPosition] = useState(null);
@@ -105,6 +106,7 @@ export default function TrackingPage() {
         const deliveryTrackable = status === 'EnRouteToDelivery' && dropoffSvc === 'laundrydriver';
 
         setIsTrackable(pickupTrackable || deliveryTrackable);
+        setOrderDetails(order);
 
         // Get customer address coordinates for destination marker
         if (order.customerLat && order.customerLng) {
@@ -409,6 +411,42 @@ export default function TrackingPage() {
               Live tracking is not yet available for this order. The progress bar above shows your order's current status.
             </AlertDescription>
           </Alert>
+        )}
+
+        {/* Order Details Card */}
+        {orderDetails && (
+          <Box borderWidth="1px" borderRadius="md" p={4} bg="white" boxShadow="sm">
+            <Text fontWeight="bold" fontSize="md" mb={2}>Order Details</Text>
+            <VStack spacing={1} align="stretch" fontSize="sm">
+              <Flex justify="space-between">
+                <Text color="gray.600">Order ID</Text>
+                <Text fontWeight="600">{orderDetails.orderId || orderId}</Text>
+              </Flex>
+              {orderDetails.services && orderDetails.services.length > 0 && (
+                <Box>
+                  <Text color="gray.600" mb={1}>Services</Text>
+                  {orderDetails.services.map((s, i) => (
+                    <Flex key={i} justify="space-between" pl={2}>
+                      <Text>{s.serviceName}</Text>
+                      <Text>{s.weightOrCount > 0 ? `${s.weightOrCount} lbs` : ''} — ${Number(s.servicePrice).toFixed(2)}</Text>
+                    </Flex>
+                  ))}
+                </Box>
+              )}
+              {orderDetails.dropoffDate && (
+                <Flex justify="space-between">
+                  <Text color="gray.600">Delivery Date</Text>
+                  <Text>{orderDetails.dropoffDate}</Text>
+                </Flex>
+              )}
+              {orderDetails.grandTotal > 0 && (
+                <Flex justify="space-between" fontWeight="bold" pt={1} borderTopWidth="1px">
+                  <Text>Total</Text>
+                  <Text>${Number(orderDetails.grandTotal).toFixed(2)}</Text>
+                </Flex>
+              )}
+            </VStack>
+          </Box>
         )}
       </VStack>
     </Box>
