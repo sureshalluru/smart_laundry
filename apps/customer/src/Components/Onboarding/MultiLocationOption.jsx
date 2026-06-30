@@ -26,7 +26,7 @@ export default function MultiLocationOption({
     onSendVerification,
     verificationCode,
     onVerificationCodeChange,
-    onConfirmVerification,
+    onConfirmVerification,  // accepts optional code argument
     verificationError,
     companyVerified,
 }) {
@@ -134,7 +134,7 @@ export default function MultiLocationOption({
                                             const val = e.target.value.replace(/\D/g, '').slice(0, 6);
                                             onVerificationCodeChange && onVerificationCodeChange(val);
                                             if (val.length === 6 && onConfirmVerification) {
-                                                onConfirmVerification();
+                                                onConfirmVerification(val);
                                             }
                                         }}
                                         maxLength={6}

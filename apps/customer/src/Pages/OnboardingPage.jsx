@@ -197,10 +197,11 @@ const OnboardingPage = () => {
         }
     };
 
-    const handleConfirmVerification = async () => {
+    const handleConfirmVerification = async (codeArg) => {
+        const codeToSend = codeArg || companyVerificationCode;
         setVerificationError('');
         try {
-            const res = await axios.post(`${process.env.REACT_APP_AWS_API_URL}/api/platform/onboard/company-confirm`, { companyId, code: companyVerificationCode });
+            const res = await axios.post(`${process.env.REACT_APP_AWS_API_URL}/api/platform/onboard/company-confirm`, { companyId, code: codeToSend });
             if (res.data.status === 'success') {
                 setCompanyVerified(true);
                 setCompanyJoinToken(res.data.token);
