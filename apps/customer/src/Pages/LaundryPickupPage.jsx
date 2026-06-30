@@ -11,7 +11,7 @@ import {
     Stepper,
     StepTitle,
     FormControl, FormLabel, Input,
-    useSteps, StepIcon, StepNumber, useToast, VStack, Image, Heading
+    useSteps, StepIcon, StepNumber, useToast, VStack, Image, Heading, Text
 } from "@chakra-ui/react";
 import PaymentPage from '../Components/LaundryPickup/PaymentPage';
 import UnifiedServicePage from '../Components/LaundryPickup/UnifiedServicePage';
@@ -203,10 +203,11 @@ export default function LaundryPickupPage({laundryId,customerId,customerPaymentI
         }
     }, [laundryTimeZone,pickupDate,dropoffDate,isAddressValidated]);
 
-    // Task 5.5: Single-service auto-skip logic
-    // If only 1 service exists AND orderType is already set, auto-add it and skip to step 2 (schedule)
+    // Task 5.5: Single-service auto-add logic (no auto-skip)
+    // If only 1 service exists, auto-add it to cart but let customer stay on step 1
+    // so they can optionally enter weight before continuing
     useEffect(() => {
-        if (servicesLoaded && laundryServices.length === 1 && cart.items.length === 0 && orderType) {
+        if (servicesLoaded && laundryServices.length === 1 && cart.items.length === 0 && orderType && activeStep === 1) {
             const singleService = laundryServices[0];
             const isWeight = singleService.inputWeight === true || singleService.inputWeight === 'true';
             dispatch({
@@ -221,9 +222,9 @@ export default function LaundryPickupPage({laundryId,customerId,customerPaymentI
                     quantity: isWeight ? 1 : 1,
                 },
             });
-            setActiveStep(2); // Skip directly to Schedule (step 2 in 5-step flow)
+            // Don't auto-advance — let customer see the service, enter weight, and click Continue
         }
-    }, [servicesLoaded, laundryServices, cart.items.length, orderType]);
+    }, [servicesLoaded, laundryServices, cart.items.length, orderType, activeStep]);
 
     // Handle order type selection
     const handleOrderTypeSelect = (type) => {
@@ -649,6 +650,17 @@ export default function LaundryPickupPage({laundryId,customerId,customerPaymentI
                                         setPayByInvoice={setPayByInvoice}
                                     />
                                 </Elements>
+                            )}
+                            {activeStep === 3 && !stripePromise && (
+                                <Box p={6} textAlign="center">
+                                    <Text fontSize="lg" fontWeight="bold" mb={2}>💵 Pay at Pickup</Text>
+                                    <Text color="gray.600" mb={4}>
+                                        This location accepts payment when your laundry is picked up or delivered. No card needed right now.
+                                    </Text>
+                                    <Button colorScheme="blue" onClick={() => { setIsPaymentStepValid(true); setPayByInvoice(true); setActiveStep(4); }}>
+                                        Continue to Review
+                                    </Button>
+                                </Box>
                             )}
 
                             {/* Step 4: Review Order */}

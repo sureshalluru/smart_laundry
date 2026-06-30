@@ -248,9 +248,13 @@ const LaundryHomePage = ({laundryId, customerId, customerPaymentId: initialCusto
                         <Route
                             path="my-orders"
                             element={
-                                <Elements stripe={loadStripe(laundryData?.stripePublicKey)}>
+                                laundryData?.stripePublicKey ? (
+                                <Elements stripe={loadStripe(laundryData.stripePublicKey)}>
                                     <MyOrders customerId={customerId} laundryId={laundryId} laundryTimeZone={laundryTimeZone} />
                                 </Elements>
+                                ) : (
+                                    <MyOrders customerId={customerId} laundryId={laundryId} laundryTimeZone={laundryTimeZone} />
+                                )
                             }
                         />
                         <Route
@@ -260,14 +264,20 @@ const LaundryHomePage = ({laundryId, customerId, customerPaymentId: initialCusto
                         {/* Payment */}
                         <Route
                             path="payment"
-                            element={<Elements stripe={loadStripe(laundryData?.stripePublicKey)}>
+                            element={laundryData?.stripePublicKey ? (
+                                <Elements stripe={loadStripe(laundryData.stripePublicKey)}>
                                 <PaymentMethods
                                     customerId={customerId}
                                     laundryId={laundryId}
                                     customerPaymentId={customerPaymentId}
                                     setCustomerPaymentId={setCustomerPaymentId}
                                 />
-                            </Elements>}
+                            </Elements>
+                            ) : (
+                                <Box p={6} textAlign="center">
+                                    <Text color="gray.500">Card payments are not yet configured for this location. Pay at pickup/delivery.</Text>
+                                </Box>
+                            )}
                         />
                         <Route path="order-success" element={<OrderSuccess laundryId={laundryId} />} />
                         <Route path="faq" element={<FAQPage />} />
