@@ -49,6 +49,15 @@ export default function CompanyManagementSection({ platformKey, onAuthError }) {
     const [assigning, setAssigning] = useState(false);
     const [removingLocationId, setRemovingLocationId] = useState(null);
 
+    // Company admin state
+    const [companyAdmins, setCompanyAdmins] = useState([]);
+    const [showAddAdmin, setShowAddAdmin] = useState(false);
+    const [adminEmail, setAdminEmail] = useState('');
+    const [adminPassword, setAdminPassword] = useState('');
+    const [adminFirstName, setAdminFirstName] = useState('');
+    const [adminLastName, setAdminLastName] = useState('');
+    const [creatingAdmin, setCreatingAdmin] = useState(false);
+
     const headers = { 'x-platform-key': platformKey };
 
     const fetchCompanies = useCallback(async () => {
@@ -114,11 +123,14 @@ export default function CompanyManagementSection({ platformKey, onAuthError }) {
         setSelectedCompany(company);
         setLoadingDetail(true);
         setSelectedLaundryId('');
+        setShowAddAdmin(false);
+        setCompanyAdmins([]);
         onEditOpen();
         try {
             const [companyRes] = await Promise.all([
                 axios.get(`${API_URL}/api/platform/companies/${company.companyId}`, { headers }),
                 fetchAllLaundries(),
+                fetchCompanyAdmins(company.companyId),
             ]);
             if (companyRes.data.status === 'success') {
                 const detail = companyRes.data.company;
@@ -264,6 +276,42 @@ export default function CompanyManagementSection({ platformKey, onAuthError }) {
                 const message = err.response?.data?.detail || err.response?.data?.message || 'Failed to send credentials';
                 toast({ title: message, status: 'error', duration: 4000 });
             }
+        }
+    };
+
+    const fetchCompanyAdmins = async (companyId) => {
+        try {
+            const res = await axios.get(`${API_URL}/api/platform/companies/${companyId}/admins`, { headers });
+            if (res.data.status === 'success') {
+                setCompanyAdmins(res.data.admins || []);
+            }
+        } catch (err) {
+            console.error("Failed to fetch company admins:", err);
+        }
+    };
+
+    const handleCreateAdmin = async () => {
+        if (!selectedCompany || !adminEmail || !adminPassword) return;
+        setCreatingAdmin(true);
+        try {
+            const res = await axios.post(
+                `${API_URL}/api/platform/companies/${selectedCompany.companyId}/admins`,
+                { email: adminEmail, password: adminPassword, firstName: adminFirstName, lastName: adminLastName },
+                { headers }
+            );
+            if (res.data.status === 'success') {
+                toast({ title: 'Company admin created!', status: 'success', duration: 3000 });
+                setAdminEmail(''); setAdminPassword(''); setAdminFirstName(''); setAdminLastName('');
+                setShowAddAdmin(false);
+                fetchCompanyAdmins(selectedCompany.companyId);
+            } else {
+                toast({ title: res.data.message || 'Failed to create admin', status: 'error', duration: 4000 });
+            }
+        } catch (err) {
+            const message = err.response?.data?.detail || err.response?.data?.message || 'Failed to create admin';
+            toast({ title: message, status: 'error', duration: 4000 });
+        } finally {
+            setCreatingAdmin(false);
         }
     };
 
@@ -614,6 +662,47 @@ export default function CompanyManagementSection({ platformKey, onAuthError }) {
                                             Assign
                                         </Button>
                                     </HStack>
+                                </Box>
+
+                                <Divider />
+
+                                <Box>
+                                    <HStack justify="space-between" mb={2}>
+                                        <Text fontWeight="600" fontSize="sm">Company Admins</Text>
+                                        <Button size="xs" colorScheme="purple" onClick={() => setShowAddAdmin(!showAddAdmin)}>
+                                            {showAddAdmin ? 'Cancel' : '+ Add Admin'}
+                                        </Button>
+                                    </HStack>
+                                    <Text fontSize="xs" color="gray.500" mb={2}>
+                                        Admins can log in at /company/login to see the rollup dashboard.
+                                    </Text>
+                                    {companyAdmins.length > 0 ? (
+                                        <VStack spacing={1} align="stretch" mb={3}>
+                                            {companyAdmins.map((admin) => (
+                                                <HStack key={admin.adminId} p={2} bg="purple.50" borderRadius="md" fontSize="sm">
+                                                    <Text fontWeight="500">{admin.firstName} {admin.lastName}</Text>
+                                                    <Text color="gray.600">({admin.email})</Text>
+                                                </HStack>
+                                            ))}
+                                        </VStack>
+                                    ) : (
+                                        <Text fontSize="sm" color="gray.500" mb={3}>No admins yet. Create one to enable company login.</Text>
+                                    )}
+                                    {showAddAdmin && (
+                                        <Box p={3} bg="purple.50" borderRadius="md" border="1px" borderColor="purple.100">
+                                            <VStack spacing={2} align="stretch">
+                                                <HStack>
+                                                    <Input size="sm" placeholder="First name" value={adminFirstName} onChange={(e) => setAdminFirstName(e.target.value)} />
+                                                    <Input size="sm" placeholder="Last name" value={adminLastName} onChange={(e) => setAdminLastName(e.target.value)} />
+                                                </HStack>
+                                                <Input size="sm" type="email" placeholder="Email (used for login)" value={adminEmail} onChange={(e) => setAdminEmail(e.target.value)} />
+                                                <Input size="sm" type="password" placeholder="Password" value={adminPassword} onChange={(e) => setAdminPassword(e.target.value)} />
+                                                <Button size="sm" colorScheme="purple" onClick={handleCreateAdmin} isLoading={creatingAdmin} isDisabled={!adminEmail || !adminPassword}>
+                                                    Create Admin
+                                                </Button>
+                                            </VStack>
+                                        </Box>
+                                    )}
                                 </Box>
                             </VStack>
                         ) : null}

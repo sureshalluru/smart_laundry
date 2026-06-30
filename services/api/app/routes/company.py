@@ -60,7 +60,7 @@ async def get_company_dashboard(
 
     with get_db() as conn:
         cur = get_cursor(conn)
-        ids_tuple = tuple(str(lid) for lid in laundry_ids)
+        ids_list = [str(lid) for lid in laundry_ids]
 
         # Build date filter clause
         date_filter = ""
@@ -81,29 +81,29 @@ async def get_company_dashboard(
                 COUNT(*) AS order_count
             FROM orders.orders o
             JOIN shop.laundry_shops ls ON ls.laundry_id = o.laundry_id
-            WHERE o.laundry_id IN %s
+            WHERE o.laundry_id = ANY(%s)
               AND o.order_status != 'OrderCanceled'
               {date_filter}
             GROUP BY o.laundry_id, ls.laundry_name
-        """, (ids_tuple, *date_params))
+        """, (ids_list, *date_params))
         location_rows = cur.fetchall()
 
         # Active orders per location (status_category = 'Active')
         cur.execute("""
             SELECT laundry_id, COUNT(*) AS active_count
             FROM orders.orders
-            WHERE laundry_id IN %s AND status_category = 'Active'
+            WHERE laundry_id = ANY(%s) AND status_category = 'Active'
             GROUP BY laundry_id
-        """, (ids_tuple,))
+        """, (ids_list,))
         active_map = {r["laundry_id"]: r["active_count"] for r in cur.fetchall()}
 
         # Get all locations (even those with no orders)
         cur.execute("""
             SELECT laundry_id, laundry_name
             FROM shop.laundry_shops
-            WHERE laundry_id IN %s
+            WHERE laundry_id = ANY(%s)
             ORDER BY laundry_name
-        """, (ids_tuple,))
+        """, (ids_list,))
         all_locations = cur.fetchall()
 
         # Build location map from revenue query
@@ -168,7 +168,7 @@ async def get_company_locations(
 
     with get_db() as conn:
         cur = get_cursor(conn)
-        ids_tuple = tuple(str(lid) for lid in laundry_ids)
+        ids_list = [str(lid) for lid in laundry_ids]
 
         # Get all locations with active order counts
         cur.execute("""
@@ -183,9 +183,9 @@ async def get_company_locations(
                 WHERE status_category = 'Active'
                 GROUP BY laundry_id
             ) active ON active.laundry_id = ls.laundry_id
-            WHERE ls.laundry_id IN %s
+            WHERE ls.laundry_id = ANY(%s)
             ORDER BY ls.laundry_name
-        """, (ids_tuple,))
+        """, (ids_list,))
         rows = cur.fetchall()
 
         locations = [
@@ -229,7 +229,7 @@ async def get_company_revenue_report(
 
     with get_db() as conn:
         cur = get_cursor(conn)
-        ids_tuple = tuple(str(lid) for lid in laundry_ids)
+        ids_list = [str(lid) for lid in laundry_ids]
 
         # Build date filter
         date_filter = ""
@@ -250,20 +250,20 @@ async def get_company_revenue_report(
                 COUNT(*) AS order_count
             FROM orders.orders o
             JOIN shop.laundry_shops ls ON ls.laundry_id = o.laundry_id
-            WHERE o.laundry_id IN %s
+            WHERE o.laundry_id = ANY(%s)
               AND o.order_status != 'OrderCanceled'
               {date_filter}
             GROUP BY o.laundry_id, ls.laundry_name
-        """, (ids_tuple, *date_params))
+        """, (ids_list, *date_params))
         location_rows = cur.fetchall()
 
         # Also get all company locations (some may have zero orders)
         cur.execute("""
             SELECT laundry_id, laundry_name
             FROM shop.laundry_shops
-            WHERE laundry_id IN %s
+            WHERE laundry_id = ANY(%s)
             ORDER BY laundry_name
-        """, (ids_tuple,))
+        """, (ids_list,))
         all_locations = cur.fetchall()
 
         rev_map = {
@@ -334,7 +334,7 @@ async def get_company_tips_report(
 
     with get_db() as conn:
         cur = get_cursor(conn)
-        ids_tuple = tuple(str(lid) for lid in laundry_ids)
+        ids_list = [str(lid) for lid in laundry_ids]
 
         # Build date filter
         date_filter = ""
@@ -350,11 +350,11 @@ async def get_company_tips_report(
         cur.execute(f"""
             SELECT o.tip, o.laundry_id
             FROM orders.orders o
-            WHERE o.laundry_id IN %s
+            WHERE o.laundry_id = ANY(%s)
               AND o.order_status != 'OrderCanceled'
               AND o.tip IS NOT NULL
               {date_filter}
-        """, (ids_tuple, *date_params))
+        """, (ids_list, *date_params))
         rows = cur.fetchall()
 
         total_tips = 0.0
@@ -452,7 +452,7 @@ async def get_company_sales_tax_report(
 
     with get_db() as conn:
         cur = get_cursor(conn)
-        ids_tuple = tuple(str(lid) for lid in laundry_ids)
+        ids_list = [str(lid) for lid in laundry_ids]
 
         # Build date filter
         date_filter = ""
@@ -474,20 +474,20 @@ async def get_company_sales_tax_report(
                 COUNT(*) AS order_count
             FROM orders.orders o
             JOIN shop.laundry_shops ls ON ls.laundry_id = o.laundry_id
-            WHERE o.laundry_id IN %s
+            WHERE o.laundry_id = ANY(%s)
               AND o.order_status != 'OrderCanceled'
               {date_filter}
             GROUP BY o.laundry_id, ls.laundry_name, ls.tax_rate
-        """, (ids_tuple, *date_params))
+        """, (ids_list, *date_params))
         location_rows = cur.fetchall()
 
         # Get all locations (even those with no orders)
         cur.execute("""
             SELECT laundry_id, laundry_name, tax_rate
             FROM shop.laundry_shops
-            WHERE laundry_id IN %s
+            WHERE laundry_id = ANY(%s)
             ORDER BY laundry_name
-        """, (ids_tuple,))
+        """, (ids_list,))
         all_locations = cur.fetchall()
 
         sales_map = {
@@ -574,7 +574,7 @@ async def get_company_performance_report(
 
     with get_db() as conn:
         cur = get_cursor(conn)
-        ids_tuple = tuple(str(lid) for lid in laundry_ids)
+        ids_list = [str(lid) for lid in laundry_ids]
 
         # Build date filter
         date_filter = ""
@@ -594,12 +594,12 @@ async def get_company_performance_report(
                 AVG(EXTRACT(EPOCH FROM (o.updated_at - o.created_at)) / 3600) AS avg_processing_hours
             FROM orders.orders o
             JOIN shop.laundry_shops ls ON ls.laundry_id = o.laundry_id
-            WHERE o.laundry_id IN %s
+            WHERE o.laundry_id = ANY(%s)
               AND o.order_status != 'OrderCanceled'
               AND o.status_category = 'Completed'
               {date_filter}
             GROUP BY o.laundry_id, ls.laundry_name
-        """, (ids_tuple, *date_params))
+        """, (ids_list, *date_params))
         processing_rows = cur.fetchall()
         processing_map = {
             str(r["laundry_id"]): round(float(r["avg_processing_hours"] or 0), 2)
@@ -610,9 +610,9 @@ async def get_company_performance_report(
         cur.execute("""
             SELECT laundry_id, COUNT(*) AS emp_count
             FROM shop.employees
-            WHERE laundry_id IN %s AND is_active = TRUE
+            WHERE laundry_id = ANY(%s) AND is_active = TRUE
             GROUP BY laundry_id
-        """, (ids_tuple,))
+        """, (ids_list,))
         emp_count_map = {
             str(r["laundry_id"]): int(r["emp_count"])
             for r in cur.fetchall()
@@ -622,9 +622,9 @@ async def get_company_performance_report(
         cur.execute("""
             SELECT laundry_id, laundry_name
             FROM shop.laundry_shops
-            WHERE laundry_id IN %s
+            WHERE laundry_id = ANY(%s)
             ORDER BY laundry_name
-        """, (ids_tuple,))
+        """, (ids_list,))
         all_locations = cur.fetchall()
 
         locations = []
@@ -649,14 +649,14 @@ async def get_company_performance_report(
             FROM orders.orders o
             JOIN shop.employees e ON e.emp_id = o.last_updated_by
             JOIN shop.laundry_shops ls ON ls.laundry_id = e.laundry_id
-            WHERE o.laundry_id IN %s
+            WHERE o.laundry_id = ANY(%s)
               AND o.order_status != 'OrderCanceled'
               AND o.last_updated_by IS NOT NULL
               AND o.last_updated_by != ''
               {date_filter}
             GROUP BY o.last_updated_by, e.first_name, e.last_name, e.laundry_id, ls.laundry_name
             ORDER BY orders_completed DESC
-        """, (ids_tuple, *date_params))
+        """, (ids_list, *date_params))
         emp_rows = cur.fetchall()
 
         top_employees = [
