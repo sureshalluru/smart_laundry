@@ -5,7 +5,7 @@ Issues and validates JWT tokens using a secret key.
 import logging
 from datetime import datetime, timedelta, timezone
 from typing import Optional
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from jose import jwt, JWTError
 from passlib.context import CryptContext
@@ -77,3 +77,43 @@ async def get_current_user(
             detail="Invalid token type",
         )
     return payload
+
+
+async def verify_laundry_access(
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+) -> dict:
+    """
+    Verify that the current user has access to the requested laundry.
+
+    For company_admin tokens, checks that the laundry_id from the request
+    (query param, path param, or JSON body) is in the token's laundry_ids list.
+    For other roles (employee, customer, platform_admin, individual admin),
+    this passes through without additional checks.
+
+    Returns the current_user dict unchanged.
+    """
+    if current_user.get("role") != "company_admin":
+        return current_user
+
+    # Extract laundry_id from request: query params, path params, or body
+    laundry_id = (
+        request.query_params.get("laundryId")
+        or request.path_params.get("laundryId")
+        or request.path_params.get("laundry_id")
+    )
+
+    # If no laundry_id found in query/path, skip validation
+    # (company-level endpoints like /api/company/* don't carry a laundry_id)
+    if not laundry_id:
+        return current_user
+
+    # Check that the laundry_id is in the token's authorized list
+    authorized_laundry_ids = current_user.get("laundry_ids", [])
+    if str(laundry_id) not in [str(lid) for lid in authorized_laundry_ids]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Forbidden — laundry not in company",
+        )
+
+    return current_user

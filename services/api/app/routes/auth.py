@@ -17,13 +17,16 @@ router = APIRouter()
 @router.post("/login")
 async def login(body: dict = Body(...)):
     """
-    Login with phone number + password (customers)
-    or employee ID + passcode (admin employees).
+    Login with phone number + password (customers),
+    employee ID + passcode (admin employees),
+    or email + password (company admins).
     """
-    login_type = body.get("type", "customer")  # "customer" or "employee"
+    login_type = body.get("type", "customer")  # "customer", "employee", or "company_admin"
 
     if login_type == "employee":
         return _employee_login(body)
+    elif login_type == "company_admin":
+        return _company_admin_login(body)
     else:
         return _customer_login(body)
 
@@ -247,6 +250,50 @@ def _employee_login(body: dict):
         "name": f"{emp['first_name']} {emp['last_name']}".strip(),
     }
     logger.info(f"Employee login SUCCESS: requested={emp_id}, matched={emp['emp_id']}, role={emp['role']}, JWT sub={emp['emp_id']}")
+    return {
+        "status": "success",
+        "accessToken": create_access_token(token_data),
+        "refreshToken": create_refresh_token(token_data),
+        "user": token_data,
+    }
+
+
+def _company_admin_login(body: dict):
+    """Login a company admin with email + password."""
+    email = body.get("email")
+    password = body.get("password")
+
+    if not email or not password:
+        raise HTTPException(status_code=400, detail="Email and password required")
+
+    with get_db() as conn:
+        cur = get_cursor(conn)
+
+        # Verify credentials against shop.company_admins
+        cur.execute("""
+            SELECT admin_id, company_id, email, password_hash, first_name, last_name, is_active
+            FROM shop.company_admins WHERE email = %s AND is_active = TRUE
+        """, (email,))
+        admin = cur.fetchone()
+
+        if not admin or not verify_password(password, admin["password_hash"]):
+            raise HTTPException(status_code=401, detail="Invalid credentials")
+
+        # Get list of laundry_ids owned by the company
+        cur.execute("""
+            SELECT laundry_id FROM shop.laundry_shops WHERE company_id = %s
+        """, (admin["company_id"],))
+        laundry_rows = cur.fetchall()
+        laundry_ids = [str(row["laundry_id"]) for row in laundry_rows]
+
+    token_data = {
+        "sub": str(admin["admin_id"]),
+        "role": "company_admin",
+        "company_id": str(admin["company_id"]),
+        "laundry_ids": laundry_ids,
+        "email": admin["email"],
+        "name": f"{admin['first_name'] or ''} {admin['last_name'] or ''}".strip(),
+    }
     return {
         "status": "success",
         "accessToken": create_access_token(token_data),

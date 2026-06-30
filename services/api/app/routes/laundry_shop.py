@@ -241,3 +241,79 @@ async def get_delivery_schedule(
             "frequencyIntervals": frequency_intervals,
         }
     }
+
+
+@router.put("/payment-settings")
+async def update_payment_settings(
+    body: dict = Body(...),
+    current_user: dict = Depends(get_current_user),
+):
+    """Update Stripe keys and terminal ID for a laundry (admin only)."""
+    laundry_id = body.get("laundryId")
+    stripe_public_key = body.get("stripePublicKey")
+    stripe_private_key = body.get("stripePrivateKey")
+    stripe_terminal_id = body.get("stripeTerminalId")
+
+    if not laundry_id:
+        return {"statusCode": 400, "body": {"status": "error", "message": "Missing laundryId"}}
+
+    with get_db() as conn:
+        cur = get_cursor(conn)
+        updates = []
+        params = []
+
+        if stripe_public_key is not None:
+            updates.append("stripe_public_key = %s")
+            params.append(stripe_public_key)
+        if stripe_private_key is not None:
+            updates.append("stripe_private_key = %s")
+            params.append(stripe_private_key)
+        if stripe_terminal_id is not None:
+            updates.append("stripe_terminal_id = %s")
+            params.append(stripe_terminal_id)
+
+        if not updates:
+            return {"statusCode": 400, "body": {"status": "error", "message": "No fields to update"}}
+
+        params.append(laundry_id)
+        cur.execute(f"UPDATE shop.laundry_shops SET {', '.join(updates)} WHERE laundry_id = %s", params)
+
+    return {"statusCode": 200, "body": {"status": "success", "message": "Payment settings updated"}}
+
+
+@router.get("/payment-settings")
+async def get_payment_settings(
+    laundryId: str = Query(...),
+    current_user: dict = Depends(get_current_user),
+):
+    """Get current Stripe/terminal settings for a laundry (admin only)."""
+    with get_db() as conn:
+        cur = get_cursor(conn)
+        cur.execute("""
+            SELECT stripe_public_key, stripe_private_key, stripe_terminal_id
+            FROM shop.laundry_shops WHERE laundry_id = %s
+        """, (laundryId,))
+        row = cur.fetchone()
+
+    if not row:
+        return {"statusCode": 404, "body": {"status": "error", "message": "Laundry not found"}}
+
+    # Mask the private key (show first 7 + last 4 chars)
+    private_key = row["stripe_private_key"] or ""
+    masked_private = ""
+    if private_key:
+        if len(private_key) > 11:
+            masked_private = private_key[:7] + "..." + private_key[-4:]
+        else:
+            masked_private = "****"
+
+    return {
+        "statusCode": 200,
+        "body": {
+            "status": "success",
+            "stripePublicKey": row["stripe_public_key"] or "",
+            "stripePrivateKey": masked_private,
+            "stripeTerminalId": row["stripe_terminal_id"] or "",
+            "hasPrivateKey": bool(private_key),
+        }
+    }

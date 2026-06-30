@@ -29,11 +29,32 @@ export function AuthProvider({ children }) {
                     // Set default auth header
                     axios.defaults.headers.common['Authorization'] = `Bearer ${parsed.accessToken}`;
                 } else {
-                    // Try refresh
-                    refreshToken(parsed.refreshToken);
+                    // Try refresh if refresh token is available
+                    if (parsed.refreshToken) {
+                        refreshToken(parsed.refreshToken);
+                    } else {
+                        localStorage.removeItem('auth');
+                    }
                 }
             } catch (e) {
                 localStorage.removeItem('auth');
+            }
+        }
+        // Also check if a valid company token can serve as auth (for company admin navigating into a laundry)
+        if (!localStorage.getItem('auth')) {
+            const companyStored = localStorage.getItem('companyToken');
+            if (companyStored) {
+                try {
+                    const parsed = JSON.parse(companyStored);
+                    const payload = JSON.parse(atob(parsed.accessToken.split('.')[1]));
+                    if (payload.exp * 1000 > Date.now() && payload.role === 'company_admin') {
+                        setUser({ id_token: parsed.accessToken, role: 'company_admin', ...payload });
+                        setIsAuthenticated(true);
+                        axios.defaults.headers.common['Authorization'] = `Bearer ${parsed.accessToken}`;
+                        // Also set idToken for existing code that reads it
+                        localStorage.setItem('idToken', parsed.accessToken);
+                    }
+                } catch (e) { /* ignore invalid company token */ }
             }
         }
         setIsLoading(false);

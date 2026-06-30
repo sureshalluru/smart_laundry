@@ -605,6 +605,17 @@ const SidebarContent = ({
                 >
                     System Settings
                 </Button>
+                <Button as="a" href={`/${laundryId}/admin/payment-settings`}
+                    leftIcon={<Icon as={FaCashRegister} />}
+                    variant="ghost"
+                    colorScheme="purple"
+                    justifyContent="start"
+                    size="sm"
+                    maxWidth="100%"
+                    onClick={() => navigate(`/${laundryId}/admin/payment-settings`)}
+                >
+                    Payment Settings
+                </Button>
             </VStack>
         </Collapse>
         </>

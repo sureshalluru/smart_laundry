@@ -400,6 +400,111 @@ const DeliveryScheduleSection = ({ laundryId }) => {
     );
 };
 
+/* ─── Payment Settings Section ──────────────────────────────────────────────── */
+const PaymentSettingsSection = ({ laundryId }) => {
+    const toast = useToast();
+    const [stripePublicKey, setStripePublicKey] = useState("");
+    const [stripePrivateKey, setStripePrivateKey] = useState("");
+    const [stripeTerminalId, setStripeTerminalId] = useState("");
+    const [hasPrivateKey, setHasPrivateKey] = useState(false);
+    const [privateKeyChanged, setPrivateKeyChanged] = useState(false);
+    const [loading, setLoading] = useState(true);
+    const [saving, setSaving] = useState(false);
+    const authToken = localStorage.getItem('idToken');
+
+    useEffect(() => {
+        const fetchSettings = async () => {
+            try {
+                const res = await axios.get(`${process.env.REACT_APP_AWS_API_URL}/api/laundry/payment-settings`, {
+                    params: { laundryId },
+                    headers: { Authorization: `Bearer ${authToken}` }
+                });
+                const data = res.data?.body || res.data;
+                if (data.stripePublicKey !== undefined) setStripePublicKey(data.stripePublicKey);
+                if (data.stripePrivateKey !== undefined) setStripePrivateKey(data.stripePrivateKey);
+                if (data.stripeTerminalId !== undefined) setStripeTerminalId(data.stripeTerminalId);
+                if (data.hasPrivateKey !== undefined) setHasPrivateKey(data.hasPrivateKey);
+            } catch (err) { console.error("Error fetching payment settings:", err); }
+            finally { setLoading(false); }
+        };
+        if (laundryId) fetchSettings();
+    }, [laundryId, authToken]);
+
+    const handleSave = async () => {
+        setSaving(true);
+        try {
+            const payload = { laundryId };
+            // Always send public key and terminal ID
+            payload.stripePublicKey = stripePublicKey;
+            payload.stripeTerminalId = stripeTerminalId;
+            // Only send private key if the user actually changed it
+            if (privateKeyChanged) {
+                payload.stripePrivateKey = stripePrivateKey;
+            }
+            await axios.put(`${process.env.REACT_APP_AWS_API_URL}/api/laundry/payment-settings`, payload, {
+                headers: { Authorization: `Bearer ${authToken}` }
+            });
+            toast({ title: 'Payment settings saved!', status: 'success', duration: 3000 });
+            setPrivateKeyChanged(false);
+        } catch (err) {
+            toast({ title: 'Error saving payment settings', status: 'error', duration: 3000 });
+        } finally { setSaving(false); }
+    };
+
+    if (loading) return <Flex justify="center" p={8}><Spinner size="lg" /></Flex>;
+
+    return (
+        <Box p={4}>
+            <Text fontSize="xl" fontWeight="bold" mb={4}>💳 Payment Settings</Text>
+            <Text fontSize="sm" color="gray.600" mb={6}>
+                Configure your Stripe integration keys and terminal reader. These are used for processing payments in-store and online.
+            </Text>
+
+            <Box mb={6} maxW="500px" p={4} bg="gray.50" borderRadius="md" border="1px solid" borderColor="gray.200">
+                <Text fontWeight="semibold" mb={2}>Stripe Publishable Key</Text>
+                <Input
+                    value={stripePublicKey}
+                    onChange={(e) => setStripePublicKey(e.target.value)}
+                    placeholder="pk_live_... or pk_test_..."
+                    mb={2}
+                />
+                <Text fontSize="xs" color="gray.500">
+                    Your Stripe publishable key (starts with pk_). Found in Stripe Dashboard → Developers → API Keys.
+                </Text>
+            </Box>
+
+            <Box mb={6} maxW="500px" p={4} bg="gray.50" borderRadius="md" border="1px solid" borderColor="gray.200">
+                <Text fontWeight="semibold" mb={2}>Stripe Secret Key</Text>
+                <Input
+                    type="password"
+                    value={stripePrivateKey}
+                    onChange={(e) => { setStripePrivateKey(e.target.value); setPrivateKeyChanged(true); }}
+                    placeholder={hasPrivateKey ? "••••••• (key is set, type to replace)" : "sk_live_... or sk_test_..."}
+                    mb={2}
+                />
+                <Text fontSize="xs" color="gray.500">
+                    Your Stripe secret key (starts with sk_). Keep this confidential. Only update if you need to rotate keys.
+                </Text>
+            </Box>
+
+            <Box mb={6} maxW="500px" p={4} bg="gray.50" borderRadius="md" border="1px solid" borderColor="gray.200">
+                <Text fontWeight="semibold" mb={2}>Stripe Terminal Reader ID</Text>
+                <Input
+                    value={stripeTerminalId}
+                    onChange={(e) => setStripeTerminalId(e.target.value)}
+                    placeholder="tmr_... (your terminal reader ID)"
+                    mb={2}
+                />
+                <Text fontSize="xs" color="gray.500">
+                    The Stripe Terminal reader ID (starts with tmr_). Found in Stripe Dashboard → Terminal → Readers.
+                </Text>
+            </Box>
+
+            <Button colorScheme="blue" onClick={handleSave} isLoading={saving}>Save Payment Settings</Button>
+        </Box>
+    );
+};
+
 /* ─── System Settings Section ───────────────────────────────────────────────── */
 const SystemSettingsSection = ({ laundryId }) => {
     const toast = useToast();
@@ -1659,6 +1764,11 @@ const LaundryInfoManagement = ({ validateEmpCredentials, type, empPrefix }) => {
             {/* System Settings */}
             {type === "systemSettings" && (
                 <SystemSettingsSection laundryId={laundryId} />
+            )}
+
+            {/* Payment Settings */}
+            {type === "paymentSettings" && (
+                <PaymentSettingsSection laundryId={laundryId} />
             )}
 
             {/* Website Services */}

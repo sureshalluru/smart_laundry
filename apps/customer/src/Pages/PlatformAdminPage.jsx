@@ -5,9 +5,11 @@ import {
     Modal, ModalOverlay, ModalContent, ModalHeader, ModalBody, ModalFooter, ModalCloseButton,
     useDisclosure, Table, Thead, Tbody, Tr, Th, Td, Select, Spinner,
     Drawer, DrawerOverlay, DrawerContent, DrawerHeader, DrawerBody, DrawerCloseButton,
+    Tabs, TabList, Tab, TabPanels, TabPanel,
 } from '@chakra-ui/react';
 import { FiPlus, FiRefreshCw, FiUsers, FiMonitor, FiKey, FiMessageCircle, FiMail, FiEye } from 'react-icons/fi';
 import axios from 'axios';
+import CompanyManagementSection from '../Components/PlatformAdmin/CompanyManagementSection';
 
 const API_URL = process.env.REACT_APP_AWS_API_URL || '';
 
@@ -19,8 +21,21 @@ export default function PlatformAdminPage() {
     const [selectedLaundry, setSelectedLaundry] = useState(null);
     const { isOpen, onOpen, onClose } = useDisclosure();
     const toast = useToast();
+    const [tabIndex, setTabIndex] = useState(() => parseInt(localStorage.getItem('platformAdminTab') || '0'));
 
     const headers = { 'x-platform-key': platformKey };
+
+    const handleAuthError = () => {
+        setIsAuthenticated(false);
+        localStorage.removeItem('platformKey');
+        setPlatformKey('');
+        toast({ title: 'Invalid platform key', status: 'error' });
+    };
+
+    const handleTabChange = (index) => {
+        setTabIndex(index);
+        localStorage.setItem('platformAdminTab', String(index));
+    };
 
     // Auth check
     const handleAuth = () => {
@@ -277,19 +292,29 @@ export default function PlatformAdminPage() {
         <Box minH="100vh" bg="gray.50" p={{ base: 4, md: 8 }}>
             <Flex justify="space-between" align="center" mb={6}>
                 <Heading size="lg" color="gray.800">Platform Admin</Heading>
-                <HStack>
-                    <IconButton icon={<FiRefreshCw />} onClick={fetchLaundries} size="sm" variant="ghost" />
-                    <Button leftIcon={<FiPlus />} colorScheme="blue" size="sm" onClick={onOpen}>
-                        New Laundry
-                    </Button>
-                </HStack>
             </Flex>
 
-            {loading ? (
-                <Flex justify="center" py={10}><Spinner size="xl" /></Flex>
-            ) : (
-                <SimpleGrid columns={{ base: 1, md: 2, lg: 3 }} spacing={4}>
-                    {laundries.map((l) => (
+            <Tabs index={tabIndex} onChange={handleTabChange} colorScheme="blue">
+                <TabList mb={4}>
+                    <Tab>Laundries</Tab>
+                    <Tab>Companies</Tab>
+                </TabList>
+                <TabPanels>
+                    <TabPanel p={0}>
+                        <Flex justify="flex-end" mb={4}>
+                            <HStack>
+                                <IconButton icon={<FiRefreshCw />} onClick={fetchLaundries} size="sm" variant="ghost" />
+                                <Button leftIcon={<FiPlus />} colorScheme="blue" size="sm" onClick={onOpen}>
+                                    New Laundry
+                                </Button>
+                            </HStack>
+                        </Flex>
+
+                        {loading ? (
+                            <Flex justify="center" py={10}><Spinner size="xl" /></Flex>
+                        ) : (
+                            <SimpleGrid columns={{ base: 1, md: 2, lg: 3 }} spacing={4}>
+                                {laundries.map((l) => (
                         <Box key={l.laundryId} bg="white" borderRadius="xl" p={5} boxShadow="sm" border="1px solid" borderColor="gray.100">
                             <VStack align="stretch" spacing={3}>
                                 <Flex justify="space-between" align="center">
@@ -362,6 +387,12 @@ export default function PlatformAdminPage() {
                     ))}
                 </SimpleGrid>
             )}
+                    </TabPanel>
+                    <TabPanel p={0}>
+                        <CompanyManagementSection platformKey={platformKey} onAuthError={handleAuthError} />
+                    </TabPanel>
+                </TabPanels>
+            </Tabs>
 
             {/* Create Laundry Modal */}
             <Modal isOpen={isOpen} onClose={() => { onClose(); setCreateResult(null); }} size="xl">

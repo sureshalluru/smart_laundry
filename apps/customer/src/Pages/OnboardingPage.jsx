@@ -9,6 +9,7 @@ import {
 } from '@chakra-ui/react';
 import { AddIcon, DeleteIcon } from '@chakra-ui/icons';
 import axios from 'axios';
+import MultiLocationOption from '../Components/Onboarding/MultiLocationOption';
 
 const DAYS_OF_WEEK = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 const TIMEZONES = [
@@ -63,6 +64,20 @@ const OnboardingPage = () => {
     // Address duplicate check state
     const [addressDuplicate, setAddressDuplicate] = useState(false);
     const [addressError, setAddressError] = useState('');
+
+    // Multi-location state
+    const [multiLocationOption, setMultiLocationOption] = useState('none');
+    const [companyName, setCompanyName] = useState('');
+    const [companyEmail, setCompanyEmail] = useState('');
+    const [joinCode, setJoinCode] = useState('');
+    const [joinStatus, setJoinStatus] = useState('idle');
+    const [maskedCompanyName, setMaskedCompanyName] = useState('');
+    const [maskedEmail, setMaskedEmail] = useState('');
+    const [companyVerificationCode, setCompanyVerificationCode] = useState('');
+    const [companyVerified, setCompanyVerified] = useState(false);
+    const [companyJoinToken, setCompanyJoinToken] = useState('');
+    const [companyId, setCompanyId] = useState('');
+    const [verificationError, setVerificationError] = useState('');
 
     // Step 2: Branding
     const [themeColor, setThemeColor] = useState('blue');
@@ -148,6 +163,56 @@ const OnboardingPage = () => {
         } catch (err) { /* silent fail for UX */ }
     };
 
+    // Multi-location handlers
+    const handleLookupJoinCode = async () => {
+        setJoinStatus('looking_up');
+        setVerificationError('');
+        try {
+            const res = await axios.post(`${process.env.REACT_APP_AWS_API_URL}/api/platform/onboard/lookup-join-code`, { joinCode });
+            if (res.data.status === 'success') {
+                setJoinStatus('found');
+                setMaskedCompanyName(res.data.maskedName);
+                setMaskedEmail(res.data.maskedEmail);
+                setCompanyId(res.data.companyId);
+            } else {
+                setJoinStatus('error');
+            }
+        } catch (err) {
+            setJoinStatus('error');
+        }
+    };
+
+    const handleSendVerification = async () => {
+        setJoinStatus('verifying');
+        setVerificationError('');
+        try {
+            const res = await axios.post(`${process.env.REACT_APP_AWS_API_URL}/api/platform/onboard/company-verify`, { companyId });
+            if (res.data.status !== 'success') {
+                setVerificationError(res.data.message || 'Failed to send verification code');
+                setJoinStatus('found');
+            }
+        } catch (err) {
+            setVerificationError(err.response?.data?.detail || 'Failed to send verification code');
+            setJoinStatus('found');
+        }
+    };
+
+    const handleConfirmVerification = async () => {
+        setVerificationError('');
+        try {
+            const res = await axios.post(`${process.env.REACT_APP_AWS_API_URL}/api/platform/onboard/company-confirm`, { companyId, code: companyVerificationCode });
+            if (res.data.status === 'success') {
+                setCompanyVerified(true);
+                setCompanyJoinToken(res.data.token);
+                setJoinStatus('verified');
+            } else {
+                setVerificationError(res.data.message || 'Invalid verification code');
+            }
+        } catch (err) {
+            setVerificationError(err.response?.data?.detail || 'Verification failed');
+        }
+    };
+
     const addService = () => {
         setServices(prev => [...prev, { serviceName: '', price: '', inputWeight: true, customerAccess: true }]);
     };
@@ -181,6 +246,10 @@ const OnboardingPage = () => {
                 stripePrivateKey,
                 serviceableZipCodes: businessInfo.zipCode ? [businessInfo.zipCode] : [],
                 emailVerificationToken,
+                multiLocation: multiLocationOption,
+                companyName: multiLocationOption === 'create' ? companyName : undefined,
+                companyEmail: multiLocationOption === 'create' ? companyEmail : undefined,
+                companyJoinToken: multiLocationOption === 'join' ? companyJoinToken : undefined,
                 agreement: {
                     signed: agreementSigned,
                     signatureName: signatureName,
@@ -229,7 +298,13 @@ const OnboardingPage = () => {
 
     const canProceed = () => {
         switch (activeStep) {
-            case 0: return businessInfo.laundryName && businessInfo.ownerPhone && businessInfo.street && emailVerified && !addressDuplicate;
+            case 0: {
+                const baseValid = businessInfo.laundryName && businessInfo.ownerPhone && businessInfo.street && emailVerified && !addressDuplicate;
+                if (!baseValid) return false;
+                if (multiLocationOption === 'join') return companyVerified === true;
+                if (multiLocationOption === 'create') return (companyName || '').trim().length > 0;
+                return true;
+            }
             case 1: return true; // Branding is optional
             case 2: return services.some(s => s.serviceName.trim());
             case 3: return schedule.some(s => s.enabled);
@@ -247,6 +322,8 @@ const OnboardingPage = () => {
         if (!businessInfo.street) missing.push('Street Address');
         if (!emailVerified) missing.push('Email Verification');
         if (addressDuplicate) missing.push('Address is already registered');
+        if (multiLocationOption === 'join' && !companyVerified) missing.push('Company Verification');
+        if (multiLocationOption === 'create' && !(companyName || '').trim()) missing.push('Company Name');
         return missing;
     };
 
@@ -300,6 +377,26 @@ const OnboardingPage = () => {
                             </VStack>
                         </CardBody>
                     </Card>
+
+                    {result.company && (
+                        <Card>
+                            <CardBody>
+                                <VStack spacing={3} align="stretch">
+                                    <Heading size="sm">Company Info</Heading>
+                                    <SimpleGrid columns={2} spacing={2}>
+                                        <Text fontWeight="bold">Company Name:</Text>
+                                        <Text>{result.company.companyName}</Text>
+                                        {result.company.joinCode && (
+                                            <>
+                                                <Text fontWeight="bold">Join Code:</Text>
+                                                <Badge colorScheme="teal" fontSize="md" p={1}>{result.company.joinCode}</Badge>
+                                            </>
+                                        )}
+                                    </SimpleGrid>
+                                </VStack>
+                            </CardBody>
+                        </Card>
+                    )}
 
                     <Alert status="warning" borderRadius="md">
                         <AlertIcon />
@@ -403,6 +500,27 @@ const OnboardingPage = () => {
                                 <Input placeholder="info@laundry.com" value={businessInfo.contactEmail} onChange={e => updateBusiness('contactEmail', e.target.value)} />
                             </FormControl>
                         </SimpleGrid>
+
+                        <MultiLocationOption
+                            value={multiLocationOption}
+                            onChange={setMultiLocationOption}
+                            companyName={companyName}
+                            onCompanyNameChange={setCompanyName}
+                            companyEmail={companyEmail}
+                            onCompanyEmailChange={setCompanyEmail}
+                            joinCode={joinCode}
+                            onJoinCodeChange={setJoinCode}
+                            joinStatus={joinStatus}
+                            maskedCompanyName={maskedCompanyName}
+                            maskedEmail={maskedEmail}
+                            onLookupJoinCode={handleLookupJoinCode}
+                            onSendVerification={handleSendVerification}
+                            verificationCode={companyVerificationCode}
+                            onVerificationCodeChange={setCompanyVerificationCode}
+                            onConfirmVerification={handleConfirmVerification}
+                            verificationError={verificationError}
+                            companyVerified={companyVerified}
+                        />
 
                         <Divider />
                         <Heading size="sm">Owner / Admin Account</Heading>

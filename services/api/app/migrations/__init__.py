@@ -14,6 +14,10 @@ from app.migrations import add_performance_indexes
 from app.migrations import add_referral_fields
 from app.migrations import add_service_catalog
 from app.migrations import add_driver_locations
+from app.migrations import add_companies
+from app.migrations import add_company_admins
+from app.migrations import add_laundry_company_fk
+from app.migrations import add_company_join_code
 
 logger = logging.getLogger(__name__)
 
@@ -32,4 +36,8 @@ def run_all():
     add_referral_fields.run()
     add_service_catalog.run()
     add_driver_locations.run()
+    add_companies.run()
+    add_company_admins.run()
+    add_laundry_company_fk.run()
+    add_company_join_code.run()
     logger.info("All migrations complete.")

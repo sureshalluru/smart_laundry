@@ -5,6 +5,8 @@ Protected by platform admin secret key.
 from fastapi import APIRouter, Body, Header, HTTPException, Query
 from app.database import get_db, get_cursor
 from app.services.verification_store import verification_store, normalize_address
+from app.services.join_code import generate_join_code_with_retry
+from app.auth import hash_password
 import logging
 import uuid
 import random
@@ -399,6 +401,12 @@ async def self_service_onboard(body: dict = Body(...)):
     referred_by_name = body.get("referredByName", "").strip()
     referred_by_email = body.get("referredByEmail", "").strip().lower()
 
+    # Multi-location fields
+    multi_location = body.get("multiLocation", "none") or "none"  # "none" | "create" | "join"
+    company_name = body.get("companyName", "").strip()
+    company_email = body.get("companyEmail", "").strip()
+    company_join_token = body.get("companyJoinToken", "").strip()
+
     if not laundry_name:
         return {"status": "error", "message": "Laundry name is required"}
     if not owner_phone:
@@ -447,6 +455,19 @@ async def self_service_onboard(body: dict = Body(...)):
                 )
                 if cur.fetchone():
                     raise HTTPException(status_code=400, detail="Address already registered")
+
+    # --- Multi-location "join" mode: validate company join token upfront ---
+    join_company_id = None
+    if multi_location == "join":
+        if not company_join_token:
+            return {"status": "error", "message": "Company join token is required for join mode"}
+        token_key = verification_store.validate_token(company_join_token)
+        if token_key is None:
+            return {"status": "error", "message": "Company join token is expired or invalid"}
+        # Extract company_id from the key (format: "company_join:{company_id}")
+        if not token_key.startswith("company_join:"):
+            return {"status": "error", "message": "Company join token is expired or invalid"}
+        join_company_id = token_key.replace("company_join:", "")
 
     try:
         import json as json_mod
@@ -606,6 +627,53 @@ async def self_service_onboard(body: dict = Body(...)):
                         VALUES (%s, %s, %s, %s)
                     """, (next_id, day, start_time, end_time))
 
+            # 6. Multi-location handling
+            company_info = None
+            if multi_location == "create":
+                # Create a new company
+                cur.execute("""
+                    INSERT INTO shop.companies (company_name, contact_email)
+                    VALUES (%s, %s)
+                    RETURNING company_id, company_name
+                """, (company_name, company_email or None))
+                new_company = cur.fetchone()
+                new_company_id = str(new_company["company_id"])
+
+                # Generate join code for the new company
+                join_code = generate_join_code_with_retry(company_name, conn, new_company_id)
+
+                # Assign the new laundry to the company
+                cur.execute(
+                    "UPDATE shop.laundry_shops SET company_id = %s WHERE laundry_id = %s",
+                    (new_company_id, next_id)
+                )
+
+                company_info = {
+                    "companyId": new_company_id,
+                    "companyName": company_name,
+                    "joinCode": join_code,
+                }
+
+            elif multi_location == "join":
+                # Assign the new laundry to the existing company
+                cur.execute(
+                    "UPDATE shop.laundry_shops SET company_id = %s WHERE laundry_id = %s",
+                    (join_company_id, next_id)
+                )
+
+                # Fetch company info for the response
+                cur.execute(
+                    "SELECT company_name, join_code FROM shop.companies WHERE company_id = %s",
+                    (join_company_id,)
+                )
+                existing_company = cur.fetchone()
+                if existing_company:
+                    company_info = {
+                        "companyId": join_company_id,
+                        "companyName": existing_company["company_name"],
+                        "joinCode": existing_company["join_code"],
+                    }
+
         logger.info(f"New laundry onboarded: {laundry_name} (ID: {next_id})")
 
         # 6. Send signed agreement email to platform owner
@@ -757,7 +825,7 @@ async def self_service_onboard(body: dict = Body(...)):
             except Exception as ref_err:
                 logger.warning(f"Failed to send referral email to {referred_by_email}: {ref_err}")
 
-        return {
+        response = {
             "status": "success",
             "laundry": {
                 "laundryId": next_id,
@@ -772,6 +840,11 @@ async def self_service_onboard(body: dict = Body(...)):
                 "name": f"{owner_first_name} {owner_last_name}".strip(),
             },
         }
+
+        if company_info:
+            response["company"] = company_info
+
+        return response
 
     except Exception as e:
         logger.exception("Onboarding failed")
@@ -903,3 +976,444 @@ async def get_audit_log(
         } for r in cur.fetchall()]
 
     return {"status": "success", "logs": logs}
+
+
+# ── Company CRUD Endpoints ─────────────────────────────────────────────────────
+
+
+@router.post("/companies")
+async def create_company(body: dict = Body(...), x_platform_key: str = Header(None)):
+    """Create a new company entity."""
+    verify_platform_admin(x_platform_key)
+
+    company_name = body.get("company_name", "").strip()
+    contact_email = body.get("contact_email", "").strip() or None
+    contact_phone = body.get("contact_phone", "").strip() or None
+
+    if not company_name:
+        return {"status": "error", "message": "Company name is required"}
+
+    with get_db() as conn:
+        cur = get_cursor(conn)
+        cur.execute("""
+            INSERT INTO shop.companies (company_name, contact_email, contact_phone)
+            VALUES (%s, %s, %s)
+            RETURNING company_id, company_name, contact_email, contact_phone, created_at, updated_at
+        """, (company_name, contact_email, contact_phone))
+        row = cur.fetchone()
+        company_id = str(row["company_id"])
+
+        # Generate and store join code with retry for uniqueness
+        join_code = generate_join_code_with_retry(company_name, conn, company_id)
+
+    return {
+        "status": "success",
+        "company": {
+            "companyId": company_id,
+            "companyName": row["company_name"],
+            "contactEmail": row["contact_email"],
+            "contactPhone": row["contact_phone"],
+            "joinCode": join_code,
+            "createdAt": str(row["created_at"]),
+            "updatedAt": str(row["updated_at"]),
+        },
+    }
+
+
+@router.get("/companies")
+async def list_companies(x_platform_key: str = Header(None)):
+    """List all companies."""
+    verify_platform_admin(x_platform_key)
+
+    with get_db() as conn:
+        cur = get_cursor(conn)
+        cur.execute("""
+            SELECT company_id, company_name, contact_email, contact_phone, join_code, created_at, updated_at
+            FROM shop.companies
+            ORDER BY created_at DESC
+        """)
+        companies = []
+        for row in cur.fetchall():
+            # Count assigned laundries
+            cur.execute(
+                "SELECT COUNT(*) as cnt FROM shop.laundry_shops WHERE company_id = %s",
+                (row["company_id"],),
+            )
+            location_count = cur.fetchone()["cnt"]
+
+            companies.append({
+                "companyId": str(row["company_id"]),
+                "companyName": row["company_name"],
+                "contactEmail": row["contact_email"],
+                "contactPhone": row["contact_phone"],
+                "joinCode": row["join_code"],
+                "locationCount": location_count,
+                "createdAt": str(row["created_at"]),
+                "updatedAt": str(row["updated_at"]),
+            })
+
+    return {"status": "success", "companies": companies}
+
+
+@router.get("/companies/{company_id}")
+async def get_company(company_id: str, x_platform_key: str = Header(None)):
+    """Get a single company by ID."""
+    verify_platform_admin(x_platform_key)
+
+    with get_db() as conn:
+        cur = get_cursor(conn)
+        cur.execute("""
+            SELECT company_id, company_name, contact_email, contact_phone, join_code, created_at, updated_at
+            FROM shop.companies
+            WHERE company_id = %s
+        """, (company_id,))
+        row = cur.fetchone()
+
+        if not row:
+            raise HTTPException(status_code=404, detail="Company not found")
+
+        # Get assigned laundries
+        cur.execute("""
+            SELECT laundry_id, laundry_name
+            FROM shop.laundry_shops
+            WHERE company_id = %s
+            ORDER BY laundry_name
+        """, (company_id,))
+        locations = [{
+            "laundryId": r["laundry_id"],
+            "laundryName": r["laundry_name"],
+        } for r in cur.fetchall()]
+
+    return {
+        "status": "success",
+        "company": {
+            "companyId": str(row["company_id"]),
+            "companyName": row["company_name"],
+            "contactEmail": row["contact_email"],
+            "contactPhone": row["contact_phone"],
+            "joinCode": row["join_code"],
+            "locations": locations,
+            "createdAt": str(row["created_at"]),
+            "updatedAt": str(row["updated_at"]),
+        },
+    }
+
+
+@router.put("/companies/{company_id}")
+async def update_company(company_id: str, body: dict = Body(...), x_platform_key: str = Header(None)):
+    """Update a company's details."""
+    verify_platform_admin(x_platform_key)
+
+    with get_db() as conn:
+        cur = get_cursor(conn)
+
+        # Verify company exists
+        cur.execute("SELECT company_id FROM shop.companies WHERE company_id = %s", (company_id,))
+        if not cur.fetchone():
+            raise HTTPException(status_code=404, detail="Company not found")
+
+        updates = {}
+        if "company_name" in body:
+            name = body["company_name"].strip()
+            if not name:
+                return {"status": "error", "message": "Company name cannot be empty"}
+            updates["company_name"] = name
+        if "contact_email" in body:
+            updates["contact_email"] = body["contact_email"].strip() or None
+        if "contact_phone" in body:
+            updates["contact_phone"] = body["contact_phone"].strip() or None
+
+        if not updates:
+            return {"status": "error", "message": "No fields to update"}
+
+        updates["updated_at"] = "NOW()"
+
+        # Build SET clause — handle NOW() specially
+        set_parts = []
+        values = []
+        for k, v in updates.items():
+            if v == "NOW()":
+                set_parts.append(f"{k} = NOW()")
+            else:
+                set_parts.append(f"{k} = %s")
+                values.append(v)
+        set_clause = ", ".join(set_parts)
+        values.append(company_id)
+
+        cur.execute(
+            f"UPDATE shop.companies SET {set_clause} WHERE company_id = %s RETURNING company_id, company_name, contact_email, contact_phone, created_at, updated_at",
+            values,
+        )
+        row = cur.fetchone()
+
+    return {
+        "status": "success",
+        "company": {
+            "companyId": str(row["company_id"]),
+            "companyName": row["company_name"],
+            "contactEmail": row["contact_email"],
+            "contactPhone": row["contact_phone"],
+            "createdAt": str(row["created_at"]),
+            "updatedAt": str(row["updated_at"]),
+        },
+    }
+
+
+@router.delete("/companies/{company_id}")
+async def delete_company(company_id: str, x_platform_key: str = Header(None)):
+    """
+    Delete a company.
+    CASCADE on company_admins will remove all admins.
+    SET NULL on laundry_shops.company_id will unlink laundries (preserving laundry data).
+    """
+    verify_platform_admin(x_platform_key)
+
+    with get_db() as conn:
+        cur = get_cursor(conn)
+
+        # Verify company exists
+        cur.execute("SELECT company_name FROM shop.companies WHERE company_id = %s", (company_id,))
+        row = cur.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Company not found")
+
+        company_name = row["company_name"]
+
+        # Delete the company — FK constraints handle the rest:
+        # - company_admins: ON DELETE CASCADE (admins are deleted)
+        # - laundry_shops.company_id: ON DELETE SET NULL (laundries are unlinked)
+        cur.execute("DELETE FROM shop.companies WHERE company_id = %s", (company_id,))
+
+    logger.info(f"Deleted company: {company_name} (ID: {company_id})")
+    return {"status": "success", "message": f"Company '{company_name}' deleted successfully."}
+
+
+@router.post("/companies/{company_id}/regenerate-code")
+async def regenerate_company_code(company_id: str, x_platform_key: str = Header(None)):
+    """Generate a new join code for a company."""
+    verify_platform_admin(x_platform_key)
+
+    with get_db() as conn:
+        cur = get_cursor(conn)
+
+        # Verify company exists and get name for code generation
+        cur.execute("SELECT company_name FROM shop.companies WHERE company_id = %s", (company_id,))
+        row = cur.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Company not found")
+
+        company_name = row["company_name"]
+
+        # Generate new join code with retry for uniqueness
+        new_code = generate_join_code_with_retry(company_name, conn, company_id)
+
+    return {"status": "success", "joinCode": new_code}
+
+
+# ── Company Admin CRUD Endpoints ───────────────────────────────────────────────
+
+
+@router.post("/companies/{company_id}/admins")
+async def create_company_admin(company_id: str, body: dict = Body(...), x_platform_key: str = Header(None)):
+    """Create a new admin for a company."""
+    verify_platform_admin(x_platform_key)
+
+    email = (body.get("email") or "").strip().lower()
+    password = body.get("password", "")
+    first_name = (body.get("first_name") or "").strip() or None
+    last_name = (body.get("last_name") or "").strip() or None
+
+    if not email:
+        return {"status": "error", "message": "Email is required"}
+    if not password:
+        return {"status": "error", "message": "Password is required"}
+
+    with get_db() as conn:
+        cur = get_cursor(conn)
+
+        # Verify company exists
+        cur.execute("SELECT company_id FROM shop.companies WHERE company_id = %s", (company_id,))
+        if not cur.fetchone():
+            raise HTTPException(status_code=404, detail="Company not found")
+
+        # Check email uniqueness
+        cur.execute("SELECT admin_id FROM shop.company_admins WHERE email = %s", (email,))
+        if cur.fetchone():
+            return {"status": "error", "message": "Email already in use"}
+
+        password_hash = hash_password(password)
+
+        cur.execute("""
+            INSERT INTO shop.company_admins (company_id, email, password_hash, first_name, last_name)
+            VALUES (%s, %s, %s, %s, %s)
+            RETURNING admin_id, company_id, email, first_name, last_name, is_active, created_at, updated_at
+        """, (company_id, email, password_hash, first_name, last_name))
+        row = cur.fetchone()
+
+    return {
+        "status": "success",
+        "admin": {
+            "adminId": str(row["admin_id"]),
+            "companyId": str(row["company_id"]),
+            "email": row["email"],
+            "firstName": row["first_name"],
+            "lastName": row["last_name"],
+            "isActive": row["is_active"],
+            "createdAt": str(row["created_at"]),
+            "updatedAt": str(row["updated_at"]),
+        },
+    }
+
+
+@router.get("/companies/{company_id}/admins")
+async def list_company_admins(company_id: str, x_platform_key: str = Header(None)):
+    """List all active admins for a company."""
+    verify_platform_admin(x_platform_key)
+
+    with get_db() as conn:
+        cur = get_cursor(conn)
+
+        # Verify company exists
+        cur.execute("SELECT company_id FROM shop.companies WHERE company_id = %s", (company_id,))
+        if not cur.fetchone():
+            raise HTTPException(status_code=404, detail="Company not found")
+
+        cur.execute("""
+            SELECT admin_id, company_id, email, first_name, last_name, is_active, created_at, updated_at
+            FROM shop.company_admins
+            WHERE company_id = %s AND is_active = TRUE
+            ORDER BY created_at ASC
+        """, (company_id,))
+        admins = [{
+            "adminId": str(r["admin_id"]),
+            "companyId": str(r["company_id"]),
+            "email": r["email"],
+            "firstName": r["first_name"],
+            "lastName": r["last_name"],
+            "isActive": r["is_active"],
+            "createdAt": str(r["created_at"]),
+            "updatedAt": str(r["updated_at"]),
+        } for r in cur.fetchall()]
+
+    return {"status": "success", "admins": admins}
+
+
+@router.delete("/companies/{company_id}/admins/{admin_id}")
+async def deactivate_company_admin(company_id: str, admin_id: str, x_platform_key: str = Header(None)):
+    """Deactivate a company admin (soft delete — sets is_active=FALSE)."""
+    verify_platform_admin(x_platform_key)
+
+    with get_db() as conn:
+        cur = get_cursor(conn)
+
+        # Verify company exists
+        cur.execute("SELECT company_id FROM shop.companies WHERE company_id = %s", (company_id,))
+        if not cur.fetchone():
+            raise HTTPException(status_code=404, detail="Company not found")
+
+        # Verify admin exists and belongs to this company
+        cur.execute(
+            "SELECT admin_id FROM shop.company_admins WHERE admin_id = %s AND company_id = %s",
+            (admin_id, company_id),
+        )
+        if not cur.fetchone():
+            raise HTTPException(status_code=404, detail="Admin not found")
+
+        cur.execute(
+            "UPDATE shop.company_admins SET is_active = FALSE, updated_at = NOW() WHERE admin_id = %s",
+            (admin_id,),
+        )
+
+    return {"status": "success", "message": "Admin deactivated successfully."}
+
+
+# ── Location Assignment Endpoints ──────────────────────────────────────────────
+
+
+@router.put("/companies/{company_id}/locations")
+async def assign_location_to_company(company_id: str, body: dict = Body(...), x_platform_key: str = Header(None)):
+    """
+    Assign a laundry to a company.
+    Sets company_id on the laundry record without modifying any other laundry data.
+    Returns 409 if the laundry already belongs to another company.
+    """
+    verify_platform_admin(x_platform_key)
+
+    laundry_id = body.get("laundryId", "").strip()
+    if not laundry_id:
+        raise HTTPException(status_code=400, detail="laundryId is required")
+
+    with get_db() as conn:
+        cur = get_cursor(conn)
+
+        # Verify company exists
+        cur.execute("SELECT company_id FROM shop.companies WHERE company_id = %s", (company_id,))
+        if not cur.fetchone():
+            raise HTTPException(status_code=404, detail="Company not found")
+
+        # Verify laundry exists and check current assignment
+        cur.execute(
+            "SELECT laundry_id, company_id FROM shop.laundry_shops WHERE laundry_id = %s",
+            (laundry_id,),
+        )
+        laundry = cur.fetchone()
+        if not laundry:
+            raise HTTPException(status_code=404, detail="Laundry not found")
+
+        current_company_id = laundry["company_id"]
+
+        # If already assigned to this company, no-op — return success
+        if current_company_id is not None and str(current_company_id) == company_id:
+            return {"status": "success", "message": "Laundry already assigned to this company"}
+
+        # If assigned to a different company, return 409 conflict
+        if current_company_id is not None and str(current_company_id) != company_id:
+            raise HTTPException(
+                status_code=409,
+                detail="Laundry already belongs to another company",
+            )
+
+        # Assign the laundry to this company (only update company_id — Req 7.4)
+        cur.execute(
+            "UPDATE shop.laundry_shops SET company_id = %s WHERE laundry_id = %s",
+            (company_id, laundry_id),
+        )
+
+    return {"status": "success", "message": "Laundry assigned to company"}
+
+
+@router.delete("/companies/{company_id}/locations/{laundry_id}")
+async def remove_location_from_company(company_id: str, laundry_id: str, x_platform_key: str = Header(None)):
+    """
+    Remove a laundry from a company (sets company_id = NULL).
+    Does not delete or modify any other laundry data.
+    """
+    verify_platform_admin(x_platform_key)
+
+    with get_db() as conn:
+        cur = get_cursor(conn)
+
+        # Verify company exists
+        cur.execute("SELECT company_id FROM shop.companies WHERE company_id = %s", (company_id,))
+        if not cur.fetchone():
+            raise HTTPException(status_code=404, detail="Company not found")
+
+        # Verify laundry exists and belongs to this company
+        cur.execute(
+            "SELECT laundry_id, company_id FROM shop.laundry_shops WHERE laundry_id = %s",
+            (laundry_id,),
+        )
+        laundry = cur.fetchone()
+        if not laundry:
+            raise HTTPException(status_code=404, detail="Laundry not found")
+
+        if laundry["company_id"] is None or str(laundry["company_id"]) != company_id:
+            raise HTTPException(status_code=404, detail="Laundry does not belong to this company")
+
+        # Remove from company (only update company_id — preserves all other data)
+        cur.execute(
+            "UPDATE shop.laundry_shops SET company_id = NULL WHERE laundry_id = %s",
+            (laundry_id,),
+        )
+
+    return {"status": "success", "message": "Laundry removed from company"}

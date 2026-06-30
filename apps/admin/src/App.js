@@ -11,6 +11,7 @@ import ProtectedRoute from './utils/ProtectedRoute';
 import { FEATURES } from './utils/permissions';
 import { EmployeeAuthProvider } from './Context/EmployeeAuthContext';
 import EmployeeAuthGuard from './Context/EmployeeAuthGuard';
+import { CompanyAuthProvider, useCompanyAuth } from './Context/CompanyAuthContext';
 
 // Lazy-load pages
 const AdminHomeLayout = lazy(() => import('./Components/AdminHome/AdminHomeLayout'));
@@ -36,6 +37,13 @@ const RoutePlannerPage = lazy(() => import('./Pages/RoutePlannerPage'));
 const ReportsPage = lazy(() => import('./Pages/ReportsPage'));
 const MobileOrderPage = lazy(() => import('./Pages/MobileOrderPage'));
 const EmployeeLoginPage = lazy(() => import('./Pages/EmployeeLoginPage'));
+
+// Company pages (multi-location management)
+const CompanyLoginPage = lazy(() => import('./Pages/CompanyLoginPage'));
+const CompanyLayout = lazy(() => import('./Components/Company/CompanyLayout'));
+const CompanyDashboardPage = lazy(() => import('./Pages/CompanyDashboardPage'));
+const CompanyReportsPage = lazy(() => import('./Pages/CompanyReportsPage'));
+const CompanyPerformancePage = lazy(() => import('./Pages/CompanyPerformancePage'));
 
 // ── Shared Components ────────────────────────────────────────────────────────
 
@@ -295,6 +303,13 @@ function App() {
                             <WrappedLaundryInfoManagement validateEmpCredentials={validateEmpCredentials} type="systemSettings"/>
                         </Suspense>
                     }/>
+                    <Route path="payment-settings" element={
+                        <ProtectedRoute feature={FEATURES.PRICING}>
+                        <Suspense fallback={<LoadingSpinner/>}>
+                            <WrappedLaundryInfoManagement validateEmpCredentials={validateEmpCredentials} type="paymentSettings"/>
+                        </Suspense>
+                        </ProtectedRoute>
+                    }/>
                     <Route path="websiteServices" element={
                         <Suspense fallback={<LoadingSpinner/>}>
                             <WrappedLaundryInfoManagement validateEmpCredentials={validateEmpCredentials} type="websiteServices"/>
@@ -384,6 +399,40 @@ function App() {
                     </AdminAuthGate>
                 }/>
 
+                {/* ── Company admin routes ───────────────────────────────── */}
+                <Route path="/company/login" element={
+                    <CompanyAuthProvider>
+                        <Suspense fallback={<LoadingSpinner/>}>
+                            <CompanyLoginPage/>
+                        </Suspense>
+                    </CompanyAuthProvider>
+                }/>
+                <Route path="/company/:companyId" element={
+                    <CompanyAuthProvider>
+                        <CompanyAuthGate>
+                            <Suspense fallback={<LoadingSpinner/>}>
+                                <CompanyLayout/>
+                            </Suspense>
+                        </CompanyAuthGate>
+                    </CompanyAuthProvider>
+                }>
+                    <Route path="dashboard" element={
+                        <Suspense fallback={<LoadingSpinner/>}>
+                            <CompanyDashboardPage/>
+                        </Suspense>
+                    }/>
+                    <Route path="reports" element={
+                        <Suspense fallback={<LoadingSpinner/>}>
+                            <CompanyReportsPage/>
+                        </Suspense>
+                    }/>
+                    <Route path="performance" element={
+                        <Suspense fallback={<LoadingSpinner/>}>
+                            <CompanyPerformancePage/>
+                        </Suspense>
+                    }/>
+                </Route>
+
                 {/* Bare /admin redirect — find user's laundry and redirect */}
                 <Route path="/admin" element={<AdminRedirect />} />
                 <Route path="/admin/*" element={<AdminRedirect />} />
@@ -399,16 +448,47 @@ function App() {
  * AdminAuthGate — Wrapper that checks admin (store-level) auth.
  * If not authenticated, shows the StoreAdminLogin page.
  * If authenticated, renders children.
+ * Also accepts company tokens — if a company JWT is stored, treat as authenticated.
  */
 function AdminAuthGate({ children }) {
     const auth = useAuth();
 
-    if (!auth.isAuthenticated) {
+    // Check if a valid company token exists (company admin navigating into a laundry)
+    const companyStored = localStorage.getItem('companyToken');
+    let hasValidCompanyToken = false;
+    if (companyStored) {
+        try {
+            const parsed = JSON.parse(companyStored);
+            const payload = JSON.parse(atob(parsed.accessToken.split('.')[1]));
+            if (payload.exp * 1000 > Date.now() && payload.role === 'company_admin') {
+                hasValidCompanyToken = true;
+            }
+        } catch (e) { /* invalid token, ignore */ }
+    }
+
+    if (!auth.isAuthenticated && !hasValidCompanyToken) {
         return (
             <Suspense fallback={<LoadingSpinner/>}>
                 <StoreAdminLogin/>
             </Suspense>
         );
+    }
+
+    return children;
+}
+
+/**
+ * CompanyAuthGate — Wrapper that checks company-level auth.
+ * If not authenticated as company admin, redirects to company login.
+ * If authenticated, renders children.
+ */
+function CompanyAuthGate({ children }) {
+    const { isCompanyAuthenticated, isLoading } = useCompanyAuth();
+
+    if (isLoading) return <LoadingSpinner />;
+
+    if (!isCompanyAuthenticated) {
+        return <Navigate to="/company/login" replace />;
     }
 
     return children;
