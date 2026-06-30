@@ -352,7 +352,7 @@ async def update_products_services(
                 # Skip empty or generate code if TEMP
                 if not promo_code or promo_code.startswith("TEMP-"):
                     import random, string
-                    promo_code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=8))
+                    promo_code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=4))
 
                 cur.execute("""
                     INSERT INTO shop.promotions (

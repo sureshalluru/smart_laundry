@@ -7,7 +7,7 @@ import {
     AlertDialog, AlertDialogOverlay, AlertDialogContent, AlertDialogHeader, AlertDialogBody, AlertDialogFooter,
     Select,
 } from '@chakra-ui/react';
-import { FiRefreshCw, FiPlus, FiArrowLeft, FiTrash2, FiX } from 'react-icons/fi';
+import { FiRefreshCw, FiPlus, FiArrowLeft, FiTrash2, FiX, FiMail } from 'react-icons/fi';
 import axios from 'axios';
 
 const API_URL = process.env.REACT_APP_AWS_API_URL || '';
@@ -80,7 +80,7 @@ export default function CompanyManagementSection({ platformKey, onAuthError }) {
                 setAllLaundries(res.data.laundries || []);
             }
         } catch (err) {
-            // Silently fail — laundries dropdown will just be empty
+            console.error("Failed to fetch laundries for assignment dropdown:", err);
         }
     }, [platformKey]);
 
@@ -244,11 +244,37 @@ export default function CompanyManagementSection({ platformKey, onAuthError }) {
         setDeletingId(null);
     };
 
+    const handleSendCredentials = async (e, companyId) => {
+        e.stopPropagation();
+        try {
+            const res = await axios.post(
+                `${API_URL}/api/platform/companies/${companyId}/send-admin-credentials`,
+                {},
+                { headers }
+            );
+            if (res.data.status === 'success') {
+                toast({ title: res.data.message, status: 'success', duration: 4000 });
+            } else {
+                toast({ title: res.data.message || 'Failed to send email', status: 'error', duration: 4000 });
+            }
+        } catch (err) {
+            if (err.response?.status === 403) {
+                onAuthError();
+            } else {
+                const message = err.response?.data?.detail || err.response?.data?.message || 'Failed to send credentials';
+                toast({ title: message, status: 'error', duration: 4000 });
+            }
+        }
+    };
+
     const handleAssignLocation = async () => {
-        if (!selectedCompany || !selectedLaundryId) return;
+        if (!selectedCompany || !selectedLaundryId) {
+            console.warn("Assign blocked: selectedCompany=", selectedCompany?.companyId, "selectedLaundryId=", selectedLaundryId);
+            return;
+        }
         setAssigning(true);
         try {
-            await axios.put(
+            const res = await axios.put(
                 `${API_URL}/api/platform/companies/${selectedCompany.companyId}/locations`,
                 { laundryId: selectedLaundryId },
                 { headers }
@@ -258,6 +284,7 @@ export default function CompanyManagementSection({ platformKey, onAuthError }) {
             await refreshCompanyDetail(selectedCompany.companyId);
             fetchCompanies();
         } catch (err) {
+            console.error("Assign location error:", err);
             if (err.response?.status === 409) {
                 toast({ title: 'Laundry already belongs to another company', status: 'error', duration: 4000 });
             } else if (err.response?.status === 403) {
@@ -397,14 +424,25 @@ export default function CompanyManagementSection({ platformKey, onAuthError }) {
                                         </Td>
                                         <Td fontSize="xs" color="gray.500">{formatDate(company.createdAt)}</Td>
                                         <Td>
-                                            <IconButton
-                                                icon={<FiTrash2 />}
-                                                size="sm"
-                                                variant="ghost"
-                                                colorScheme="red"
-                                                aria-label="Delete company"
-                                                onClick={(e) => handleDeleteClick(e, company.companyId)}
-                                            />
+                                            <HStack spacing={1}>
+                                                <IconButton
+                                                    icon={<FiMail />}
+                                                    size="sm"
+                                                    variant="ghost"
+                                                    colorScheme="blue"
+                                                    aria-label="Send admin credentials email"
+                                                    title="Send login credentials to company admin"
+                                                    onClick={(e) => handleSendCredentials(e, company.companyId)}
+                                                />
+                                                <IconButton
+                                                    icon={<FiTrash2 />}
+                                                    size="sm"
+                                                    variant="ghost"
+                                                    colorScheme="red"
+                                                    aria-label="Delete company"
+                                                    onClick={(e) => handleDeleteClick(e, company.companyId)}
+                                                />
+                                            </HStack>
                                         </Td>
                                     </Tr>
                                 ))

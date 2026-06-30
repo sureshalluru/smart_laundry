@@ -266,8 +266,8 @@ def update_promotions(laundry_id, to_add, to_update, to_remove):
 
 def _generate_promo_code(promo_name):
     cleaned = re.sub(r'[^a-zA-Z0-9]', '', promo_name)
-    name_part = cleaned[:3].upper() if len(cleaned) >= 3 else cleaned.upper()
-    return (name_part + uuid.uuid4().hex[:3].upper())[:6]
+    name_part = cleaned[:2].upper() if len(cleaned) >= 2 else cleaned.upper().ljust(2, 'X')
+    return name_part + uuid.uuid4().hex[:2].upper()
 
 
 # ── zip codes ─────────────────────────────────────────────────────────────────

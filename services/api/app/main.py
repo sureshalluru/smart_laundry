@@ -248,9 +248,9 @@ async def serve_customer(request: Request, full_path: str):
     if _is_file_safe(file_path):
         return FileResponse(file_path)
 
-    # Route decision: paths with /admin or /driver go to admin app, everything else to customer
+    # Route decision: paths with /admin, /driver, or /company go to admin app, everything else to customer
     # Supports both /admin/* and /{laundryId}/admin patterns
-    if "/admin" in f"/{full_path}" or "/driver" in f"/{full_path}" or full_path.startswith("admin"):
+    if "/admin" in f"/{full_path}" or "/driver" in f"/{full_path}" or full_path.startswith("admin") or full_path.startswith("company"):
         index = ADMIN_BUILD / "index.html"
         if index.exists():
             return FileResponse(index, headers={"Cache-Control": "no-cache, no-store, must-revalidate"})

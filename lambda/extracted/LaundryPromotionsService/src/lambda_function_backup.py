@@ -21,10 +21,10 @@ def decimal_serializer(obj):
 
 def generate_promo_code(promotion_name):
     """
-    Generates a unique promo code using UUID and promotion name.
+    Generates a unique 4-char promo code using UUID and promotion name.
     """
-    uuid_part = str(uuid.uuid4())[:4].upper()
-    name_part = ''.join(filter(str.isalnum, promotion_name)).upper()[:3]
+    uuid_part = str(uuid.uuid4())[:2].upper()
+    name_part = ''.join(filter(str.isalnum, promotion_name)).upper()[:2]
     return f"{name_part}{uuid_part}"
 
 

@@ -39,6 +39,21 @@ HOLIDAYS = {
 def _get_promo_text(promo_code, laundry_id):
     """Get promo description for message interpolation."""
     if not promo_code:
+        # No promo code configured — try to find any active promotion for this laundry
+        with get_db() as conn:
+            cur = get_cursor(conn)
+            cur.execute("""
+                SELECT promo_code, description, discount_type, discount_value
+                FROM shop.promotions WHERE laundry_id = %s AND is_active = TRUE
+                ORDER BY created_at DESC LIMIT 1
+            """, (laundry_id,))
+            row = cur.fetchone()
+            if row and row["promo_code"]:
+                code = row["promo_code"]
+                if row["discount_type"] == "percentage":
+                    return f"{int(row['discount_value'])}% off (code: {code})"
+                else:
+                    return f"${row['discount_value']} off (code: {code})"
         return "a special discount"
     with get_db() as conn:
         cur = get_cursor(conn)

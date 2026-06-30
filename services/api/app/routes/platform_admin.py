@@ -1327,6 +1327,78 @@ async def deactivate_company_admin(company_id: str, admin_id: str, x_platform_ke
     return {"status": "success", "message": "Admin deactivated successfully."}
 
 
+@router.post("/companies/{company_id}/send-admin-credentials")
+async def send_company_admin_credentials(company_id: str, body: dict = Body({}), x_platform_key: str = Header(None)):
+    """Send company admin login credentials via email. Platform admin only."""
+    verify_platform_admin(x_platform_key)
+
+    admin_id = body.get("adminId")  # Optional: send to specific admin. If omitted, sends to first active admin.
+
+    with get_db() as conn:
+        cur = get_cursor(conn)
+
+        # Verify company exists
+        cur.execute("SELECT company_name FROM shop.companies WHERE company_id = %s", (company_id,))
+        company = cur.fetchone()
+        if not company:
+            raise HTTPException(status_code=404, detail="Company not found")
+
+        # Get admin
+        if admin_id:
+            cur.execute("""
+                SELECT admin_id, email, first_name, last_name
+                FROM shop.company_admins
+                WHERE admin_id = %s AND company_id = %s AND is_active = TRUE
+            """, (admin_id, company_id))
+        else:
+            cur.execute("""
+                SELECT admin_id, email, first_name, last_name
+                FROM shop.company_admins
+                WHERE company_id = %s AND is_active = TRUE
+                ORDER BY created_at ASC LIMIT 1
+            """, (company_id,))
+        admin = cur.fetchone()
+
+        if not admin:
+            return {"status": "error", "message": "No active company admin found. Create one first."}
+
+    company_name = company["company_name"]
+    admin_email = admin["email"]
+    first_name = admin["first_name"] or "Admin"
+    login_url = "https://smartlaundrybasket.ai/company/login"
+
+    try:
+        from app.services.notification_service import send_email
+        html_body = f"""
+        <div style="font-family: Arial, sans-serif; max-width: 560px; margin: 0 auto; padding: 32px;">
+            <div style="text-align: center; margin-bottom: 24px;">
+                <h2 style="color: #553C9A; margin: 0;">Smart Laundry Basket</h2>
+                <p style="color: #718096; margin-top: 4px;">Company Admin Portal</p>
+            </div>
+            <p>Hi {first_name},</p>
+            <p>Here are your login credentials for the <strong>{company_name}</strong> company admin dashboard:</p>
+            <table style="border-collapse:collapse; margin: 16px 0; width: 100%;">
+                <tr><td style="padding:12px 16px;font-weight:bold;background:#F7FAFC;border:1px solid #E2E8F0;">Email</td><td style="padding:12px 16px;border:1px solid #E2E8F0;">{admin_email}</td></tr>
+                <tr><td style="padding:12px 16px;font-weight:bold;background:#F7FAFC;border:1px solid #E2E8F0;">Password</td><td style="padding:12px 16px;border:1px solid #E2E8F0;color:#E53E3E;">Use the password you were given at setup</td></tr>
+                <tr><td style="padding:12px 16px;font-weight:bold;background:#F7FAFC;border:1px solid #E2E8F0;">Login URL</td><td style="padding:12px 16px;border:1px solid #E2E8F0;"><a href="{login_url}" style="color:#3182CE;">{login_url}</a></td></tr>
+            </table>
+            <p><strong>What you can do:</strong></p>
+            <ul>
+                <li>View rollup dashboard across all your locations</li>
+                <li>Access aggregated reports and revenue data</li>
+                <li>Compare performance across locations</li>
+                <li>Navigate into any individual location's admin panel</li>
+            </ul>
+            <p style="color:#718096;font-size:12px;margin-top:24px;">Please keep these credentials secure. If you need to reset your password, contact the platform administrator.</p>
+        </div>
+        """
+        send_email(admin_email, f"Your Company Admin Login - {company_name}", html_body)
+        return {"status": "success", "message": f"Credentials sent to {admin_email}"}
+    except Exception as e:
+        logger.exception("Failed to send company admin credentials email")
+        return {"status": "error", "message": f"Failed to send email: {str(e)}"}
+
+
 # ── Location Assignment Endpoints ──────────────────────────────────────────────
 
 
