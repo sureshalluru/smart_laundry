@@ -2,9 +2,11 @@ import React from "react";
 import {
     Box,
     VStack,
+    HStack,
     Text,
     Tooltip,
     IconButton,
+    Image,
     Drawer,
     DrawerOverlay,
     DrawerContent,
@@ -228,6 +230,60 @@ const OrderActionsDrawer = ({ isOpen, onClose, order, handleOrderHistory, handle
                                     </Text>
                                 </Box>
                             </Tooltip>
+
+                            {/* Order Photos Section */}
+                            {(order.weightImageUrl || order.processingImageUrl || order.foldImageUrl) && (
+                                <Box
+                                    mt={3}
+                                    p={2}
+                                    bg="white"
+                                    borderRadius="md"
+                                    boxShadow="sm"
+                                    w="100%"
+                                >
+                                    <Text fontSize="xs" fontWeight="bold" color="gray.700" mb={2} textAlign="center">
+                                        Order Photos
+                                    </Text>
+                                    <HStack spacing={2} justify="center" wrap="wrap">
+                                        {order.weightImageUrl && (
+                                            <VStack spacing={1}>
+                                                <Image
+                                                    src={order.weightImageUrl}
+                                                    alt="Weight photo"
+                                                    boxSize="60px"
+                                                    objectFit="cover"
+                                                    borderRadius="md"
+                                                />
+                                                <Text fontSize="2xs" color="gray.600">Weight</Text>
+                                            </VStack>
+                                        )}
+                                        {order.processingImageUrl && (
+                                            <VStack spacing={1}>
+                                                <Image
+                                                    src={order.processingImageUrl}
+                                                    alt="Processing photo"
+                                                    boxSize="60px"
+                                                    objectFit="cover"
+                                                    borderRadius="md"
+                                                />
+                                                <Text fontSize="2xs" color="gray.600">Processing</Text>
+                                            </VStack>
+                                        )}
+                                        {order.foldImageUrl && (
+                                            <VStack spacing={1}>
+                                                <Image
+                                                    src={order.foldImageUrl}
+                                                    alt="Fold photo"
+                                                    boxSize="60px"
+                                                    objectFit="cover"
+                                                    borderRadius="md"
+                                                />
+                                                <Text fontSize="2xs" color="gray.600">Fold</Text>
+                                            </VStack>
+                                        )}
+                                    </HStack>
+                                </Box>
+                            )}
 
                         </VStack>
                     )}

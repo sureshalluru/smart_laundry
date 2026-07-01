@@ -177,9 +177,30 @@ const MobileOrderPage = () => {
 
   /**
    * Called when weight/count entry is saved.
+   * Uses silent refresh to avoid full-page loading spinner.
    */
   const handleWeightSaved = () => {
-    fetchOrder();
+    silentFetchOrder();
+  };
+
+  /**
+   * Silently refresh order data without showing the full-page loading spinner.
+   * Used after weight entry save to avoid jarring UX.
+   */
+  const silentFetchOrder = async () => {
+    try {
+      const response = await axios.get(`${API_URL}/api/admin/employee-order-info`, {
+        params: { laundryId, orderId },
+        timeout: 15000,
+      });
+      const data = response.data?.body || response.data;
+      if (data && data.message !== 'Order not found' && response.data?.statusCode !== 404) {
+        setOrder(data);
+      }
+    } catch (err) {
+      // Silent refresh — don't show error UI on failure
+      console.error('Silent order refresh failed:', err);
+    }
   };
 
   // Loading state
@@ -289,21 +310,8 @@ const MobileOrderPage = () => {
           </VStack>
         </Box>
 
-        {/* Item Tracking — uses same flow as desktop POS order drawer */}
-        <Box bg="white" borderRadius="lg" p={4} shadow="sm">
-          <Text fontSize="sm" fontWeight="bold" color="gray.700" mb={3}>
-            Item Tracking
-          </Text>
-          <ItemTrackingPanel
-            orderId={orderId}
-            laundryId={laundryId}
-            orderStatus={order.orderStatus}
-            employeeId={employeeId}
-            onOrderRefresh={fetchOrder}
-          />
-        </Box>
-
-        {/* Action Buttons — Processing & Weight only (Scan Received/Fold handled by Item Tracking above) */}
+        {/* Action Buttons — Processing & Weight only (Scan Received/Fold handled by Item Tracking below) */}
+        {/* Rendered before Item Tracking to reflect operational order: weighing first */}
         <Box bg="white" borderRadius="lg" p={4} shadow="sm">
           <Text fontSize="sm" fontWeight="bold" color="gray.700" mb={3}>
             Actions
@@ -332,6 +340,20 @@ const MobileOrderPage = () => {
               Enter Weight/Count
             </Button>
           </SimpleGrid>
+        </Box>
+
+        {/* Item Tracking — uses same flow as desktop POS order drawer */}
+        <Box bg="white" borderRadius="lg" p={4} shadow="sm">
+          <Text fontSize="sm" fontWeight="bold" color="gray.700" mb={3}>
+            Item Tracking
+          </Text>
+          <ItemTrackingPanel
+            orderId={orderId}
+            laundryId={laundryId}
+            orderStatus={order.orderStatus}
+            employeeId={employeeId}
+            onOrderRefresh={fetchOrder}
+          />
         </Box>
 
         {/* Processing Photo Action (simple single photo for status update) */}

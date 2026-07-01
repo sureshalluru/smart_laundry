@@ -3,6 +3,7 @@ import { Box, VStack, HStack, Text, Button, Badge } from '@chakra-ui/react';
 import ItemTrackingQR from './ItemTrackingQR';
 import ItemTrackingResults from './ItemTrackingResults';
 import DiscrepancyAlert from './DiscrepancyAlert';
+import MobileInlineUpload from '../MobileOrder/MobileInlineUpload';
 
 const API_BASE = process.env.REACT_APP_API_URL || '';
 
@@ -17,6 +18,7 @@ function ItemTrackingPanel({ orderId, laundryId, orderStatus, employeeId, onSkip
   const [trackingRecord, setTrackingRecord] = useState(null);
   const [loading, setLoading] = useState(true);
   const [showQR, setShowQR] = useState(null); // null, 'intake', or 'fold'
+  const [mobileUploadPhase, setMobileUploadPhase] = useState(null); // null, 'intake', or 'fold'
 
   // Detect mobile device
   const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
@@ -85,18 +87,18 @@ function ItemTrackingPanel({ orderId, laundryId, orderStatus, employeeId, onSkip
           <HStack spacing={2} flexWrap="wrap">
             {isMobile ? (
               <>
-                {/* Mobile: direct upload buttons */}
+                {/* Mobile: inline upload buttons */}
                 <Button
                   size="xs"
                   colorScheme="blue"
-                  onClick={() => openUploadDirect('intake')}
+                  onClick={() => setMobileUploadPhase('intake')}
                 >
                   📷 {hasIntakeRecord ? 'Redo Intake' : 'Upload Intake'}
                 </Button>
                 <Button
                   size="xs"
                   colorScheme="green"
-                  onClick={() => openUploadDirect('fold')}
+                  onClick={() => setMobileUploadPhase('fold')}
                 >
                   📷 {hasFoldRecord ? 'Redo Fold' : 'Upload Fold'}
                 </Button>
@@ -149,6 +151,21 @@ function ItemTrackingPanel({ orderId, laundryId, orderStatus, employeeId, onSkip
             phase={showQR}
             employeeId={employeeId}
             onResultsReceived={handleResultsReceived}
+          />
+        )}
+
+        {/* Mobile Inline Upload (shown when mobile upload phase is set) */}
+        {isMobile && mobileUploadPhase && (
+          <MobileInlineUpload
+            orderId={orderId}
+            laundryId={laundryId}
+            phase={mobileUploadPhase}
+            employeeId={employeeId}
+            onComplete={() => {
+              setMobileUploadPhase(null);
+              handleResultsReceived();
+            }}
+            onCancel={() => setMobileUploadPhase(null)}
           />
         )}
 

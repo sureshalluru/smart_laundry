@@ -19,6 +19,8 @@ import {
   Image,
   Spinner,
   Icon,
+  Badge,
+  IconButton,
   useToast,
 } from '@chakra-ui/react';
 import {
@@ -27,8 +29,9 @@ import {
   FaCheckCircle,
   FaSave,
   FaTimes,
-  FaUpload,
-  FaRedo,
+  FaPlus,
+  FaExclamationTriangle,
+  FaTrash,
 } from 'react-icons/fa';
 
 const API_URL = process.env.REACT_APP_AWS_API_URL || '';
@@ -53,7 +56,8 @@ function fileToBase64(file) {
  * - Weight-based services (inputWeight: true): decimal input
  * - Count-based services: integer input
  *
- * Includes a camera button to capture scale photo (reuses MobileScalePhoto pattern).
+ * Supports multi-bag scale photos with auto-weight detection via Claude Vision AI.
+ * Each bag photo is analyzed independently and weights are summed for the total.
  * On submit, calls POST /api/admin/employee-update-services with updated values.
  *
  * Props:
@@ -73,11 +77,12 @@ const MobileWeightEntry = ({ order, laundryId, employeeId, isOpen, onClose, onSa
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState(null);
 
-  // Scale photo state
-  const [scalePreview, setScalePreview] = useState(null);
-  const [scaleFile, setScaleFile] = useState(null);
-  const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
-  const [photoUploaded, setPhotoUploaded] = useState(false);
+  // Multi-bag photo state
+  // Each entry: { file, preview, detectedWeight, detecting, uploaded, error }
+  const [bagPhotos, setBagPhotos] = useState([]);
+
+  // Track whether the employee has manually overridden the weight input
+  const [weightManuallyEdited, setWeightManuallyEdited] = useState(false);
 
   // Initialize service values when drawer opens or order changes
   useEffect(() => {
@@ -92,14 +97,33 @@ const MobileWeightEntry = ({ order, laundryId, employeeId, isOpen, onClose, onSa
         }))
       );
       setSaveError(null);
-      setScalePreview(null);
-      setScaleFile(null);
-      setPhotoUploaded(false);
+      setBagPhotos([]);
+      setWeightManuallyEdited(false);
     }
   }, [isOpen, order]);
 
-  // Handle value change for a service
+  // Compute the sum of detected weights from all bag photos
+  const totalDetectedWeight = bagPhotos.reduce((sum, photo) => {
+    const w = parseFloat(photo.detectedWeight);
+    return sum + (isNaN(w) ? 0 : w);
+  }, 0);
+
+  // Auto-fill weight-based service inputs when detected weights change (and user hasn't manually edited)
+  useEffect(() => {
+    if (!weightManuallyEdited && totalDetectedWeight > 0) {
+      setServiceValues((prev) =>
+        prev.map((svc) =>
+          svc.inputWeight
+            ? { ...svc, weightOrCount: totalDetectedWeight.toFixed(1) }
+            : svc
+        )
+      );
+    }
+  }, [totalDetectedWeight, weightManuallyEdited]);
+
+  // Handle value change for a service (marks as manually edited)
   const handleValueChange = (index, value) => {
+    setWeightManuallyEdited(true);
     setServiceValues((prev) =>
       prev.map((svc, i) => (i === index ? { ...svc, weightOrCount: value } : svc))
     );
@@ -198,7 +222,7 @@ const MobileWeightEntry = ({ order, laundryId, employeeId, isOpen, onClose, onSa
     }
   };
 
-  // --- Scale Photo Handlers (reuse MobileScalePhoto pattern) ---
+  // --- Multi-Bag Photo Handlers ---
 
   const handleCaptureClick = () => {
     if (fileInputRef.current) {
@@ -233,73 +257,96 @@ const MobileWeightEntry = ({ order, laundryId, employeeId, isOpen, onClose, onSa
       return;
     }
 
-    setScaleFile(file);
-    setPhotoUploaded(false);
-
+    // Create preview and add to bagPhotos array
     const reader = new FileReader();
     reader.onload = (e) => {
-      setScalePreview(e.target.result);
+      const newPhoto = {
+        file,
+        preview: e.target.result,
+        detectedWeight: null,
+        detecting: true,
+        uploaded: false,
+        error: null,
+      };
+      setBagPhotos((prev) => [...prev, newPhoto]);
+
+      // Trigger auto-detect for this photo
+      detectWeightFromPhoto(e.target.result, bagPhotos.length);
     };
     reader.readAsDataURL(file);
   };
 
-  const handlePhotoUpload = async () => {
-    if (!scaleFile || !order) return;
-
-    setIsUploadingPhoto(true);
+  // Send photo to Vision AI for weight detection
+  const detectWeightFromPhoto = async (base64Image, photoIndex) => {
     try {
-      const imageBase64 = await fileToBase64(scaleFile);
-
       const response = await axios.post(
-        `${API_URL}/api/admin/photo-upload-status`,
-        { imageBase64 },
+        `${API_URL}/api/admin/item-tracking/detect-weight`,
         {
-          params: {
-            laundryId: order.laundryId,
-            orderId: order.orderId,
-            targetStatus: order.orderStatus, // no status change for scale photo
-            empId: employeeId,
-            imageType: 'weight',
-          },
+          imageBase64: base64Image,
+          laundryId: laundryId,
+          orderId: order.orderId,
         }
       );
 
-      if (response.data?.statusCode === 200 || response.status === 200) {
-        setPhotoUploaded(true);
-        setScaleFile(null);
+      const body = response.data?.body || response.data;
+      const detectedWeight = body?.weight;
+      const confidence = body?.confidence || 0;
+
+      // Fire-and-forget: persist the scale photo to the order via S3 upload
+      const persistParams = new URLSearchParams({
+        laundryId: laundryId,
+        orderId: order.orderId,
+        imageType: 'weight',
+        targetStatus: order.orderStatus || 'ReceivedAtFacility',
+        empId: employeeId || 'EMP',
+      });
+      axios.post(
+        `${API_URL}/api/admin/photo-upload-status?${persistParams}`,
+        { imageBase64: base64Image }
+      ).catch((err) => console.error('Failed to persist scale photo:', err));
+
+      setBagPhotos((prev) =>
+        prev.map((photo, idx) =>
+          idx === photoIndex
+            ? {
+                ...photo,
+                detecting: false,
+                uploaded: true,
+                detectedWeight: detectedWeight != null ? detectedWeight : null,
+                error: detectedWeight == null ? 'Could not read scale automatically. Please enter the weight manually below.' : null,
+              }
+            : photo
+        )
+      );
+
+      if (detectedWeight != null && confidence > 0) {
         toast({
-          title: 'Photo Uploaded',
-          description: 'Scale photo saved successfully.',
+          title: 'Weight Detected',
+          description: `Detected ${detectedWeight} lbs from scale photo.`,
           status: 'success',
           duration: 3000,
           isClosable: true,
         });
-      } else {
-        toast({
-          title: 'Upload Failed',
-          description: 'Failed to upload scale photo. Please try again.',
-          status: 'error',
-          duration: 4000,
-          isClosable: true,
-        });
       }
     } catch (err) {
-      toast({
-        title: 'Upload Error',
-        description: err?.response?.data?.message || 'Failed to upload photo.',
-        status: 'error',
-        duration: 4000,
-        isClosable: true,
-      });
-    } finally {
-      setIsUploadingPhoto(false);
+      setBagPhotos((prev) =>
+        prev.map((photo, idx) =>
+          idx === photoIndex
+            ? {
+                ...photo,
+                detecting: false,
+                uploaded: false,
+                error: 'Could not read scale automatically. Please enter the weight manually below.',
+              }
+            : photo
+        )
+      );
     }
   };
 
-  const handlePhotoClear = () => {
-    setScalePreview(null);
-    setScaleFile(null);
-    setPhotoUploaded(false);
+  // Remove a bag photo from the array
+  const handleRemovePhoto = (photoIndex) => {
+    setBagPhotos((prev) => prev.filter((_, idx) => idx !== photoIndex));
   };
 
   return (
@@ -316,7 +363,7 @@ const MobileWeightEntry = ({ order, laundryId, employeeId, isOpen, onClose, onSa
 
         <DrawerBody px={3} py={3} overflowY="auto">
           <VStack spacing={4} align="stretch">
-            {/* Scale Photo Section */}
+            {/* Scale Photo Section - Multi-Bag */}
             <Box
               bg="gray.50"
               border="1px"
@@ -327,10 +374,12 @@ const MobileWeightEntry = ({ order, laundryId, employeeId, isOpen, onClose, onSa
               <HStack spacing={2} mb={3}>
                 <Icon as={FaCamera} color="blue.500" boxSize={4} />
                 <Text fontSize="sm" fontWeight="bold" color="gray.700">
-                  Scale Photo (Optional)
+                  Scale Photos
                 </Text>
-                {photoUploaded && (
-                  <Icon as={FaCheckCircle} color="green.500" boxSize={4} />
+                {bagPhotos.length > 0 && (
+                  <Badge colorScheme="blue" fontSize="xs">
+                    {bagPhotos.length} bag{bagPhotos.length !== 1 ? 's' : ''}
+                  </Badge>
                 )}
               </HStack>
 
@@ -345,80 +394,124 @@ const MobileWeightEntry = ({ order, laundryId, employeeId, isOpen, onClose, onSa
                 aria-label="Capture scale photo"
               />
 
-              {/* Photo preview */}
-              {scalePreview && (
-                <VStack spacing={2} mb={3}>
-                  <Box borderRadius="md" overflow="hidden" border="1px" borderColor="gray.300">
-                    <Image
-                      src={scalePreview}
-                      alt="Scale photo preview"
-                      maxH="150px"
-                      objectFit="contain"
+              {/* Bag Photo Cards */}
+              {bagPhotos.length > 0 && (
+                <VStack spacing={3} mb={3}>
+                  {bagPhotos.map((photo, idx) => (
+                    <Box
+                      key={`bag-${idx}`}
+                      bg="white"
+                      border="1px solid"
+                      borderColor={photo.error ? 'yellow.300' : photo.detectedWeight ? 'green.200' : 'gray.200'}
+                      borderRadius="lg"
+                      p={2}
                       width="100%"
-                    />
-                  </Box>
-                  {!photoUploaded && scaleFile && (
-                    <HStack spacing={2} width="100%">
-                      <Button
-                        leftIcon={<FaTimes />}
-                        size="sm"
-                        variant="outline"
-                        colorScheme="gray"
-                        minH="44px"
-                        flex={1}
-                        onClick={handlePhotoClear}
-                        isDisabled={isUploadingPhoto}
-                      >
-                        Cancel
-                      </Button>
-                      <Button
-                        leftIcon={<FaUpload />}
-                        size="sm"
-                        colorScheme="blue"
-                        minH="44px"
-                        flex={1}
-                        onClick={handlePhotoUpload}
-                        isLoading={isUploadingPhoto}
-                        loadingText="Uploading..."
-                      >
-                        Upload
-                      </Button>
-                    </HStack>
-                  )}
-                  {photoUploaded && (
-                    <Button
-                      leftIcon={<FaRedo />}
-                      size="sm"
-                      variant="outline"
-                      colorScheme="orange"
-                      minH="44px"
-                      width="100%"
-                      onClick={() => {
-                        handlePhotoClear();
-                        handleCaptureClick();
-                      }}
                     >
-                      Retake
-                    </Button>
-                  )}
+                      <HStack spacing={3} align="center">
+                        {/* Thumbnail */}
+                        <Box
+                          borderRadius="md"
+                          overflow="hidden"
+                          border="1px"
+                          borderColor="gray.200"
+                          flexShrink={0}
+                          width="60px"
+                          height="60px"
+                        >
+                          <Image
+                            src={photo.preview}
+                            alt={`Bag ${idx + 1} scale photo`}
+                            objectFit="cover"
+                            width="60px"
+                            height="60px"
+                          />
+                        </Box>
+
+                        {/* Weight info */}
+                        <VStack align="start" spacing={0} flex={1}>
+                          <Text fontSize="xs" color="gray.500" fontWeight="medium">
+                            Bag {idx + 1}
+                          </Text>
+                          {photo.detecting ? (
+                            <HStack spacing={2}>
+                              <Spinner size="xs" color="blue.400" />
+                              <Text fontSize="sm" color="blue.500">
+                                Reading scale...
+                              </Text>
+                            </HStack>
+                          ) : photo.detectedWeight != null ? (
+                            <HStack spacing={1}>
+                              <Icon as={FaCheckCircle} color="green.500" boxSize={3} />
+                              <Text fontSize="md" fontWeight="bold" color="green.700">
+                                {photo.detectedWeight} lbs
+                              </Text>
+                            </HStack>
+                          ) : (
+                            <HStack spacing={1}>
+                              <Icon as={FaExclamationTriangle} color="yellow.500" boxSize={3} />
+                              <Text fontSize="sm" color="yellow.700">
+                                {photo.error || 'Could not read scale automatically. Please enter the weight manually below.'}
+                              </Text>
+                            </HStack>
+                          )}
+                        </VStack>
+
+                        {/* Remove button */}
+                        <IconButton
+                          icon={<FaTrash />}
+                          aria-label={`Remove bag ${idx + 1} photo`}
+                          size="sm"
+                          variant="ghost"
+                          colorScheme="red"
+                          minH="44px"
+                          minW="44px"
+                          onClick={() => handleRemovePhoto(idx)}
+                          isDisabled={photo.detecting}
+                        />
+                      </HStack>
+                    </Box>
+                  ))}
                 </VStack>
               )}
 
-              {/* Capture button */}
-              {!scalePreview && (
-                <Button
-                  leftIcon={<FaCamera />}
-                  colorScheme="blue"
-                  variant="outline"
-                  size="md"
-                  minH="44px"
-                  width="100%"
-                  onClick={handleCaptureClick}
-                >
-                  Take Scale Photo
-                </Button>
-              )}
+              {/* Capture / Add Another Bag button */}
+              <Button
+                leftIcon={bagPhotos.length === 0 ? <FaCamera /> : <FaPlus />}
+                colorScheme="blue"
+                variant={bagPhotos.length === 0 ? 'outline' : 'solid'}
+                size="lg"
+                minH="52px"
+                width="100%"
+                onClick={handleCaptureClick}
+                fontSize="md"
+              >
+                {bagPhotos.length === 0 ? 'Take Scale Photo' : 'Add Another Bag'}
+              </Button>
             </Box>
+
+            {/* Total Detected Weight Display */}
+            {bagPhotos.length > 0 && totalDetectedWeight > 0 && (
+              <Box
+                bg="green.50"
+                border="2px solid"
+                borderColor="green.300"
+                borderRadius="lg"
+                p={3}
+                textAlign="center"
+              >
+                <Text fontSize="xs" color="green.600" fontWeight="medium" textTransform="uppercase">
+                  Total Detected Weight
+                </Text>
+                <Text fontSize="2xl" fontWeight="bold" color="green.700">
+                  {totalDetectedWeight.toFixed(1)} lbs
+                </Text>
+                {bagPhotos.filter((p) => p.detectedWeight != null).length > 1 && (
+                  <Text fontSize="xs" color="green.500" mt={1}>
+                    Sum of {bagPhotos.filter((p) => p.detectedWeight != null).length} bags
+                  </Text>
+                )}
+              </Box>
+            )}
 
             {/* Services List */}
             <Text fontSize="sm" fontWeight="bold" color="gray.700">

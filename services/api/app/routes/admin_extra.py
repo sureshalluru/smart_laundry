@@ -1981,6 +1981,39 @@ async def employee_update_services(
                 f"Services updated: {services_summary}",
             ))
 
+            # --- Auto-status transition for pre-facility orders ---
+            # If the order is still in a pre-facility status (OrderSubmitted or ReadyForIntake),
+            # weight entry implies the laundry is physically at the facility, so auto-transition
+            # to ReceivedAtFacility. Do NOT transition for any later status.
+            cur.execute(
+                "SELECT order_status FROM orders.orders WHERE order_id = %s AND laundry_id = %s",
+                (order_id, laundry_id),
+            )
+            status_row = cur.fetchone()
+            current_status = status_row["order_status"] if status_row else None
+
+            if current_status in ("OrderSubmitted", "ReadyForIntake"):
+                cur.execute("""
+                    UPDATE orders.orders
+                    SET order_status = 'ReceivedAtFacility', status_category = 'Active', updated_at = NOW()
+                    WHERE order_id = %s AND laundry_id = %s
+                      AND order_status IN ('OrderSubmitted', 'ReadyForIntake')
+                """, (order_id, laundry_id))
+
+                # Record the auto-status transition in order history
+                cur.execute("""
+                    INSERT INTO orders.order_history
+                        (order_id, laundry_id, emp_id, emp_name, action, field_changed, old_value, new_value, change_summary, changed_at)
+                    VALUES (%s, %s, %s, %s, 'auto_status_transition', 'order_status', %s, 'ReceivedAtFacility',
+                            'Auto-transitioned to ReceivedAtFacility on weight entry', NOW())
+                """, (
+                    order_id,
+                    laundry_id,
+                    emp_id,
+                    emp_name,
+                    current_status,
+                ))
+
         return {
             "statusCode": 200,
             "body": {

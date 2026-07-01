@@ -1097,6 +1097,191 @@ async def submit_customer_feedback(request: CustomerFeedbackRequest):
     return CustomerFeedbackResponse(status="success", feedbackId=feedback_id)
 
 
+# ── Weight Detection from Scale Photo ─────────────────────────────────────────
+
+class DetectWeightRequest(BaseModel):
+    imageBase64: str
+    laundryId: str
+    orderId: str
+
+
+class DetectWeightResponse(BaseModel):
+    statusCode: int = 200
+    body: dict
+
+
+@router.post("/item-tracking/detect-weight", response_model=DetectWeightResponse)
+async def detect_weight(request: DetectWeightRequest):
+    """
+    Detect the weight displayed on a scale from a photo using Claude Vision AI.
+
+    Accepts a base64-encoded image of a scale, sends it to Claude Vision with
+    a weight detection prompt, and returns the detected weight value.
+
+    No admin JWT auth required — protected by PIN session on frontend (same pattern
+    as other employee endpoints like photo-upload-status).
+
+    Body:
+        imageBase64: Base64 encoded image (optionally with data URL prefix)
+        laundryId: Laundry shop ID
+        orderId: Order ID
+
+    Returns:
+        { "statusCode": 200, "body": { "weight": number|null, "unit": string|null, "confidence": number } }
+    """
+    import base64
+    import json
+    import anthropic
+    from app.config import settings
+    from app.services.vision_service import build_weight_detection_prompt
+
+    image_base64 = request.imageBase64
+
+    if not image_base64:
+        return DetectWeightResponse(
+            statusCode=400,
+            body={"message": "Missing imageBase64 in request body", "weight": None, "confidence": 0}
+        )
+
+    # Strip data URL prefix if present
+    if "," in image_base64 and image_base64.startswith("data:"):
+        image_base64 = image_base64.split(",", 1)[1]
+
+    # Validate base64 data
+    try:
+        image_bytes = base64.b64decode(image_base64)
+    except Exception:
+        return DetectWeightResponse(
+            statusCode=400,
+            body={"message": "Invalid base64 image data", "weight": None, "confidence": 0}
+        )
+
+    if len(image_bytes) < 1000:
+        return DetectWeightResponse(
+            statusCode=400,
+            body={"message": "Image appears corrupted or too small", "weight": None, "confidence": 0}
+        )
+
+    # Detect content type
+    media_type = "image/jpeg"
+    if image_bytes[:8] == b'\x89PNG\r\n\x1a\n':
+        media_type = "image/png"
+
+    # Send to Claude Vision for weight detection
+    try:
+        if not settings.anthropic_api_key:
+            logger.warning("[item-tracking] Anthropic API key not configured for weight detection")
+            return DetectWeightResponse(
+                statusCode=503,
+                body={"message": "Vision AI not configured", "weight": None, "confidence": 0}
+            )
+
+        client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
+
+        # Resize image if needed (reuse the utility from vision_service)
+        from app.services.vision_service import _resize_image
+        image_bytes = _resize_image(image_bytes, media_type, max_dimension=1568)
+
+        # Re-encode after potential resize
+        img_base64_encoded = base64.standard_b64encode(image_bytes).decode("utf-8")
+
+        # Build the weight detection prompt
+        weight_prompt = build_weight_detection_prompt()
+
+        # Call Claude Vision
+        response = client.messages.create(
+            model="claude-sonnet-4-6",
+            max_tokens=256,
+            system=weight_prompt,
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "image",
+                            "source": {
+                                "type": "base64",
+                                "media_type": media_type,
+                                "data": img_base64_encoded,
+                            },
+                        },
+                        {
+                            "type": "text",
+                            "text": "Please read the weight displayed on the scale in this photo.",
+                        },
+                    ],
+                }
+            ],
+        )
+
+        # Parse the response
+        response_text = response.content[0].text
+        logger.info(f"[item-tracking] Weight detection response for order={request.orderId}: {response_text[:200]}")
+
+        # Extract JSON from response
+        text = response_text.strip()
+        if text.startswith("```"):
+            lines = text.split("\n")
+            text = "\n".join(lines[1:])
+            if text.endswith("```"):
+                text = text[:-3].strip()
+
+        result_data = json.loads(text)
+
+        weight = result_data.get("weight")
+        unit = result_data.get("unit")
+        confidence = result_data.get("confidence", 0)
+
+        # Validate the parsed values
+        if weight is not None:
+            try:
+                weight = float(weight)
+            except (TypeError, ValueError):
+                weight = None
+                confidence = 0
+
+        if isinstance(confidence, (int, float)):
+            confidence = int(confidence)
+        else:
+            confidence = 0
+
+        return DetectWeightResponse(
+            statusCode=200,
+            body={"weight": weight, "unit": unit, "confidence": confidence}
+        )
+
+    except json.JSONDecodeError as e:
+        logger.warning(f"[item-tracking] Weight detection JSON parse failed for order={request.orderId}: {e}")
+        return DetectWeightResponse(
+            statusCode=200,
+            body={"weight": None, "unit": None, "confidence": 0}
+        )
+    except anthropic.APIConnectionError as e:
+        logger.error(f"[item-tracking] Claude API connection error for weight detection: {e}")
+        return DetectWeightResponse(
+            statusCode=200,
+            body={"weight": None, "unit": None, "confidence": 0}
+        )
+    except anthropic.RateLimitError as e:
+        logger.error(f"[item-tracking] Claude API rate limit for weight detection: {e}")
+        return DetectWeightResponse(
+            statusCode=200,
+            body={"weight": None, "unit": None, "confidence": 0}
+        )
+    except anthropic.APIStatusError as e:
+        logger.error(f"[item-tracking] Claude API error for weight detection: {e}")
+        return DetectWeightResponse(
+            statusCode=200,
+            body={"weight": None, "unit": None, "confidence": 0}
+        )
+    except Exception as e:
+        logger.error(f"[item-tracking] Unexpected error in weight detection for order={request.orderId}: {e}")
+        return DetectWeightResponse(
+            statusCode=200,
+            body={"weight": None, "unit": None, "confidence": 0}
+        )
+
+
 # ── Admin Feedback Review ─────────────────────────────────────────────────────
 
 @router.get("/item-tracking/feedback")

@@ -113,6 +113,19 @@ const OrderProductsComponent = () => {
     const buildOrderPayload = (extra = {}) => ({
         operation: "otherInstoreOrders",
         laundryId,
+        products: selectedProducts.map(product => ({
+            productName: product.productName,
+            productCount: product.quantity,
+            productPrice: product.price,
+        })),
+        services: [],
+        subTotal: parseFloat(totalPrice.toFixed(2)),
+        totalCost: parseFloat(totalPrice.toFixed(2)),
+        grandTotal: parseFloat(totalPrice.toFixed(2)),
+        discountedPrice: 0,
+        laundryBags: 0,
+        tip: { tipType: "noTip", tipPercentage: 0, tipAmount: 0 },
+        // Legacy fields kept for backward compat
         itemsSold: selectedProducts.map(product => ({
             productName: product.productName,
             quantity: product.quantity,
@@ -301,7 +314,7 @@ const OrderProductsComponent = () => {
     const handleCashConfirmation = (isCollected) => {
         setIsPaymentCollected(isCollected);
         onClose();
-        if (!isPaymentCollected) {
+        if (!isCollected) {
             toast({
                 title: "Payment Not Collected",
                 description: "Please complete payment before confirming the order.",
@@ -342,7 +355,7 @@ const OrderProductsComponent = () => {
                     );
                     if (finalResponse.data.status === "success") {
                         setTerminalStatusMsg("Payment Successful. Capturing payment...");
-                        await placeOrder(buildOrderPayload({ terminalPaymentIntentId: finalResponse.data.paymentIntentId }));
+                        await placeOrder(buildOrderPayload({ terminalPaymentIntentId: finalResponse.data.paymentIntentId, isTerminalPayment: true, isPayNow: true }));
 
                         setTerminalStatusMsg("");
                         setIsProcessingTerminal(false);
@@ -403,7 +416,7 @@ const OrderProductsComponent = () => {
                 if (statusResponse.data.status === "success") {
                     clearInterval(interval);
                     setTerminalStatusMsg("Payment Successful. Capturing payment...");
-                    await placeOrder(buildOrderPayload({ terminalPaymentIntentId: statusResponse.data.paymentIntentId }));
+                    await placeOrder(buildOrderPayload({ terminalPaymentIntentId: statusResponse.data.paymentIntentId, isTerminalPayment: true, isPayNow: true }));
                     setTerminalStatusMsg("");
                     setIsProcessingTerminal(false);
                 } else if (
@@ -508,7 +521,10 @@ const OrderProductsComponent = () => {
 
     const handleConfirmOrder = async () => {
         onClose();
-        const orderPayload = buildOrderPayload();
+        const orderPayload = buildOrderPayload({
+            isCash: paymentMethod === 'Cash',
+            isPayNow: paymentMethod === 'Cash' || paymentMethod === 'Card',
+        });
         setIsPlacingOrder(true);
         if (paymentMethod === "Card") {
             const cardElement = elements.getElement(CardElement);
