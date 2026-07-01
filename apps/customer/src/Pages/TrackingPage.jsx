@@ -427,8 +427,8 @@ export default function TrackingPage() {
                   <Text color="gray.600" mb={1}>Services</Text>
                   {orderDetails.services.map((s, i) => (
                     <Flex key={i} justify="space-between" pl={2}>
-                      <Text>{s.serviceName}</Text>
-                      <Text>{s.weightOrCount > 0 ? `${s.weightOrCount} lbs` : ''} — ${Number(s.servicePrice).toFixed(2)}</Text>
+                      <Text>{s.serviceName} × {s.weightOrCount > 0 ? s.weightOrCount : 1}</Text>
+                      <Text>${(Number(s.servicePrice) * (s.weightOrCount > 0 ? Number(s.weightOrCount) : 1)).toFixed(2)}</Text>
                     </Flex>
                   ))}
                 </Box>
@@ -440,10 +440,30 @@ export default function TrackingPage() {
                 </Flex>
               )}
               {orderDetails.grandTotal > 0 && (
-                <Flex justify="space-between" fontWeight="bold" pt={1} borderTopWidth="1px">
-                  <Text>Total</Text>
-                  <Text>${Number(orderDetails.grandTotal).toFixed(2)}</Text>
-                </Flex>
+                <Box pt={1} borderTopWidth="1px">
+                  {orderDetails.subTotal > 0 && (
+                    <Flex justify="space-between" color="gray.600">
+                      <Text>Subtotal</Text>
+                      <Text>${Number(orderDetails.subTotal).toFixed(2)}</Text>
+                    </Flex>
+                  )}
+                  {orderDetails.discountedPrice > 0 && (
+                    <Flex justify="space-between" color="green.600">
+                      <Text>Discount{orderDetails.coupon && orderDetails.coupon !== 'None' ? ` (${orderDetails.coupon})` : ''}</Text>
+                      <Text>−${Number(orderDetails.discountedPrice).toFixed(2)}</Text>
+                    </Flex>
+                  )}
+                  {orderDetails.tip?.tipAmount > 0 && (
+                    <Flex justify="space-between" color="gray.600">
+                      <Text>Tip</Text>
+                      <Text>${Number(orderDetails.tip.tipAmount).toFixed(2)}</Text>
+                    </Flex>
+                  )}
+                  <Flex justify="space-between" fontWeight="bold" mt={1}>
+                    <Text>Total</Text>
+                    <Text>${Number(orderDetails.grandTotal).toFixed(2)}</Text>
+                  </Flex>
+                </Box>
               )}
             </VStack>
           </Box>

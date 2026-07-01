@@ -14,7 +14,7 @@ import {
     useBreakpointValue
 } from "@chakra-ui/react";
 import { QRCodeSVG } from "qrcode.react";
-import { FaHistory, FaTicketAlt, FaReceipt, FaFileInvoice, FaUserTag  } from "react-icons/fa";
+import { FaHistory, FaTicketAlt, FaReceipt, FaFileInvoice, FaUserTag, FaTag  } from "react-icons/fa";
 import {NotificationButton} from "./SendNotification";
 import { buildOrderUrl } from "../utils/ticketPrint";
 import axios from "axios";
@@ -22,6 +22,41 @@ import axios from "axios";
 const OrderActionsDrawer = ({ isOpen, onClose, order, handleOrderHistory, handlePrintTicket, handlePrintReceipt, setSelectedOrder, setInvoiceModalOpen, setPaymentInstructions, setSendEmail, laundryId }) => {
     const drawerSize = useBreakpointValue({ base: "xs", sm: "xs", md: "sm", lg: "xs", xl: "xs" });
     const drawerMaxHeight = useBreakpointValue({ base: "70vh", sm: "65vh", md: "60vh" });
+
+    const printTag = () => {
+        if (!order) return;
+        const customerName = order.customerName || 'Customer';
+        const laundryName = order.laundryName || 'Laundry';
+        const htmlContent = `
+            <html><head><style>
+                body { font-family: Arial, sans-serif; text-align: center; padding: 10px; margin: 0; }
+                .tag { border: 2px solid #000; padding: 12px 16px; display: inline-block; min-width: 200px; }
+                .customer { font-size: 22px; font-weight: bold; margin-bottom: 4px; }
+                .laundry { font-size: 14px; color: #555; }
+                .order-id { font-size: 11px; color: #888; margin-top: 6px; }
+            </style></head><body>
+                <div class="tag">
+                    <div class="customer">${customerName}</div>
+                    <div class="laundry">${laundryName}</div>
+                    <div class="order-id">${order.orderId}</div>
+                </div>
+            </body></html>
+        `;
+        const iframe = document.createElement('iframe');
+        iframe.style.position = 'absolute';
+        iframe.style.top = '-10000px';
+        iframe.style.left = '-10000px';
+        document.body.appendChild(iframe);
+        const doc = iframe.contentDocument || iframe.contentWindow.document;
+        doc.open();
+        doc.write(htmlContent);
+        doc.close();
+        setTimeout(() => {
+            iframe.contentWindow.focus();
+            iframe.contentWindow.print();
+            setTimeout(() => document.body.removeChild(iframe), 2000);
+        }, 400);
+    };
 
 
     if (!order) return null;
@@ -117,6 +152,16 @@ const OrderActionsDrawer = ({ isOpen, onClose, order, handleOrderHistory, handle
                                     size="lg"
                                     onClick={() => handlePrintReceipt(order)}
                                     aria-label="Print Receipt"
+                                />
+                            </Tooltip>
+
+                            <Tooltip label="Print Tag" aria-label="Print Tag Tooltip">
+                                <IconButton
+                                    icon={<FaTag />}
+                                    colorScheme="purple"
+                                    size="lg"
+                                    onClick={printTag}
+                                    aria-label="Print Tag"
                                 />
                             </Tooltip>
 

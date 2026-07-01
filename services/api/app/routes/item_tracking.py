@@ -486,6 +486,17 @@ async def confirm_intake(request: ConfirmIntakeRequest):
             ),
         )
 
+        # Auto-update order status to Processing when intake is confirmed
+        cur.execute(
+            """
+            UPDATE orders.orders
+            SET order_status = 'Processing', status_category = 'Active', updated_at = NOW()
+            WHERE order_id = %s AND laundry_id = %s
+              AND order_status IN ('OrderSubmitted', 'ReadyForIntake', 'ReceivedAtFacility')
+            """,
+            (payload.order_id, payload.laundry_id),
+        )
+
     # Send SMS to customer (non-blocking — don't fail the confirmation if SMS fails)
     sms_sent = False
     try:

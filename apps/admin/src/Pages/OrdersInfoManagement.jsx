@@ -2068,7 +2068,7 @@ const { open: openCancelUber, ModalUI: CancelUberModal } = useCancelUberHandoff(
                                                             {service.inputWeight ??
                                                             serviceNames.find((s) => s.serviceName === service.service)?.inputWeight
                                                                 ? "/lb"
-                                                                : "/piece"}
+                                                                : (service.service || '').toLowerCase().includes('bag') ? "/bag" : "/piece"}
                                                         </Td>
                                                         {isEditMode && canEditServices && (
                                                             <Td px={tablePadding} py={2} textAlign="center">
@@ -2131,7 +2131,7 @@ const { open: openCancelUber, ModalUI: CancelUberModal } = useCancelUberHandoff(
                                                                         <Text
                                                                             fontSize={fontSize}>{truncateText(service.serviceName)}</Text>
                                                                         <Text fontSize={fontSize}>
-                                                                            ${service.price} {service.inputWeight ? "/lb" : "/piece"}
+                                                                            ${service.price} {service.inputWeight ? "/lb" : service.serviceName?.toLowerCase().includes('bag') ? "/bag" : "/piece"}
                                                                         </Text>
                                                                     </Flex>
                                                                 </MenuItem>
@@ -2453,6 +2453,13 @@ const { open: openCancelUber, ModalUI: CancelUberModal } = useCancelUberHandoff(
                                     laundryId={laundryId}
                                     orderStatus={orderStatusMap[selectedOrderDetails?.orderId] || selectedOrderDetails?.orderStatus}
                                     employeeId={getEmpId() || 'EMP'}
+                                    onOrderRefresh={async () => {
+                                        const orderDetails = await fetchSingleOrder(laundryId, selectedOrderDetails?.orderId);
+                                        if (orderDetails) {
+                                            setSelectedOrderDetails(orderDetails);
+                                            setOrderStatusMap((prev) => ({...prev, [orderDetails.orderId]: orderDetails.orderStatus}));
+                                        }
+                                    }}
                                 />
 
                                 {/* Pickup & Delivery */}

@@ -13,7 +13,7 @@ const API_BASE = process.env.REACT_APP_API_URL || '';
  * On desktop: shows QR code for employee to scan with phone.
  * On mobile: shows "Upload Photos" button that opens the upload page directly.
  */
-function ItemTrackingPanel({ orderId, laundryId, orderStatus, employeeId, onSkip }) {
+function ItemTrackingPanel({ orderId, laundryId, orderStatus, employeeId, onSkip, onOrderRefresh }) {
   const [trackingRecord, setTrackingRecord] = useState(null);
   const [loading, setLoading] = useState(true);
   const [showQR, setShowQR] = useState(null); // null, 'intake', or 'fold'
@@ -43,6 +43,7 @@ function ItemTrackingPanel({ orderId, laundryId, orderStatus, employeeId, onSkip
   const handleResultsReceived = () => {
     setShowQR(null);
     fetchTrackingRecord();
+    if (onOrderRefresh) onOrderRefresh();
   };
 
   // Open upload page directly (for mobile admin)

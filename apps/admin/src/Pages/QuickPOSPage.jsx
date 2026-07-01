@@ -221,6 +221,43 @@ export default function QuickPOSPage({ laundryId, stripePublicKey, stripeTermina
     setIsNewCustomer(false); setNewFirstName(''); setNewLastName(''); setNewEmail('');
   };
 
+  // Print simple tag for washer/dryer — just customer name and laundry name
+  const printTag = (printOrderId) => {
+    const tagCustomerName = customerName || 'Customer';
+    const laundryName = shopDetails.storeName || 'Laundry';
+
+    const htmlContent = `
+      <html><head><style>
+        body { font-family: Arial, sans-serif; text-align: center; padding: 10px; margin: 0; }
+        .tag { border: 2px solid #000; padding: 12px 16px; display: inline-block; min-width: 200px; }
+        .customer { font-size: 22px; font-weight: bold; margin-bottom: 4px; }
+        .laundry { font-size: 14px; color: #555; }
+        .order-id { font-size: 11px; color: #888; margin-top: 6px; }
+      </style></head><body>
+        <div class="tag">
+          <div class="customer">${tagCustomerName}</div>
+          <div class="laundry">${laundryName}</div>
+          <div class="order-id">${printOrderId}</div>
+        </div>
+      </body></html>
+    `;
+
+    const iframe = document.createElement('iframe');
+    iframe.style.position = 'absolute';
+    iframe.style.top = '-10000px';
+    iframe.style.left = '-10000px';
+    document.body.appendChild(iframe);
+    const doc = iframe.contentDocument || iframe.contentWindow.document;
+    doc.open();
+    doc.write(htmlContent);
+    doc.close();
+    setTimeout(() => {
+      iframe.contentWindow.focus();
+      iframe.contentWindow.print();
+      setTimeout(() => document.body.removeChild(iframe), 2000);
+    }, 400);
+  };
+
   if (orderSuccess) {
     return (
       <Flex h="100vh" align="center" justify="center" bg="green.50" direction="column">
@@ -228,7 +265,8 @@ export default function QuickPOSPage({ laundryId, stripePublicKey, stripeTermina
         <Text fontSize="4xl" fontWeight="bold" color="green.600">Order Created!</Text>
         <Text fontSize="2xl" color="gray.600" mt={2}>{orderId}</Text>
         <HStack mt={6} spacing={4}>
-          <Button leftIcon={<FaPrint />} colorScheme="blue" size="lg" onClick={() => printTicket(orderId)}>Print Again</Button>
+          <Button leftIcon={<FaPrint />} colorScheme="blue" size="lg" onClick={() => printTicket(orderId)}>Print Receipt</Button>
+          <Button leftIcon={<FaPrint />} colorScheme="purple" size="lg" onClick={() => printTag(orderId)}>Print Tag</Button>
           <Button colorScheme="green" size="lg" onClick={resetPOS}>New Order</Button>
         </HStack>
       </Flex>

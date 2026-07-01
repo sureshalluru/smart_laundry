@@ -1125,32 +1125,53 @@ const MyOrders = ({ customerId, laundryId, laundryTimeZone }) => {
                                             </GridItem>
                                         </>
                                         )}
-                                        <GridItem>
-                                            <Text fontWeight="bold">Total Cost:</Text>
-                                        </GridItem>
-                                        <GridItem>
-                                            <Text>${orderDetails.totalCost}</Text>
-                                        </GridItem>
                                     </Grid>
                                     <Text fontWeight="bold" mt={[2, 4]} mb={[1, 2]}>Services:</Text>
                                     <Table variant="simple" size="sm" overflowX="auto">
                                         <Thead>
                                             <Tr>
                                                 <Th>Service</Th>
-                                                <Th>Weight/Count</Th>
-                                                <Th>Unit Price</Th>
+                                                <Th isNumeric>Qty</Th>
+                                                <Th isNumeric>Unit Price</Th>
+                                                <Th isNumeric>Line Total</Th>
                                             </Tr>
                                         </Thead>
                                         <Tbody>
                                             {orderDetails.services.map((service, index) => (
                                                 <Tr key={index}>
                                                     <Td>{service.serviceName}</Td>
-                                                    <Td>{service.weightOrCount}</Td>
-                                                    <Td>${service.servicePrice}</Td>
+                                                    <Td isNumeric>{service.weightOrCount}</Td>
+                                                    <Td isNumeric>${Number(service.servicePrice).toFixed(2)}</Td>
+                                                    <Td isNumeric>${(Number(service.servicePrice) * Number(service.weightOrCount)).toFixed(2)}</Td>
                                                 </Tr>
                                             ))}
                                         </Tbody>
                                     </Table>
+                                    {/* Pricing breakdown */}
+                                    <Box mt={3} pt={3} borderTopWidth="1px" borderColor="gray.200">
+                                        {orderDetails.subTotal > 0 && (
+                                            <Flex justify="space-between" fontSize="sm" color="gray.600" mb={1}>
+                                                <Text>Subtotal</Text>
+                                                <Text>${Number(orderDetails.subTotal).toFixed(2)}</Text>
+                                            </Flex>
+                                        )}
+                                        {orderDetails.discountedPrice > 0 && (
+                                            <Flex justify="space-between" fontSize="sm" color="green.600" mb={1}>
+                                                <Text>Discount{orderDetails.coupon && orderDetails.coupon !== 'None' ? ` (${orderDetails.coupon})` : ''}</Text>
+                                                <Text>−${Number(orderDetails.discountedPrice).toFixed(2)}</Text>
+                                            </Flex>
+                                        )}
+                                        {orderDetails.tip?.tipAmount > 0 && (
+                                            <Flex justify="space-between" fontSize="sm" color="gray.600" mb={1}>
+                                                <Text>Tip</Text>
+                                                <Text>${Number(orderDetails.tip.tipAmount).toFixed(2)}</Text>
+                                            </Flex>
+                                        )}
+                                        <Flex justify="space-between" fontWeight="bold" fontSize="md" mt={1}>
+                                            <Text>Total</Text>
+                                            <Text>${Number(orderDetails.grandTotal || orderDetails.totalCost).toFixed(2)}</Text>
+                                        </Flex>
+                                    </Box>
                                 </Box>
                                 <Box p={[2, 4]} borderWidth="1px" borderRadius="lg" bg="#ccf0ed" shadow="md">
                                     <Text fontSize={["lg", "xl"]} fontWeight="bold" color="blue.700" mb={[2, 4]}>

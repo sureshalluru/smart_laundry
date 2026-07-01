@@ -54,7 +54,7 @@ export function buildOrderUrl(laundryId, orderId, userDomain) {
  */
 export function buildCustomerTrackingUrl(laundryId, orderId, userDomain) {
   const cleanBase = resolveBaseUrl(userDomain);
-  return `${cleanBase}/${laundryId}/site/tracking?orderId=${orderId}`;
+  return `${cleanBase}/${laundryId}/user/my-orders/?order_id=${orderId}&is_open=true`;
 }
 
 /**

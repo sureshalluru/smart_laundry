@@ -279,7 +279,7 @@ const MobileOrderPage = () => {
                       </Text>
                       <Text fontSize="xs" color="gray.500">
                         {svc.weightOrCount != null ? svc.weightOrCount : '-'}
-                        {svc.inputWeight ? ' lbs' : ' pcs'}
+                        {svc.inputWeight ? ' lbs' : (svc.service || svc.serviceName || '').toLowerCase().includes('bag') ? ' bag' : ' pcs'}
                       </Text>
                     </HStack>
                   ))}
@@ -289,23 +289,26 @@ const MobileOrderPage = () => {
           </VStack>
         </Box>
 
-        {/* Action Buttons */}
+        {/* Item Tracking — uses same flow as desktop POS order drawer */}
+        <Box bg="white" borderRadius="lg" p={4} shadow="sm">
+          <Text fontSize="sm" fontWeight="bold" color="gray.700" mb={3}>
+            Item Tracking
+          </Text>
+          <ItemTrackingPanel
+            orderId={orderId}
+            laundryId={laundryId}
+            orderStatus={order.orderStatus}
+            employeeId={employeeId}
+            onOrderRefresh={fetchOrder}
+          />
+        </Box>
+
+        {/* Action Buttons — Processing & Weight only (Scan Received/Fold handled by Item Tracking above) */}
         <Box bg="white" borderRadius="lg" p={4} shadow="sm">
           <Text fontSize="sm" fontWeight="bold" color="gray.700" mb={3}>
             Actions
           </Text>
           <SimpleGrid columns={2} spacing={3}>
-            <Button
-              leftIcon={<FaBarcode />}
-              variant={activeAction === 'scan_received' ? 'solid' : 'outline'}
-              colorScheme="cyan"
-              size="md"
-              minH="44px"
-              fontSize="xs"
-              onClick={() => setActiveAction(activeAction === 'scan_received' ? null : 'scan_received')}
-            >
-              Scan Received
-            </Button>
             <Button
               leftIcon={<FaCog />}
               variant={activeAction === 'processing' ? 'solid' : 'outline'}
@@ -316,17 +319,6 @@ const MobileOrderPage = () => {
               onClick={() => setActiveAction(activeAction === 'processing' ? null : 'processing')}
             >
               Processing
-            </Button>
-            <Button
-              leftIcon={<FaTshirt />}
-              variant={activeAction === 'fold_complete' ? 'solid' : 'outline'}
-              colorScheme="teal"
-              size="md"
-              minH="44px"
-              fontSize="xs"
-              onClick={() => setActiveAction(activeAction === 'fold_complete' ? null : 'fold_complete')}
-            >
-              Fold Complete
             </Button>
             <Button
               leftIcon={<FaWeight />}
@@ -342,28 +334,9 @@ const MobileOrderPage = () => {
           </SimpleGrid>
         </Box>
 
-        {/* Active Photo Action */}
-        {activeAction === 'scan_received' && (
-          <Box bg="white" borderRadius="lg" p={4} shadow="sm">
-            <Text fontSize="sm" fontWeight="bold" color="cyan.700" mb={3}>
-              📷 Scan Received
-            </Text>
-            <MobilePhotoAction
-              order={order}
-              actionType="scan_received"
-              targetStatus="ReceivedAtFacility"
-              imageType="scan_received"
-              employeeId={employeeId}
-              onComplete={() => handlePhotoComplete('scan_received')}
-            />
-          </Box>
-        )}
-
+        {/* Processing Photo Action (simple single photo for status update) */}
         {activeAction === 'processing' && (
           <Box bg="white" borderRadius="lg" p={4} shadow="sm">
-            <Text fontSize="sm" fontWeight="bold" color="yellow.700" mb={3}>
-              📷 Processing
-            </Text>
             <MobilePhotoAction
               order={order}
               actionType="processing"
@@ -372,46 +345,6 @@ const MobileOrderPage = () => {
               employeeId={employeeId}
               onComplete={() => handlePhotoComplete('processing')}
             />
-          </Box>
-        )}
-
-        {activeAction === 'fold_complete' && (
-          <Box bg="white" borderRadius="lg" p={4} shadow="sm">
-            <Text fontSize="sm" fontWeight="bold" color="teal.700" mb={3}>
-              📷 Fold Complete
-            </Text>
-            <MobilePhotoAction
-              order={order}
-              actionType="fold_complete"
-              targetStatus="ReadyForDelivery"
-              imageType="fold_complete"
-              employeeId={employeeId}
-              onComplete={() => handlePhotoComplete('fold_complete')}
-            />
-          </Box>
-        )}
-
-        {/* Vision Results (shown after successful Scan Received / Fold Complete) */}
-        {showVisionResults && !activeAction && (
-          <Box bg="white" borderRadius="lg" p={4} shadow="sm">
-            <Text fontSize="sm" fontWeight="bold" color="gray.700" mb={2}>
-              🔍 AI Item Detection
-            </Text>
-            <ItemTrackingPanel
-              orderId={orderId}
-              laundryId={laundryId}
-              orderStatus={order.orderStatus}
-              employeeId={employeeId}
-            />
-            <Button
-              size="sm"
-              variant="ghost"
-              colorScheme="gray"
-              mt={2}
-              onClick={() => setShowVisionResults(null)}
-            >
-              Dismiss
-            </Button>
           </Box>
         )}
 

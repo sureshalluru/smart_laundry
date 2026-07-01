@@ -651,11 +651,11 @@ async def update_order_endpoint(
             sub_total = round(svc_total + prod_total, 2)
             total_cost = sub_total  # Before discount
 
-            # Apply discount if coupon exists
-            discounted_price = float(current_order.get("discounted_price") or 0)
+            # Apply discount if coupon exists — always recalculate based on new subtotal
+            discounted_price = 0
             coupon_code = coupon if coupon is not None else current_order.get("coupon")
-            if coupon_code and discounted_price == 0:
-                # Recalculate discount from promo
+            if coupon_code:
+                # Recalculate discount from promo based on updated subtotal
                 cur.execute("""
                     SELECT discount_type, discount_value, minimum_order_value
                     FROM shop.promotions WHERE laundry_id = %s AND promo_code = %s AND is_active = TRUE
