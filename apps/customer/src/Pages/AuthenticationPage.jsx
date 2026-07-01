@@ -38,7 +38,7 @@ export default function AuthenticationPage() {
             if (response.exists) {
                 setCustomerFirstName(response.customerFirstName);
                 setPendingAuth(phone, laundryId);
-                const otpResponse = await initiateSignIn(phone);
+                const otpResponse = await initiateSignIn(phone, laundryId);
                 if (!otpResponse.isSignedIn) {
                     setCurrentPage("otpValidation");
                 }
@@ -88,7 +88,7 @@ export default function AuthenticationPage() {
                 }
             }
             setPendingAuth(phone, laundryId);
-            const otpResponse = await initiateSignIn(phone);
+            const otpResponse = await initiateSignIn(phone, laundryId);
             if (!otpResponse.isSignedIn) {
                 setPhoneNumber(phone);
                 setCustomerFirstName(firstName);

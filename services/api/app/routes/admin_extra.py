@@ -198,7 +198,8 @@ async def show_all_employees(
             </table>
             <p>Please keep these credentials secure and do not share them.</p>
             """
-            send_email(emp["email"], f"Your Credentials - {laundry_name}", html_body)
+            send_email(emp["email"], f"Your Credentials - {laundry_name}", html_body,
+                       sender_name=laundry_name)
             return {"statusCode": 200, "body": {"message": f"Credentials sent to {emp['email']}"}}
         except Exception as e:
             return {"statusCode": 200, "body": {"message": f"Failed to send: {str(e)}"}}
@@ -487,7 +488,22 @@ async def send_notifications(
     subject = body.get("subject", "Notification from your laundry")
 
     if notif_type == "email" and recipient:
-        send_email(recipient, subject, message)
+        # Get tenant branding
+        laundry_id = current_user.get("laundry_id") or body.get("laundryId")
+        sender_name = None
+        reply_to = None
+        if laundry_id:
+            try:
+                with get_db() as conn:
+                    cur = get_cursor(conn)
+                    cur.execute("SELECT laundry_name, laundry_email FROM shop.laundry_shops WHERE laundry_id = %s", (laundry_id,))
+                    shop = cur.fetchone()
+                    if shop:
+                        sender_name = shop.get("laundry_name")
+                        reply_to = shop.get("laundry_email")
+            except Exception:
+                pass
+        send_email(recipient, subject, message, sender_name=sender_name, reply_to=reply_to)
         return {"statusCode": 200, "body": {"message": "Email sent"}}
     elif notif_type == "sms" and recipient:
         send_sms(recipient, message)

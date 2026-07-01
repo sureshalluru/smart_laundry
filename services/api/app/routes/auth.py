@@ -380,8 +380,22 @@ async def register_device(body: dict = Body(...)):
 async def send_otp(body: dict = Body(...)):
     """Send OTP to phone number via Twilio Verify."""
     phone = body.get("phoneNumber")
+    laundry_id = body.get("laundryId")
     if not phone:
         raise HTTPException(status_code=400, detail="Phone number required")
+
+    # Look up laundry name for branded SMS
+    brand_name = "Your Laundry"
+    if laundry_id:
+        try:
+            with get_db() as conn:
+                cur = get_cursor(conn)
+                cur.execute("SELECT laundry_name FROM shop.laundry_shops WHERE laundry_id = %s", (laundry_id,))
+                shop = cur.fetchone()
+                if shop:
+                    brand_name = shop["laundry_name"]
+        except Exception:
+            pass
 
     # Test mode: phone numbers starting with +1555 bypass real OTP
     # OTP is always 123456 for test numbers
@@ -408,7 +422,7 @@ async def send_otp(body: dict = Body(...)):
             _otp_store[phone] = {"otp": otp, "attempts": 0}
             client = Client(settings.twilio_account_sid, settings.twilio_auth_token)
             client.messages.create(
-                body=f"Your Smart Laundry verification code is: {otp}",
+                body=f"Your {brand_name} verification code is: {otp}",
                 from_=settings.twilio_phone_number,
                 to=phone,
             )

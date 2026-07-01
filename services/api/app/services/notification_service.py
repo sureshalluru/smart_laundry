@@ -86,9 +86,11 @@ def send_sms(to_phone: str, message: str):
 
 
 def send_notification(notification_preference: dict, email_body: str, sms_body: str,
-                      customer_email: str, customer_phone: str, shop_email: str = None):
+                      customer_email: str, customer_phone: str, shop_email: str = None,
+                      sender_name: str = None):
     """Send notification based on customer preferences."""
     if notification_preference.get('email', False) and customer_email:
-        send_email(customer_email, "Your Laundry Order Update", email_body, sender=shop_email)
+        send_email(customer_email, "Your Laundry Order Update", email_body,
+                   sender_name=sender_name, reply_to=shop_email)
     if notification_preference.get('phone', False) and customer_phone:
         send_sms(customer_phone, sms_body)

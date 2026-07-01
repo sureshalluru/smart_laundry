@@ -474,12 +474,13 @@ async def customer_place_order(
                 """, (customer_id,))
                 cust = cur_notif.fetchone()
 
-                cur_notif.execute("SELECT laundry_name FROM shop.laundry_shops WHERE laundry_id = %s", (laundry_id,))
+                cur_notif.execute("SELECT laundry_name, laundry_email FROM shop.laundry_shops WHERE laundry_id = %s", (laundry_id,))
                 shop = cur_notif.fetchone()
 
             if cust and shop:
                 first_name = cust["first_name"] or "Customer"
                 laundry_name = shop["laundry_name"] or "Your Laundry"
+                laundry_email = shop.get("laundry_email") or None
 
                 # Build service summary
                 if pricing_type == "per_bag":
@@ -503,7 +504,8 @@ async def customer_place_order(
                 """
 
                 if cust.get("notif_email", True) and cust["email"]:
-                    send_email(cust["email"], f"Order Confirmed - {order_id}", html_body)
+                    send_email(cust["email"], f"Order Confirmed - {order_id}", html_body,
+                              sender_name=laundry_name, reply_to=laundry_email)
 
                 if cust.get("notif_phone", True) and cust["phone_number"]:
                     sms_msg = f"Hi {first_name}! Order {order_id} confirmed. Pickup: {pickup_date} ({pickup_time_interval}). - {laundry_name}"
@@ -784,6 +786,7 @@ def _send_cancel_notification(order_id, laundry_id, customer_id, cancel_reason, 
 
         first_name = row["first_name"] or "Customer"
         laundry_name = row["laundry_name"] or "Your Laundry"
+        laundry_reply_email = row.get("contact_email") or None
         reason_text = f" Reason: {cancel_reason}" if cancel_reason else ""
 
         if cancelled_by == "customer":
@@ -808,7 +811,8 @@ def _send_cancel_notification(order_id, laundry_id, customer_id, cancel_reason, 
             sms_msg = f"Hi {first_name}, order {order_id} has been canceled by {laundry_name}.{reason_text}"
 
         if row.get("notif_email", True) and row["email"]:
-            send_email(row["email"], subject, html_body)
+            send_email(row["email"], subject, html_body,
+                       sender_name=laundry_name, reply_to=laundry_reply_email)
         if row.get("notif_phone", True) and row["phone_number"]:
             send_sms(row["phone_number"], sms_msg)
 

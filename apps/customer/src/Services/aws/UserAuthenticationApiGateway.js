@@ -25,10 +25,11 @@ export const handlePhoneNumberCheck = async (phoneNumber, laundryId) => {
 };
 
 // Send OTP to phone number
-export const initiateSignIn = async (phoneNumber) => {
+export const initiateSignIn = async (phoneNumber, laundryId) => {
     try {
         const response = await axios.post(`${API_URL}/api/auth/send-otp`, {
             phoneNumber: phoneNumber,
+            laundryId: laundryId || null,
         });
         if (response.data.status === 'success') {
             return { isSignedIn: false, nextStep: { signInStep: 'CONFIRM_SIGN_IN' } };
