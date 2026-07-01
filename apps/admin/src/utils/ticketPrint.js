@@ -6,15 +6,12 @@
 import { roundToTwo } from './decimalUtils';
 
 /**
- * Builds a full URL to the mobile order page for a given order.
- * Used as QR code data on printed tickets and in the POS QR display.
+ * Resolves the base URL from a userDomain or falls back to window.location.origin.
  *
- * @param {string} laundryId - The laundry shop ID
- * @param {string} orderId - The order ID (e.g., "IS-1FCC7193")
- * @param {string|null|undefined} userDomain - Custom domain configured for the laundry (e.g., "roundrocklaundry.com" or "https://roundrocklaundry.com")
- * @returns {string} Full URL to the order page
+ * @param {string|null|undefined} userDomain - Custom domain configured for the laundry
+ * @returns {string} Base URL without trailing slash
  */
-export function buildOrderUrl(laundryId, orderId, userDomain) {
+function resolveBaseUrl(userDomain) {
   let baseUrl;
 
   if (userDomain && userDomain.trim()) {
@@ -29,9 +26,35 @@ export function buildOrderUrl(laundryId, orderId, userDomain) {
   }
 
   // Remove trailing slash from baseUrl to prevent double slashes
-  const cleanBase = baseUrl.replace(/\/+$/, '');
+  return baseUrl.replace(/\/+$/, '');
+}
 
+/**
+ * Builds a full URL to the mobile order page for a given order.
+ * Used as QR code data on internal printed tickets and in the POS QR display.
+ *
+ * @param {string} laundryId - The laundry shop ID
+ * @param {string} orderId - The order ID (e.g., "IS-1FCC7193")
+ * @param {string|null|undefined} userDomain - Custom domain configured for the laundry (e.g., "roundrocklaundry.com" or "https://roundrocklaundry.com")
+ * @returns {string} Full URL to the employee mobile order page
+ */
+export function buildOrderUrl(laundryId, orderId, userDomain) {
+  const cleanBase = resolveBaseUrl(userDomain);
   return `${cleanBase}/${laundryId}/admin/order/${orderId}`;
+}
+
+/**
+ * Builds a full URL to the customer tracking page for a given order.
+ * Used as QR code data on customer-facing printed tickets.
+ *
+ * @param {string} laundryId - The laundry shop ID
+ * @param {string} orderId - The order ID (e.g., "IS-1FCC7193")
+ * @param {string|null|undefined} userDomain - Custom domain configured for the laundry (e.g., "roundrocklaundry.com" or "https://roundrocklaundry.com")
+ * @returns {string} Full URL to the customer tracking page
+ */
+export function buildCustomerTrackingUrl(laundryId, orderId, userDomain) {
+  const cleanBase = resolveBaseUrl(userDomain);
+  return `${cleanBase}/${laundryId}/site/tracking?orderId=${orderId}`;
 }
 
 /**
@@ -74,6 +97,7 @@ export function buildOrderUrl(laundryId, orderId, userDomain) {
  * @param {number|string} options.grandTotal - Grand total amount
  * @param {number|string} options.balanceDue - Balance due amount
  * @param {string} options.notes - Order special instructions
+ * @param {string} [options.ticketType='internal'] - Ticket type: 'internal' (employee QR) or 'customer' (tracking QR)
  * @returns {string} Full HTML document string ready for iframe print
  */
 export function generateTicketHtml(options) {
@@ -101,9 +125,12 @@ export function generateTicketHtml(options) {
     grandTotal = '0.00',
     balanceDue = '0.00',
     notes = '',
+    ticketType = 'internal',
   } = options;
 
-  const orderUrl = buildOrderUrl(laundryId, orderId, userDomain);
+  const orderUrl = ticketType === 'customer'
+    ? buildCustomerTrackingUrl(laundryId, orderId, userDomain)
+    : buildOrderUrl(laundryId, orderId, userDomain);
 
   // Build item rows for the table
   const serviceRows = services.map((service) => {

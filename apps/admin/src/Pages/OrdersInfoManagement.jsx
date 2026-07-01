@@ -2404,10 +2404,10 @@ const { open: openCancelUber, ModalUI: CancelUberModal } = useCancelUberHandoff(
                                             )}
                                         </Box>
 
-                                        {/* Total Weight (for records â€” especially per-bag orders) */}
+                                        {/* Total Weight (for records - especially per-bag orders) */}
                                         <Box flex="1">
                                             <HStack mb={1}>
-                                                <Text fontWeight="semibold" fontSize={fontSize}>âš–ï¸ Total Weight (lbs)</Text>
+                                                <Text fontWeight="semibold" fontSize={fontSize}>Total Weight (lbs)</Text>
                                                 {selectedOrderDetails.pricingType === 'per_bag' && (
                                                     <Badge colorScheme="purple" fontSize="xs">Per Bag</Badge>
                                                 )}
@@ -2698,6 +2698,33 @@ const { open: openCancelUber, ModalUI: CancelUberModal } = useCancelUberHandoff(
                                 <Box>
                                     <Text fontSize="md" fontWeight="bold" mb={2}>Payments</Text>
                                     <Stack spacing={3} bg="gray.50" p={3} borderRadius="md">
+                                        {/* Itemized breakdown showing how subtotal is calculated */}
+                                        {(selectedOrderDetails.services?.length > 0 || selectedOrderDetails.products?.length > 0) && (
+                                            <Box mb={1} pb={2} borderBottom="1px dashed" borderColor="gray.300">
+                                                <Text fontSize="xs" fontWeight="bold" color="gray.600" mb={1}>Cart Breakdown:</Text>
+                                                {selectedOrderDetails.services?.map((svc, idx) => (
+                                                    <Flex key={`svc-${idx}`} justify="space-between" align="center" mb={0.5}>
+                                                        <Text fontSize="xs" color="gray.600" noOfLines={1} maxW="60%">
+                                                            {svc.service || svc.serviceName} × {svc.weightOrCount}
+                                                        </Text>
+                                                        <Text fontSize="xs" color="gray.600">
+                                                            ${roundToTwo((svc.servicePrice || 0) * (svc.weightOrCount || 0))}
+                                                        </Text>
+                                                    </Flex>
+                                                ))}
+                                                {selectedOrderDetails.products?.map((prod, idx) => (
+                                                    <Flex key={`prod-${idx}`} justify="space-between" align="center" mb={0.5}>
+                                                        <Text fontSize="xs" color="gray.600" noOfLines={1} maxW="60%">
+                                                            {prod.productName} × {prod.quantity}
+                                                        </Text>
+                                                        <Text fontSize="xs" color="gray.600">
+                                                            ${roundToTwo((prod.productPrice || 0) * (prod.quantity || 0))}
+                                                        </Text>
+                                                    </Flex>
+                                                ))}
+                                            </Box>
+                                        )}
+
                                         <Flex justify="space-between" align="center">
                                             <Text fontWeight="medium" fontSize={fontSize}>Subtotal:</Text>
                                             <Text
@@ -3227,7 +3254,7 @@ const handleAssignLaundryDriver = async (customAddress) => {
             orderStatus,
             coupon,
             laundryBags,
-            totalWeight: totalWeight || undefined,
+            totalWeight: totalWeight != null && totalWeight !== '' ? parseFloat(totalWeight) : undefined,
         };
 
         if ((servicesToAddMap[orderId] || []).length > 0) {
@@ -3320,7 +3347,7 @@ const handleAssignLaundryDriver = async (customAddress) => {
                 // Show payment warning if auto-capture failed
                 if (serverUpdatedOrder?.paymentWarning) {
                     toast({
-                        title: "âš ï¸ Payment Failed",
+                        title: "Payment Failed",
                         description: serverUpdatedOrder.paymentWarning,
                         status: "warning",
                         duration: 10000,
@@ -3343,7 +3370,26 @@ const handleAssignLaundryDriver = async (customAddress) => {
                 // onDrawerClose();
             } else {
                 const errorMessage = updatedResponse?.data?.body?.message || 'Unknown error occurred.';
-                handleRollback(originalOrder, errorMessage); // TODO: Instead of handleRollBack let us use the close drawer
+
+                // Payment gate error — show specific toast and revert status dropdown
+                if (statusCode === 400) {
+                    toast({
+                        title: "Payment Required",
+                        description: errorMessage,
+                        status: "error",
+                        duration: 8000,
+                        isClosable: true,
+                        position: "top",
+                    });
+                    // Revert to original order status
+                    setOrders((prev) => prev.map((order) => order.orderId === orderId ? {...order, ...originalOrder} : order));
+                    setFilteredOrders((prev) => prev.map((order) => order.orderId === orderId ? {...order, ...originalOrder} : order));
+                    setOrderStatusMap((prev) => ({...prev, [orderId]: originalOrder.orderStatus}));
+                    setSelectedOrderDetails((prev) => prev ? {...prev, orderStatus: originalOrder.orderStatus} : prev);
+                    setInitialStatus(originalOrder.orderStatus);
+                } else {
+                    handleRollback(originalOrder, errorMessage);
+                }
                 setIsEditMode(false);
                 // onDrawerClose();
 
@@ -3355,9 +3401,36 @@ const handleAssignLaundryDriver = async (customAddress) => {
                 error.response?.data?.body?.message ||
                 "An unexpected error occurred while updating the order.";
 
-            setOrders((prev) => prev.map((order) => order.orderId === orderId ? {...order, ...updatedOrderDetails} : order));
-            setFilteredOrders((prev) => prev.map((order) => order.orderId === orderId ? {...order, ...updatedOrderDetails} : order));
-            setOrderStatusMap((prev) => ({...prev, [orderId]: updatedOrderDetails.orderStatus}));
+            // Handle HTTP 400 from payment gate (actual HTTP 400 response)
+            if (error.response?.status === 400) {
+                toast({
+                    title: "Payment Required",
+                    description: errorMessage,
+                    status: "error",
+                    duration: 8000,
+                    isClosable: true,
+                    position: "top",
+                });
+                // Revert to original order status
+                setOrders((prev) => prev.map((order) => order.orderId === orderId ? {...order, ...originalOrder} : order));
+                setFilteredOrders((prev) => prev.map((order) => order.orderId === orderId ? {...order, ...originalOrder} : order));
+                setOrderStatusMap((prev) => ({...prev, [orderId]: originalOrder.orderStatus}));
+                setSelectedOrderDetails((prev) => prev ? {...prev, orderStatus: originalOrder.orderStatus} : prev);
+                setInitialStatus(originalOrder.orderStatus);
+            } else {
+                setOrders((prev) => prev.map((order) => order.orderId === orderId ? {...order, ...updatedOrderDetails} : order));
+                setFilteredOrders((prev) => prev.map((order) => order.orderId === orderId ? {...order, ...updatedOrderDetails} : order));
+                setOrderStatusMap((prev) => ({...prev, [orderId]: updatedOrderDetails.orderStatus}));
+
+                toast({
+                    title: "Update Failed",
+                    description: errorMessage,
+                    status: "error",
+                    duration: 5000,
+                    isClosable: true,
+                    position: "top",
+                });
+            }
             // Always reset mutation state on failure to avoid reapplying stale data
             setProductsToAdd([]);
             setProductsToRemove([]);
@@ -3365,14 +3438,6 @@ const handleAssignLaundryDriver = async (customAddress) => {
             setServicesToAddMap((prev) => ({...prev, [orderId]: []}));
             setServicesToRemoveMap((prev) => ({...prev, [orderId]: []}));
 
-            toast({
-                title: "Update Failed",
-                description: errorMessage,
-                status: "error",
-                duration: 5000,
-                isClosable: true,
-                position: "top",
-            });
             setIsEditMode(false);
             // onDrawerClose();
         } finally {
@@ -3460,7 +3525,7 @@ const handleAssignLaundryDriver = async (customAddress) => {
         }
     };
 
-    const handlePrintTicket = async (order) => {
+    const handlePrintTicket = async (order, ticketType = 'internal') => {
         try {
             setTicketLoading(true);
 
@@ -3491,6 +3556,7 @@ const handleAssignLaundryDriver = async (customAddress) => {
                 grandTotal: order.grandTotal,
                 balanceDue: order.balanceDue || order.grandTotal,
                 notes: order.specialInstructions || '',
+                ticketType,
             });
 
             await printViaIframe(htmlContent, { delay: 800 });

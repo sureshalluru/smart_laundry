@@ -171,6 +171,21 @@ const MobileStatusTransition = ({ order, onStatusChanged, employeeId }) => {
             onStatusChanged(selectedStatus);
           }
         }
+      } else if (statusCode === 400) {
+        // Payment gate or validation error — revert status
+        const errorMsg = serverOrder?.message || 'Status transition blocked.';
+        const isPaymentError = errorMsg.toLowerCase().includes('payment');
+        toast({
+          title: isPaymentError ? 'Payment Required' : 'Status Change Blocked',
+          description: errorMsg,
+          status: 'error',
+          duration: 5000,
+          isClosable: true,
+        });
+        // Revert to current status (no change applied)
+        if (onStatusChanged) {
+          onStatusChanged(currentStatus);
+        }
       } else if (statusCode === 409) {
         // Conflict — status was changed by another user
         const actualStatus = serverOrder?.orderStatus || currentStatus;
@@ -194,8 +209,24 @@ const MobileStatusTransition = ({ order, onStatusChanged, employeeId }) => {
         });
       }
     } catch (err) {
-      // Check if the error response indicates a conflict
-      if (err.response?.status === 409 || err.response?.data?.statusCode === 409) {
+      // Check if the error response indicates a payment gate block
+      if (err.response?.status === 400 || err.response?.data?.statusCode === 400) {
+        const errBody = err.response?.data?.body || err.response?.data || {};
+        const errorMsg = errBody?.message || 'Status transition blocked.';
+        const isPaymentError = errorMsg.toLowerCase().includes('payment');
+        toast({
+          title: isPaymentError ? 'Payment Required' : 'Status Change Blocked',
+          description: errorMsg,
+          status: 'error',
+          duration: 5000,
+          isClosable: true,
+        });
+        // Revert to current status
+        if (onStatusChanged) {
+          onStatusChanged(currentStatus);
+        }
+      } else if (err.response?.status === 409 || err.response?.data?.statusCode === 409) {
+        // Check if the error response indicates a conflict
         const serverOrder = err.response?.data?.body;
         const actualStatus = serverOrder?.orderStatus || currentStatus;
         toast({

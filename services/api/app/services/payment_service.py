@@ -226,6 +226,90 @@ def refund_payment(payment_intent_id, amount, description, laundry_id):
         return {"status": "error", "message": str(e)}
 
 
+# ---------------------------------------------------------------------------
+# Payment Gate — blocks post-processing status transitions for unpaid orders
+# ---------------------------------------------------------------------------
+
+GATED_STATUSES = {'ReadyForDelivery', 'EnRouteToDelivery', 'Delivered', 'OrderPickedUp'}
+
+
+def check_payment_gate(order, target_status, laundry_id):
+    """
+    Enforce payment requirements before allowing status transitions past
+    ProcessingCompleted. Returns a dict indicating whether the transition
+    is allowed.
+
+    - Non-gated statuses or already-paid orders → {"allowed": True}
+    - Online unpaid → auto-charge card on file, return {"allowed": True, "charged": True, "paymentIntentId": "..."}
+    - Online charge failure → {"allowed": False, "error": "Payment charge failed: <reason>..."}
+    - Non-Online unpaid → {"allowed": False, "error": "Payment required..."}
+    """
+    if target_status not in GATED_STATUSES:
+        return {"allowed": True}
+
+    if order.get('payment_status') == 'Paid':
+        return {"allowed": True}
+
+    # Unpaid order targeting a gated status — enforce payment gate
+    if order.get('order_type') == 'Online':
+        # Look up stripe_customer_id for this customer/laundry pair
+        try:
+            with get_db() as conn:
+                cur = get_cursor(conn)
+                cur.execute("""
+                    SELECT stripe_customer_id FROM shop.customer_payment_profiles
+                    WHERE customer_id = %s AND laundry_id = %s
+                """, (order['customer_id'], laundry_id))
+                row = cur.fetchone()
+
+            if not row or not row.get('stripe_customer_id'):
+                return {
+                    "allowed": False,
+                    "error": "Payment charge failed: No payment profile found. Please resolve payment manually."
+                }
+
+            stripe_customer_id = row['stripe_customer_id']
+            order_id = order.get('order_id', '')
+            grand_total = order.get('grand_total', 0)
+            customer_id = order.get('customer_id', '')
+            description = f"Auto-charge for order {order_id} on status transition to {target_status}"
+
+            result = capture_payment(
+                customer_payment_id=stripe_customer_id,
+                price=grand_total,
+                order_id=order_id,
+                description=description,
+                customer_id=customer_id,
+                laundry_id=laundry_id,
+            )
+
+            if result.get('status') == 'success':
+                return {
+                    "allowed": True,
+                    "charged": True,
+                    "paymentIntentId": result.get('paymentIntentId', ''),
+                }
+            else:
+                reason = result.get('message', 'Unknown error')
+                return {
+                    "allowed": False,
+                    "error": f"Payment charge failed: {reason}. Please resolve payment manually."
+                }
+
+        except Exception as e:
+            logger.exception("check_payment_gate error during auto-charge")
+            return {
+                "allowed": False,
+                "error": f"Payment charge failed: {str(e)}. Please resolve payment manually."
+            }
+
+    # Non-Online order (e.g. InStore) without payment
+    return {
+        "allowed": False,
+        "error": "Payment required before order can proceed past processing. Please collect payment manually."
+    }
+
+
 def create_instore_hold(card_payment_id, amount, description, laundry_id,
                         save_card=False, customer_id=None, customer_payment_id=None):
     """Create a hold for in-store payment."""

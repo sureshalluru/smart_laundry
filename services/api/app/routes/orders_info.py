@@ -7,6 +7,7 @@ from typing import Optional, List
 from app.database import get_db, get_cursor
 from app.auth import get_current_user
 from app.utils import serialize, serialize_row
+from app.services.payment_service import check_payment_gate
 from decimal import Decimal, ROUND_HALF_UP
 from datetime import datetime, timedelta
 from base64 import b64decode, b64encode
@@ -700,6 +701,10 @@ async def update_order_endpoint(
             if empId:
                 update_fields["last_updated_by"] = empId
             if order_status:
+                # Payment gate check — block gated status transitions for unpaid orders
+                gate_result = check_payment_gate(current_order, order_status, laundryId)
+                if not gate_result.get("allowed"):
+                    return {"statusCode": 400, "body": {"message": gate_result["error"]}}
                 update_fields["order_status"] = order_status
                 # Update status category
                 active_statuses = {"OrderSubmitted", "ReadyForIntake", "ReceivedAtFacility", "ProcessingStarted", "ProcessingCompleted", "EnRouteToDelivery"}

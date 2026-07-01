@@ -87,12 +87,12 @@ describe('derivePricingType', () => {
     expect(derivePricingType(items)).toBe('per_pound');
   });
 
-  it('returns "per_bag" when all items have inputWeight=false', () => {
+  it('returns "per_item" when all items have inputWeight=false', () => {
     const items = [
       { inputWeight: false },
       { inputWeight: false },
     ];
-    expect(derivePricingType(items)).toBe('per_bag');
+    expect(derivePricingType(items)).toBe('per_item');
   });
 
   it('returns "mixed" when items have a mix of inputWeight values', () => {

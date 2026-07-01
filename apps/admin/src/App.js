@@ -37,6 +37,7 @@ const RoutePlannerPage = lazy(() => import('./Pages/RoutePlannerPage'));
 const ReportsPage = lazy(() => import('./Pages/ReportsPage'));
 const MobileOrderPage = lazy(() => import('./Pages/MobileOrderPage'));
 const EmployeeLoginPage = lazy(() => import('./Pages/EmployeeLoginPage'));
+const PinEntryPage = lazy(() => import('./Pages/PinEntryPage'));
 
 // Company pages (multi-location management)
 const CompanyLoginPage = lazy(() => import('./Pages/CompanyLoginPage'));
@@ -202,15 +203,20 @@ function App() {
                         </Suspense>
                     </EmployeeAuthProvider>
                 }/>
+                <Route path="/:laundryId/admin/pin" element={
+                    <EmployeeAuthProvider>
+                        <Suspense fallback={<LoadingSpinner/>}>
+                            <PinEntryPage/>
+                        </Suspense>
+                    </EmployeeAuthProvider>
+                }/>
                 <Route path="/:laundryId/admin/order/:orderId" element={
                     <EmployeeAuthProvider>
-                        <LaundryValidationProvider>
-                            <EmployeeAuthGuard>
-                                <Suspense fallback={<LoadingSpinner/>}>
-                                    <MobileOrderPage/>
-                                </Suspense>
-                            </EmployeeAuthGuard>
-                        </LaundryValidationProvider>
+                        <EmployeeAuthGuard>
+                            <Suspense fallback={<LoadingSpinner/>}>
+                                <MobileOrderPage/>
+                            </Suspense>
+                        </EmployeeAuthGuard>
                     </EmployeeAuthProvider>
                 }/>
 

@@ -1,4 +1,4 @@
-import { buildOrderUrl, generateTicketHtml } from './ticketPrint';
+import { buildOrderUrl, buildCustomerTrackingUrl, generateTicketHtml } from './ticketPrint';
 
 describe('buildOrderUrl', () => {
   const originalLocation = window.location;
@@ -245,5 +245,106 @@ describe('generateTicketHtml', () => {
     expect(html).toContain('N/A'); // default store name
     expect(html).toContain('O-123');
     expect(html).toContain('Thank you for your order!');
+  });
+});
+
+describe('buildCustomerTrackingUrl', () => {
+  const originalLocation = window.location;
+
+  beforeAll(() => {
+    delete window.location;
+    window.location = { origin: 'https://app.smartlaundrybasket.ai' };
+  });
+
+  afterAll(() => {
+    window.location = originalLocation;
+  });
+
+  it('generates customer tracking URL with custom domain', () => {
+    const url = buildCustomerTrackingUrl('5', 'IS-1FCC7193', 'roundrocklaundry.com');
+    expect(url).toBe('https://roundrocklaundry.com/5/site/tracking?orderId=IS-1FCC7193');
+  });
+
+  it('generates customer tracking URL with https domain', () => {
+    const url = buildCustomerTrackingUrl('5', 'IS-1FCC7193', 'https://roundrocklaundry.com');
+    expect(url).toBe('https://roundrocklaundry.com/5/site/tracking?orderId=IS-1FCC7193');
+  });
+
+  it('generates customer tracking URL with http domain', () => {
+    const url = buildCustomerTrackingUrl('12', 'O-ABC123', 'http://dev.example.com');
+    expect(url).toBe('http://dev.example.com/12/site/tracking?orderId=O-ABC123');
+  });
+
+  it('falls back to window.location.origin when userDomain is null', () => {
+    const url = buildCustomerTrackingUrl('5', 'IS-1FCC7193', null);
+    expect(url).toBe('https://app.smartlaundrybasket.ai/5/site/tracking?orderId=IS-1FCC7193');
+  });
+
+  it('falls back to window.location.origin when userDomain is undefined', () => {
+    const url = buildCustomerTrackingUrl('5', 'IS-1FCC7193', undefined);
+    expect(url).toBe('https://app.smartlaundrybasket.ai/5/site/tracking?orderId=IS-1FCC7193');
+  });
+
+  it('falls back to window.location.origin when userDomain is empty', () => {
+    const url = buildCustomerTrackingUrl('5', 'IS-1FCC7193', '');
+    expect(url).toBe('https://app.smartlaundrybasket.ai/5/site/tracking?orderId=IS-1FCC7193');
+  });
+
+  it('handles domain with trailing slash', () => {
+    const url = buildCustomerTrackingUrl('5', 'IS-1FCC7193', 'https://roundrocklaundry.com/');
+    expect(url).toBe('https://roundrocklaundry.com/5/site/tracking?orderId=IS-1FCC7193');
+  });
+});
+
+describe('generateTicketHtml with ticketType', () => {
+  const originalLocation = window.location;
+
+  beforeAll(() => {
+    delete window.location;
+    window.location = { origin: 'https://app.smartlaundrybasket.ai' };
+  });
+
+  afterAll(() => {
+    window.location = originalLocation;
+  });
+
+  const baseOptions = {
+    orderId: 'IS-1FCC7193',
+    laundryId: '5',
+    userDomain: 'roundrocklaundry.com',
+    customerName: 'John Doe',
+    storeName: 'Round Rock Laundry',
+  };
+
+  it('defaults to internal ticket type (employee order URL)', () => {
+    const html = generateTicketHtml(baseOptions);
+    expect(html).toContain('https://roundrocklaundry.com/5/admin/order/IS-1FCC7193');
+    expect(html).not.toContain('/site/tracking?orderId=');
+  });
+
+  it('uses internal URL when ticketType is explicitly internal', () => {
+    const html = generateTicketHtml({ ...baseOptions, ticketType: 'internal' });
+    expect(html).toContain('https://roundrocklaundry.com/5/admin/order/IS-1FCC7193');
+    expect(html).not.toContain('/site/tracking?orderId=');
+  });
+
+  it('uses customer tracking URL when ticketType is customer', () => {
+    const html = generateTicketHtml({ ...baseOptions, ticketType: 'customer' });
+    expect(html).toContain('https://roundrocklaundry.com/5/site/tracking?orderId=IS-1FCC7193');
+    expect(html).not.toContain('/admin/order/');
+  });
+
+  it('includes orderId in both ticket types', () => {
+    const internalHtml = generateTicketHtml({ ...baseOptions, ticketType: 'internal' });
+    const customerHtml = generateTicketHtml({ ...baseOptions, ticketType: 'customer' });
+    expect(internalHtml).toContain('IS-1FCC7193');
+    expect(customerHtml).toContain('IS-1FCC7193');
+  });
+
+  it('includes customerName in both ticket types', () => {
+    const internalHtml = generateTicketHtml({ ...baseOptions, ticketType: 'internal' });
+    const customerHtml = generateTicketHtml({ ...baseOptions, ticketType: 'customer' });
+    expect(internalHtml).toContain('John Doe');
+    expect(customerHtml).toContain('John Doe');
   });
 });

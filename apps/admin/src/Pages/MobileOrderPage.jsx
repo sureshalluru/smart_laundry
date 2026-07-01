@@ -8,12 +8,6 @@ import {
   Text,
   Badge,
   Spinner,
-  Table,
-  Thead,
-  Tbody,
-  Tr,
-  Th,
-  Td,
   Divider,
   Icon,
   Center,
@@ -24,24 +18,17 @@ import {
 } from '@chakra-ui/react';
 import {
   FaUser,
-  FaPhone,
-  FaCalendarAlt,
   FaShoppingBag,
   FaUserCheck,
-  FaCamera,
-  FaExchangeAlt,
+  FaWeight,
   FaBarcode,
   FaTshirt,
-  FaEdit,
-  FaHistory,
-  FaPrint,
-  FaCheck,
+  FaCog,
 } from 'react-icons/fa';
 import { useEmployeeAuth } from '../Context/EmployeeAuthContext';
-import { generateTicketHtml } from '../utils/ticketPrint';
-import { fetchShopDetails } from './AdminHomePage';
-import MobileEditServices from '../Components/MobileOrder/MobileEditServices';
-import MobileOrderHistory from '../Components/MobileOrder/MobileOrderHistory';
+import MobilePhotoAction from '../Components/MobileOrder/MobilePhotoAction';
+import MobileWeightEntry from '../Components/MobileOrder/MobileWeightEntry';
+import ItemTrackingPanel from '../Components/ItemTracking/ItemTrackingPanel';
 
 const API_URL = process.env.REACT_APP_AWS_API_URL || '';
 
@@ -65,31 +52,11 @@ function getStatusColor(status) {
 }
 
 /**
- * Formats a date string for mobile display.
- */
-function formatDate(dateStr) {
-  if (!dateStr) return 'N/A';
-  try {
-    const d = new Date(dateStr);
-    return d.toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-    });
-  } catch {
-    return dateStr;
-  }
-}
-
-/** Statuses where "Scan Received" (intake tracking) is available */
-const INTAKE_ELIGIBLE_STATUSES = ['ReceivedAtFacility', 'Processing', 'ProcessingStarted'];
-
-/** Statuses where "Scan Fold" (fold tracking) is available */
-const FOLD_ELIGIBLE_STATUSES = ['ProcessingCompleted', 'ReadyForDelivery'];
-
-/**
- * MobileOrderPage — dedicated mobile-optimized page for viewing a single order.
- * Accessed via /:laundryId/admin/order/:orderId after employee authentication.
+ * MobileOrderPage — Streamlined mobile-optimized page for processing a single order.
+ * Accessed via /:laundryId/admin/order/:orderId after employee PIN authentication.
+ *
+ * Displays: order summary (customer name, order ID, services, status badge)
+ * Actions: Scan Received, Processing, Fold Complete, Enter Weight/Count
  */
 const MobileOrderPage = () => {
   const { laundryId, orderId } = useParams();
@@ -101,19 +68,20 @@ const MobileOrderPage = () => {
   const [error, setError] = useState(null);
   const [trackingRecord, setTrackingRecord] = useState(null);
 
-  // Edit Services/Products drawer
+  // Active photo action state
+  const [activeAction, setActiveAction] = useState(null); // 'scan_received' | 'processing' | 'fold_complete' | null
+
+  // Track vision results display after successful actions
+  const [showVisionResults, setShowVisionResults] = useState(null); // 'scan_received' | 'fold_complete' | null
+
+  // Weight/Count entry drawer
   const {
-    isOpen: isEditServicesOpen,
-    onOpen: onEditServicesOpen,
-    onClose: onEditServicesClose,
+    isOpen: isWeightEntryOpen,
+    onOpen: onWeightEntryOpen,
+    onClose: onWeightEntryClose,
   } = useDisclosure();
 
-  // Order History drawer
-  const {
-    isOpen: isHistoryOpen,
-    onOpen: onHistoryOpen,
-    onClose: onHistoryClose,
-  } = useDisclosure();
+  const employeeId = session?.employeeId || '';
 
   const fetchOrder = useCallback(async () => {
     setLoading(true);
@@ -169,7 +137,7 @@ const MobileOrderPage = () => {
     }
   }, [laundryId, orderId, fetchOrder, fetchTrackingRecord]);
 
-  // Refresh tracking status and order when page regains focus (returning from upload page)
+  // Refresh tracking status and order when page regains focus
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible' && laundryId && orderId) {
@@ -193,104 +161,25 @@ const MobileOrderPage = () => {
     };
   }, [laundryId, orderId, fetchTrackingRecord, fetchOrder]);
 
-  const hasIntakeRecord = trackingRecord?.intakeRecord != null;
-  const hasFoldRecord = trackingRecord?.foldRecord != null;
-
   /**
-   * Navigate to the item tracking upload page for the given phase.
-   * Calls the qr-code endpoint to generate a token, then navigates to /track/{token}.
+   * Called when a photo action completes successfully.
+   * Refreshes order data and shows vision results if applicable.
    */
-  const handleItemTracking = async (phase) => {
-    try {
-      const employeeId = session?.employeeId || 'EMP';
-      const params = new URLSearchParams({
-        orderId,
-        laundryId,
-        phase,
-        employeeId,
-        baseUrl: window.location.origin,
-      });
-      const res = await fetch(`${API_URL}/api/admin/item-tracking/qr-code?${params}`);
-      if (res.ok) {
-        const data = await res.json();
-        // Navigate to the upload page - opens in same window
-        window.location.href = data.qrUrl;
-      } else {
-        toast({
-          title: 'Error',
-          description: 'Failed to generate item tracking link. Please try again.',
-          status: 'error',
-          duration: 3000,
-          isClosable: true,
-        });
-      }
-    } catch (e) {
-      console.error('Failed to launch item tracking:', e);
-      toast({
-        title: 'Error',
-        description: 'Failed to launch item tracking. Please check your connection.',
-        status: 'error',
-        duration: 3000,
-        isClosable: true,
-      });
+  const handlePhotoComplete = (actionType) => {
+    fetchOrder();
+    fetchTrackingRecord();
+    setActiveAction(null);
+    // Show vision results inline for scan_received and fold_complete
+    if (actionType === 'scan_received' || actionType === 'fold_complete') {
+      setShowVisionResults(actionType);
     }
   };
 
   /**
-   * Print ticket using the shared generateTicketHtml utility.
-   * Creates a hidden iframe, writes the HTML, and triggers the browser print dialog.
+   * Called when weight/count entry is saved.
    */
-  const handlePrintTicket = async () => {
-    try {
-      const shop = await fetchShopDetails(laundryId);
-
-      const htmlContent = generateTicketHtml({
-        orderId: order.orderId,
-        laundryId,
-        userDomain: shop.userDomain || null,
-        bags: order.laundryBags || 1,
-        storeName: shop.name,
-        storeAddress: shop.address,
-        storePhone: shop.phone,
-        storeEmail: shop.email,
-        customerName: order.customerName,
-        customerPhone: order.customerPhone,
-        employeeName: session?.fullName || 'N/A',
-        dueDate: order.dropoffDate,
-        dueTimeInterval: order.dropoffTimeInterval,
-        orderDate: order.pickupDate,
-        services: order.services,
-        products: order.products,
-        subTotal: order.subTotal,
-        coupon: order.coupon,
-        discountedPrice: order.discountedPrice,
-        tipAmount: order.tip?.tipAmount,
-        grandTotal: order.grandTotal,
-        balanceDue: order.balanceDue,
-        notes: order.specialInstructions,
-      });
-
-      // Print via hidden iframe — same pattern as QuickPOSPage and OrdersInfoManagement
-      const iframe = document.createElement('iframe');
-      iframe.style.position = 'absolute';
-      iframe.style.top = '-9999px';
-      iframe.style.left = '-9999px';
-      iframe.style.width = '0';
-      iframe.style.height = '0';
-      document.body.appendChild(iframe);
-      const doc = iframe.contentDocument || iframe.contentWindow.document;
-      doc.open();
-      doc.write(htmlContent);
-      doc.close();
-      setTimeout(() => {
-        iframe.contentWindow.focus();
-        iframe.contentWindow.print();
-        setTimeout(() => document.body.removeChild(iframe), 2000);
-      }, 800);
-    } catch (err) {
-      console.error('Error printing ticket:', err);
-      toast({ title: 'Print Failed', description: 'Failed to print ticket.', status: 'error', duration: 3000, isClosable: true });
-    }
+  const handleWeightSaved = () => {
+    fetchOrder();
   };
 
   // Loading state
@@ -326,7 +215,6 @@ const MobileOrderPage = () => {
   }
 
   const services = order.services || [];
-  const products = order.products || [];
   const employeeName = session?.fullName || 'Unknown Employee';
 
   return (
@@ -348,10 +236,10 @@ const MobileOrderPage = () => {
           </Text>
         </HStack>
 
-        {/* Order Header */}
+        {/* Order Summary */}
         <Box bg="white" borderRadius="lg" p={4} shadow="sm">
           <VStack spacing={3} align="stretch">
-            {/* Order ID and Status */}
+            {/* Order ID and Status Badge */}
             <HStack justify="space-between" align="center">
               <Text fontSize="lg" fontWeight="bold" color="gray.800">
                 {order.orderId}
@@ -369,242 +257,163 @@ const MobileOrderPage = () => {
 
             <Divider />
 
-            {/* Customer Info */}
-            <VStack spacing={2} align="stretch">
-              <HStack spacing={2}>
-                <Icon as={FaUser} color="gray.500" boxSize={3} />
-                <Text fontSize="sm" color="gray.700">
-                  {order.customerName || 'N/A'}
-                </Text>
-              </HStack>
-              <HStack spacing={2}>
-                <Icon as={FaPhone} color="gray.500" boxSize={3} />
-                <Text fontSize="sm" color="gray.700">
-                  {order.customerPhone || 'N/A'}
-                </Text>
-              </HStack>
-            </VStack>
-
-            <Divider />
-
-            {/* Due Date and Order Type */}
-            <HStack justify="space-between" align="center">
-              <HStack spacing={2}>
-                <Icon as={FaCalendarAlt} color="gray.500" boxSize={3} />
-                <Text fontSize="xs" color="gray.600">
-                  Due: {formatDate(order.dropoffDate)}
-                  {order.dropoffTimeInterval ? ` (${order.dropoffTimeInterval})` : ''}
-                </Text>
-              </HStack>
-              {order.orderType && (
-                <Badge colorScheme="gray" fontSize="2xs" variant="outline">
-                  {order.orderType}
-                </Badge>
-              )}
-            </HStack>
-          </VStack>
-        </Box>
-
-        {/* Order Summary — Services */}
-        {services.length > 0 && (
-          <Box bg="white" borderRadius="lg" p={4} shadow="sm">
-            <Text fontSize="sm" fontWeight="bold" color="gray.700" mb={2}>
-              Services
-            </Text>
-            <Box overflowX="auto">
-              <Table size="sm" variant="simple">
-                <Thead>
-                  <Tr>
-                    <Th fontSize="2xs" px={1}>Qty/Weight</Th>
-                    <Th fontSize="2xs" px={1}>Service</Th>
-                    <Th fontSize="2xs" px={1} isNumeric>Price</Th>
-                  </Tr>
-                </Thead>
-                <Tbody>
-                  {services.map((svc, idx) => (
-                    <Tr key={svc.id || idx}>
-                      <Td fontSize="xs" px={1}>
-                        {svc.weightOrCount != null ? svc.weightOrCount : '-'}
-                      </Td>
-                      <Td fontSize="xs" px={1}>
-                        {svc.service || svc.serviceName || 'Service'}
-                      </Td>
-                      <Td fontSize="xs" px={1} isNumeric>
-                        ${(svc.servicePrice || 0).toFixed(2)}
-                      </Td>
-                    </Tr>
-                  ))}
-                </Tbody>
-              </Table>
-            </Box>
-          </Box>
-        )}
-
-        {/* Order Summary — Products */}
-        {products.length > 0 && (
-          <Box bg="white" borderRadius="lg" p={4} shadow="sm">
-            <Text fontSize="sm" fontWeight="bold" color="gray.700" mb={2}>
-              Products
-            </Text>
-            <Box overflowX="auto">
-              <Table size="sm" variant="simple">
-                <Thead>
-                  <Tr>
-                    <Th fontSize="2xs" px={1}>Count</Th>
-                    <Th fontSize="2xs" px={1}>Product</Th>
-                    <Th fontSize="2xs" px={1} isNumeric>Price</Th>
-                  </Tr>
-                </Thead>
-                <Tbody>
-                  {products.map((prod, idx) => (
-                    <Tr key={prod.id || idx}>
-                      <Td fontSize="xs" px={1}>
-                        {prod.product_count || prod.productCount || '-'}
-                      </Td>
-                      <Td fontSize="xs" px={1}>
-                        {prod.product_name || prod.productName || 'Product'}
-                      </Td>
-                      <Td fontSize="xs" px={1} isNumeric>
-                        ${parseFloat(prod.product_price || prod.productPrice || 0).toFixed(2)}
-                      </Td>
-                    </Tr>
-                  ))}
-                </Tbody>
-              </Table>
-            </Box>
-          </Box>
-        )}
-
-        {/* Order Totals */}
-        <Box bg="white" borderRadius="lg" p={4} shadow="sm">
-          <VStack spacing={1} align="stretch">
-            <HStack justify="space-between">
-              <Text fontSize="xs" color="gray.600">Subtotal</Text>
-              <Text fontSize="xs" fontWeight="medium">${(order.subTotal || 0).toFixed(2)}</Text>
-            </HStack>
-            {order.discountedPrice > 0 && (
-              <HStack justify="space-between">
-                <Text fontSize="xs" color="gray.600">
-                  Discount {order.coupon && order.coupon !== 'None' ? `(${order.coupon})` : ''}
-                </Text>
-                <Text fontSize="xs" color="green.600">-${(order.discountedPrice || 0).toFixed(2)}</Text>
-              </HStack>
-            )}
-            {order.tip?.tipAmount > 0 && (
-              <HStack justify="space-between">
-                <Text fontSize="xs" color="gray.600">Tip</Text>
-                <Text fontSize="xs" fontWeight="medium">${(order.tip.tipAmount || 0).toFixed(2)}</Text>
-              </HStack>
-            )}
-            <Divider my={1} />
-            <HStack justify="space-between">
-              <Text fontSize="sm" fontWeight="bold" color="gray.800">Grand Total</Text>
-              <Text fontSize="sm" fontWeight="bold" color="gray.800">
-                ${(order.grandTotal || 0).toFixed(2)}
+            {/* Customer Name */}
+            <HStack spacing={2}>
+              <Icon as={FaUser} color="gray.500" boxSize={3} />
+              <Text fontSize="sm" color="gray.700">
+                {order.customerName || 'N/A'}
               </Text>
             </HStack>
-            {order.balanceDue > 0 && (
-              <HStack justify="space-between">
-                <Text fontSize="xs" color="red.600" fontWeight="medium">Balance Due</Text>
-                <Text fontSize="xs" color="red.600" fontWeight="medium">
-                  ${(order.balanceDue || 0).toFixed(2)}
+
+            {/* Services List */}
+            {services.length > 0 && (
+              <Box>
+                <Text fontSize="xs" fontWeight="bold" color="gray.600" mb={1}>
+                  Services
                 </Text>
-              </HStack>
+                <VStack spacing={1} align="stretch">
+                  {services.map((svc, idx) => (
+                    <HStack key={svc.id || idx} justify="space-between">
+                      <Text fontSize="xs" color="gray.700">
+                        {svc.service || svc.serviceName || 'Service'}
+                      </Text>
+                      <Text fontSize="xs" color="gray.500">
+                        {svc.weightOrCount != null ? svc.weightOrCount : '-'}
+                        {svc.inputWeight ? ' lbs' : ' pcs'}
+                      </Text>
+                    </HStack>
+                  ))}
+                </VStack>
+              </Box>
             )}
           </VStack>
         </Box>
 
-        {/* Action Buttons Grid */}
+        {/* Action Buttons */}
         <Box bg="white" borderRadius="lg" p={4} shadow="sm">
           <Text fontSize="sm" fontWeight="bold" color="gray.700" mb={3}>
             Actions
           </Text>
           <SimpleGrid columns={2} spacing={3}>
             <Button
-              leftIcon={<FaCamera />}
-              variant="outline"
-              colorScheme="blue"
+              leftIcon={<FaBarcode />}
+              variant={activeAction === 'scan_received' ? 'solid' : 'outline'}
+              colorScheme="cyan"
               size="md"
               minH="44px"
               fontSize="xs"
-              onClick={() => {/* Placeholder - implemented in Task 5 */}}
+              onClick={() => setActiveAction(activeAction === 'scan_received' ? null : 'scan_received')}
             >
-              Upload Scale Photo
+              Scan Received
             </Button>
             <Button
-              leftIcon={<FaExchangeAlt />}
+              leftIcon={<FaCog />}
+              variant={activeAction === 'processing' ? 'solid' : 'outline'}
+              colorScheme="yellow"
+              size="md"
+              minH="44px"
+              fontSize="xs"
+              onClick={() => setActiveAction(activeAction === 'processing' ? null : 'processing')}
+            >
+              Processing
+            </Button>
+            <Button
+              leftIcon={<FaTshirt />}
+              variant={activeAction === 'fold_complete' ? 'solid' : 'outline'}
+              colorScheme="teal"
+              size="md"
+              minH="44px"
+              fontSize="xs"
+              onClick={() => setActiveAction(activeAction === 'fold_complete' ? null : 'fold_complete')}
+            >
+              Fold Complete
+            </Button>
+            <Button
+              leftIcon={<FaWeight />}
               variant="outline"
               colorScheme="purple"
               size="md"
               minH="44px"
               fontSize="xs"
-              onClick={() => {/* Placeholder - implemented in Task 5 */}}
+              onClick={onWeightEntryOpen}
             >
-              Change Status
-            </Button>
-            {INTAKE_ELIGIBLE_STATUSES.includes(order.orderStatus) && (
-              <Button
-                leftIcon={<FaBarcode />}
-                rightIcon={hasIntakeRecord ? <Icon as={FaCheck} color="green.500" /> : undefined}
-                variant="outline"
-                colorScheme="cyan"
-                size="md"
-                minH="44px"
-                fontSize="xs"
-                onClick={() => handleItemTracking('intake')}
-              >
-                {hasIntakeRecord ? 'Redo Intake' : 'Scan Received'}
-              </Button>
-            )}
-            {FOLD_ELIGIBLE_STATUSES.includes(order.orderStatus) && (
-              <Button
-                leftIcon={<FaTshirt />}
-                rightIcon={hasFoldRecord ? <Icon as={FaCheck} color="green.500" /> : undefined}
-                variant="outline"
-                colorScheme="teal"
-                size="md"
-                minH="44px"
-                fontSize="xs"
-                onClick={() => handleItemTracking('fold')}
-              >
-                {hasFoldRecord ? 'Redo Fold' : 'Scan Fold'}
-              </Button>
-            )}
-            <Button
-              leftIcon={<FaEdit />}
-              variant="outline"
-              colorScheme="orange"
-              size="md"
-              minH="44px"
-              fontSize="xs"
-              onClick={onEditServicesOpen}
-            >
-              Edit Services/Products
-            </Button>
-            <Button
-              leftIcon={<FaHistory />}
-              variant="outline"
-              colorScheme="gray"
-              size="md"
-              minH="44px"
-              fontSize="xs"
-              onClick={onHistoryOpen}
-            >
-              View Order History
-            </Button>
-            <Button
-              leftIcon={<FaPrint />}
-              variant="outline"
-              colorScheme="green"
-              size="md"
-              minH="44px"
-              fontSize="xs"
-              onClick={handlePrintTicket}
-            >
-              Print Ticket
+              Enter Weight/Count
             </Button>
           </SimpleGrid>
         </Box>
+
+        {/* Active Photo Action */}
+        {activeAction === 'scan_received' && (
+          <Box bg="white" borderRadius="lg" p={4} shadow="sm">
+            <Text fontSize="sm" fontWeight="bold" color="cyan.700" mb={3}>
+              📷 Scan Received
+            </Text>
+            <MobilePhotoAction
+              order={order}
+              actionType="scan_received"
+              targetStatus="ReceivedAtFacility"
+              imageType="scan_received"
+              employeeId={employeeId}
+              onComplete={() => handlePhotoComplete('scan_received')}
+            />
+          </Box>
+        )}
+
+        {activeAction === 'processing' && (
+          <Box bg="white" borderRadius="lg" p={4} shadow="sm">
+            <Text fontSize="sm" fontWeight="bold" color="yellow.700" mb={3}>
+              📷 Processing
+            </Text>
+            <MobilePhotoAction
+              order={order}
+              actionType="processing"
+              targetStatus="Processing"
+              imageType="processing"
+              employeeId={employeeId}
+              onComplete={() => handlePhotoComplete('processing')}
+            />
+          </Box>
+        )}
+
+        {activeAction === 'fold_complete' && (
+          <Box bg="white" borderRadius="lg" p={4} shadow="sm">
+            <Text fontSize="sm" fontWeight="bold" color="teal.700" mb={3}>
+              📷 Fold Complete
+            </Text>
+            <MobilePhotoAction
+              order={order}
+              actionType="fold_complete"
+              targetStatus="ReadyForDelivery"
+              imageType="fold_complete"
+              employeeId={employeeId}
+              onComplete={() => handlePhotoComplete('fold_complete')}
+            />
+          </Box>
+        )}
+
+        {/* Vision Results (shown after successful Scan Received / Fold Complete) */}
+        {showVisionResults && !activeAction && (
+          <Box bg="white" borderRadius="lg" p={4} shadow="sm">
+            <Text fontSize="sm" fontWeight="bold" color="gray.700" mb={2}>
+              🔍 AI Item Detection
+            </Text>
+            <ItemTrackingPanel
+              orderId={orderId}
+              laundryId={laundryId}
+              orderStatus={order.orderStatus}
+              employeeId={employeeId}
+            />
+            <Button
+              size="sm"
+              variant="ghost"
+              colorScheme="gray"
+              mt={2}
+              onClick={() => setShowVisionResults(null)}
+            >
+              Dismiss
+            </Button>
+          </Box>
+        )}
 
         {/* Special Instructions */}
         {order.specialInstructions && (
@@ -619,21 +428,14 @@ const MobileOrderPage = () => {
         )}
       </VStack>
 
-      {/* Edit Services/Products Drawer */}
-      <MobileEditServices
+      {/* Weight/Count Entry Drawer */}
+      <MobileWeightEntry
         order={order}
         laundryId={laundryId}
-        isOpen={isEditServicesOpen}
-        onClose={onEditServicesClose}
-        onOrderUpdated={fetchOrder}
-      />
-
-      {/* Order History Drawer */}
-      <MobileOrderHistory
-        orderId={orderId}
-        laundryId={laundryId}
-        isOpen={isHistoryOpen}
-        onClose={onHistoryClose}
+        employeeId={employeeId}
+        isOpen={isWeightEntryOpen}
+        onClose={onWeightEntryClose}
+        onSaved={handleWeightSaved}
       />
     </Box>
   );

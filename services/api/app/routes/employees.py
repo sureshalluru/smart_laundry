@@ -89,6 +89,34 @@ async def validate_credentials(
         return {"body": {"isValidated": True, "empId": emp["emp_id"], "role": emp["role"], "fullName": full_name}}
 
 
+@router.post("/validate-pin")
+async def validate_pin(
+    body: dict = Body(...),
+):
+    """Validate employee by passcode + laundryId only (no empId required).
+    This IS the auth mechanism for the mobile PIN flow."""
+    laundry_id = body.get("laundryId", "")
+    passcode = body.get("passcode", "")
+
+    if not laundry_id or not passcode:
+        return {"body": {"isValidated": False, "error": "Missing required parameters: laundryId or passcode"}}
+
+    with get_db() as conn:
+        cur = get_cursor(conn)
+        cur.execute("""
+            SELECT emp_id, laundry_id, role, first_name, last_name
+            FROM shop.employees
+            WHERE passcode = %s AND laundry_id = %s AND is_active = TRUE
+        """, (passcode, laundry_id))
+        emp = cur.fetchone()
+
+        if not emp:
+            return {"body": {"isValidated": False, "error": "Invalid PIN"}}
+
+        full_name = f"{emp['first_name']} {emp['last_name']}".strip()
+        return {"body": {"isValidated": True, "empId": emp["emp_id"], "role": emp["role"], "fullName": full_name}}
+
+
 @router.delete("/delete")
 async def delete_employee(
     employeeId: str = Query(...),

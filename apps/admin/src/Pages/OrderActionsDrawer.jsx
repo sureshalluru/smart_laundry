@@ -14,7 +14,7 @@ import {
     useBreakpointValue
 } from "@chakra-ui/react";
 import { QRCodeSVG } from "qrcode.react";
-import { FaHistory, FaTicketAlt, FaReceipt, FaFileInvoice  } from "react-icons/fa";
+import { FaHistory, FaTicketAlt, FaReceipt, FaFileInvoice, FaUserTag  } from "react-icons/fa";
 import {NotificationButton} from "./SendNotification";
 import { buildOrderUrl } from "../utils/ticketPrint";
 import axios from "axios";
@@ -90,13 +90,23 @@ const OrderActionsDrawer = ({ isOpen, onClose, order, handleOrderHistory, handle
                                 </Tooltip>
                             )}
 
-                            <Tooltip label="Print Ticket" aria-label="Print Ticket Tooltip">
+                            <Tooltip label="Internal Print" aria-label="Internal Print Tooltip">
                                 <IconButton
                                     icon={<FaTicketAlt />}
                                     colorScheme="blue"
                                     size="lg"
-                                    onClick={() => handlePrintTicket(order)}
-                                    aria-label="Print Ticket"
+                                    onClick={() => handlePrintTicket(order, 'internal')}
+                                    aria-label="Internal Print"
+                                />
+                            </Tooltip>
+
+                            <Tooltip label="Customer Print" aria-label="Customer Print Tooltip">
+                                <IconButton
+                                    icon={<FaUserTag />}
+                                    colorScheme="green"
+                                    size="lg"
+                                    onClick={() => handlePrintTicket(order, 'customer')}
+                                    aria-label="Customer Print"
                                 />
                             </Tooltip>
 

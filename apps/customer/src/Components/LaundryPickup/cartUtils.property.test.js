@@ -479,12 +479,12 @@ describe('Feature: unified-cart-order-flow, Property 6: Order payload constructi
     );
   });
 
-  it('derivePricingType returns "per_bag" when all items are per-piece', () => {
+  it('derivePricingType returns "per_item" when all items are per-piece', () => {
     fc.assert(
       fc.property(
         fc.array(perPieceItemArb, { minLength: 1, maxLength: 10 }),
         (items) => {
-          expect(derivePricingType(items)).toBe('per_bag');
+          expect(derivePricingType(items)).toBe('per_item');
         }
       ),
       { numRuns: 100 }

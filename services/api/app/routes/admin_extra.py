@@ -1666,3 +1666,439 @@ async def get_expense_categories(
             categories.append(d)
 
     return {"status": "success", "data": {"categories": sorted(categories)}}
+
+
+# ── Photo Upload + Auto Status Change (Mobile Order Workflow) ─────────────────
+
+@router.post("/photo-upload-status")
+async def photo_upload_status(
+    laundryId: str = Query(...),
+    orderId: str = Query(...),
+    targetStatus: str = Query(...),
+    empId: str = Query(...),
+    imageType: str = Query(...),
+    body: dict = Body({}),
+):
+    """
+    Combined photo upload + order status change endpoint for mobile order workflow.
+    Uploads photo to S3, updates order status and image URL in a single transaction,
+    records audit history, and fires off Claude Vision AI in parallel for intake/fold photos.
+
+    No admin JWT auth required — protected by PIN session on frontend.
+
+    Query params:
+        laundryId: Laundry shop ID
+        orderId: Order ID
+        targetStatus: New order status to set
+        empId: Employee ID (from PIN session)
+        imageType: One of 'weight', 'processing', 'scan_received', 'fold_complete'
+
+    Body:
+        { "imageBase64": "data:image/jpeg;base64,..." }
+    """
+    import asyncio
+
+    image_base64 = body.get("imageBase64", "")
+
+    if not image_base64:
+        return {"statusCode": 400, "body": {"message": "Missing imageBase64 in request body"}}
+
+    # Validate imageType
+    valid_image_types = ("weight", "processing", "scan_received", "fold_complete")
+    if imageType not in valid_image_types:
+        return {"statusCode": 400, "body": {"message": f"Invalid imageType. Must be one of: {', '.join(valid_image_types)}"}}
+
+    # Map imageType to the correct DB column
+    image_type_to_column = {
+        "weight": "weight_image_url",
+        "processing": "processing_image_url",
+        "scan_received": "weight_image_url",
+        "fold_complete": "fold_image_url",
+    }
+    db_column = image_type_to_column[imageType]
+
+    # Upload image to S3 using existing service
+    from app.services.s3_service import upload_order_image
+    upload_result = upload_order_image(laundryId, orderId, image_base64, imageType)
+
+    if upload_result["status"] != "success":
+        # Fallback: store base64 directly in DB if S3 fails
+        logger.warning(f"S3 upload failed for {orderId} (photo-upload-status), falling back to DB: {upload_result.get('message')}")
+        if not image_base64.startswith("data:"):
+            image_url = f"data:image/jpeg;base64,{image_base64}"
+        else:
+            image_url = image_base64
+    else:
+        image_url = upload_result["url"]
+
+    # Single DB transaction: update order status, set image URL, set last_updated_by, insert audit history
+    try:
+        with get_db() as conn:
+            cur = get_cursor(conn)
+
+            # Get current order for audit history and payment gate check
+            cur.execute(
+                "SELECT order_id, order_status, payment_status, order_type, customer_id, grand_total FROM orders.orders WHERE order_id = %s AND laundry_id = %s",
+                (orderId, laundryId),
+            )
+            order_row = cur.fetchone()
+            if not order_row:
+                return {"statusCode": 404, "body": {"message": "Order not found"}}
+
+            previous_status = order_row["order_status"]
+
+            # Payment gate: block status transition for unpaid orders targeting post-processing statuses
+            from app.services.payment_service import check_payment_gate
+            gate_result = check_payment_gate(order_row, targetStatus, laundryId)
+            if not gate_result.get("allowed"):
+                return {"statusCode": 400, "body": {"message": gate_result["error"], "photoUploaded": True}}
+
+            # Update order: status, image column, last_updated_by, updated_at
+            cur.execute(f"""
+                UPDATE orders.orders
+                SET order_status = %s,
+                    {db_column} = %s,
+                    last_updated_by = %s,
+                    updated_at = NOW()
+                WHERE order_id = %s AND laundry_id = %s
+            """, (targetStatus, image_url, empId, orderId, laundryId))
+
+            if cur.rowcount == 0:
+                return {"statusCode": 404, "body": {"message": "Order not found or update failed"}}
+
+            # Get employee name for audit record
+            cur.execute(
+                "SELECT first_name, last_name FROM shop.employees WHERE emp_id = %s AND laundry_id = %s",
+                (empId, laundryId),
+            )
+            emp_row = cur.fetchone()
+            emp_name = f"{emp_row['first_name']} {emp_row['last_name']}".strip() if emp_row else empId
+
+            # Insert audit history record
+            cur.execute("""
+                INSERT INTO orders.order_history
+                    (order_id, laundry_id, emp_id, emp_name, action, field_changed, old_value, new_value, change_summary, changed_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
+            """, (
+                orderId,
+                laundryId,
+                empId,
+                emp_name,
+                "photo_upload",
+                "order_status",
+                previous_status,
+                targetStatus,
+                f"Photo uploaded ({imageType}) and status changed from {previous_status} to {targetStatus}",
+            ))
+
+    except Exception as e:
+        logger.exception(f"DB transaction failed for photo-upload-status: order={orderId}")
+        return {"statusCode": 500, "body": {"message": f"Database update failed: {str(e)}"}}
+
+    # Fire off Claude Vision AI in parallel (non-blocking) for scan_received and fold_complete
+    vision_pending = False
+    if imageType in ("scan_received", "fold_complete"):
+        vision_pending = True
+        asyncio.create_task(
+            _run_vision_analysis(laundryId, orderId, empId, image_base64, imageType)
+        )
+
+    return {
+        "statusCode": 200,
+        "body": {
+            "message": "Photo uploaded and status changed",
+            "imageUrl": image_url,
+            "newStatus": targetStatus,
+            "visionPending": vision_pending,
+        },
+    }
+
+
+# ── Employee Update Services (Mobile Order Workflow) ──────────────────────────
+
+@router.post("/employee-update-services")
+async def employee_update_services(
+    body: dict = Body({}),
+):
+    """
+    Update service weights/counts for an order from the mobile employee workflow.
+    Reuses the service-update logic from PUT /api/admin/update-order.
+
+    No admin JWT auth required — protected by PIN session on frontend
+    (same no-auth pattern as employee-order-info).
+
+    Body:
+        {
+            "servicesToUpdate": [
+                { "id": 42, "serviceName": "Wash & Fold", "weightOrCount": 12.5 },
+                { "id": 43, "serviceName": "Dry Clean", "weightOrCount": 3 }
+            ],
+            "empId": "EMP-001",
+            "orderId": "IS-ABC123",
+            "laundryId": "5"
+        }
+    """
+    services_to_update = body.get("servicesToUpdate", [])
+    emp_id = body.get("empId", "")
+    order_id = body.get("orderId", "")
+    laundry_id = body.get("laundryId", "")
+
+    if not order_id or not laundry_id or not emp_id:
+        return {"statusCode": 400, "body": {"message": "Missing required fields: orderId, laundryId, empId"}}
+
+    if not services_to_update:
+        return {"statusCode": 400, "body": {"message": "No services to update"}}
+
+    try:
+        with get_db() as conn:
+            cur = get_cursor(conn)
+
+            # Verify order exists and belongs to the specified laundry
+            cur.execute("""
+                SELECT o.order_id, o.coupon, o.discounted_price,
+                       ot.tip_amount, ot.tip_percentage, ot.tip_type, ot.tip_method, ot.tip_receiver_id
+                FROM orders.orders o
+                LEFT JOIN orders.order_tips ot ON ot.order_id = o.order_id
+                WHERE o.order_id = %s AND o.laundry_id = %s
+            """, (order_id, laundry_id))
+            current_order = cur.fetchone()
+            if not current_order:
+                return {"statusCode": 404, "body": {"message": "Order not found"}}
+
+            # Get service prices from catalog
+            cur.execute("""
+                SELECT service_name, price, input_weight FROM shop.laundry_services
+                WHERE laundry_id = %s AND is_active = TRUE
+            """, (laundry_id,))
+            service_catalog = {r["service_name"].strip().lower(): r for r in cur.fetchall()}
+
+            # Process service updates (by id) — same logic as update-order endpoint
+            for svc in services_to_update:
+                svc_id = svc.get("id")
+                if svc_id:
+                    name = svc.get("serviceName") or svc.get("service", "")
+                    woc = float(svc.get("weightOrCount", 0))
+                    catalog_entry = service_catalog.get(name.strip().lower())
+                    price = float(catalog_entry["price"]) if catalog_entry else float(svc.get("servicePrice", 0))
+                    cur.execute("""
+                        UPDATE orders.order_services
+                        SET service_name = %s, service_price = %s, weight_or_count = %s
+                        WHERE id = %s AND order_id = %s
+                    """, (name, price, woc, svc_id, order_id))
+
+            # Recalculate totals
+            cur.execute("SELECT service_price, weight_or_count FROM orders.order_services WHERE order_id = %s", (order_id,))
+            svc_total = sum(float(r["service_price"] or 0) * float(r["weight_or_count"] or 0) for r in cur.fetchall())
+
+            cur.execute("SELECT product_price, product_count FROM orders.order_products WHERE order_id = %s", (order_id,))
+            prod_total = sum(float(r["product_price"] or 0) * float(r["product_count"] or 0) for r in cur.fetchall())
+
+            sub_total = round(svc_total + prod_total, 2)
+            total_cost = sub_total
+
+            # Apply discount if coupon exists
+            discounted_price = float(current_order.get("discounted_price") or 0)
+            coupon_code = current_order.get("coupon")
+            if coupon_code and discounted_price == 0:
+                cur.execute("""
+                    SELECT discount_type, discount_value, minimum_order_value
+                    FROM shop.promotions WHERE laundry_id = %s AND promo_code = %s AND is_active = TRUE
+                """, (laundry_id, coupon_code))
+                promo = cur.fetchone()
+                if promo and sub_total >= float(promo["minimum_order_value"] or 0):
+                    if promo["discount_type"] == "percentage":
+                        discounted_price = round(sub_total * (float(promo["discount_value"] or 0) / 100), 2)
+                    else:
+                        discounted_price = min(float(promo["discount_value"] or 0), sub_total)
+
+            if discounted_price > 0:
+                total_cost = round(sub_total - discounted_price, 2)
+
+            # Tip recalculation
+            tip_type = current_order["tip_type"] or "noTip"
+            tip_amount = float(current_order["tip_amount"] or 0)
+            if tip_type == "percentage":
+                pct = float(current_order["tip_percentage"] or 0)
+                tip_amount = round(sub_total * (pct / 100), 2)
+                cur.execute("""
+                    INSERT INTO orders.order_tips (order_id, tip_amount, tip_percentage, tip_type, tip_method, tip_receiver_id)
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (order_id) DO UPDATE SET tip_amount = EXCLUDED.tip_amount
+                """, (order_id, tip_amount, current_order["tip_percentage"], tip_type, current_order["tip_method"],
+                      current_order.get("tip_receiver_id")))
+
+            grand_total = round(total_cost + tip_amount, 2)
+
+            # Update order totals and set last_updated_by
+            cur.execute("""
+                UPDATE orders.orders
+                SET sub_total = %s, total_cost = %s, grand_total = %s,
+                    discounted_price = %s, last_updated_by = %s, updated_at = NOW()
+                WHERE order_id = %s AND laundry_id = %s
+            """, (sub_total, total_cost, grand_total, discounted_price, emp_id, order_id, laundry_id))
+
+            # Get employee name for audit record
+            cur.execute(
+                "SELECT first_name, last_name FROM shop.employees WHERE emp_id = %s AND laundry_id = %s",
+                (emp_id, laundry_id),
+            )
+            emp_row = cur.fetchone()
+            emp_name = f"{emp_row['first_name']} {emp_row['last_name']}".strip() if emp_row else emp_id
+
+            # Insert audit history record
+            services_summary = ", ".join(
+                f"{s.get('serviceName', '')}: {s.get('weightOrCount', 0)}" for s in services_to_update
+            )
+            cur.execute("""
+                INSERT INTO orders.order_history
+                    (order_id, laundry_id, emp_id, emp_name, action, field_changed, old_value, new_value, change_summary, changed_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
+            """, (
+                order_id,
+                laundry_id,
+                emp_id,
+                emp_name,
+                "update_services",
+                "services",
+                None,
+                None,
+                f"Services updated: {services_summary}",
+            ))
+
+        return {
+            "statusCode": 200,
+            "body": {
+                "message": "Services updated successfully",
+                "subTotal": sub_total,
+                "totalCost": total_cost,
+                "grandTotal": grand_total,
+            },
+        }
+
+    except Exception as e:
+        logger.exception(f"employee-update-services failed: order={order_id}")
+        return {"statusCode": 500, "body": {"message": f"Update failed: {str(e)}"}}
+
+
+async def _run_vision_analysis(
+    laundry_id: str,
+    order_id: str,
+    employee_id: str,
+    image_base64: str,
+    image_type: str,
+):
+    """
+    Run Claude Vision AI analysis on the uploaded photo in the background.
+    Stores results in the appropriate tracking records table.
+
+    For scan_received: stores in tracking.intake_records (phase = intake)
+    For fold_complete: stores in tracking.fold_records (phase = fold)
+    """
+    import base64
+    from datetime import datetime, timezone
+
+    phase = "intake" if image_type == "scan_received" else "fold"
+
+    try:
+        # Decode the image for vision processing
+        img_data = image_base64
+        if "," in img_data and img_data.startswith("data:"):
+            img_data = img_data.split(",", 1)[1]
+
+        try:
+            image_bytes = base64.b64decode(img_data)
+        except Exception:
+            logger.error(f"[photo-upload-vision] Base64 decode failed: order={order_id}")
+            return
+
+        # Detect content type
+        content_type = "image/jpeg"
+        if image_bytes[:8] == b'\x89PNG\r\n\x1a\n':
+            content_type = "image/png"
+
+        image_data = [(image_bytes, content_type)]
+
+        # Get active categories for this laundry
+        with get_db() as conn:
+            cur = get_cursor(conn)
+            cur.execute(
+                "SELECT name FROM tracking.item_categories WHERE laundry_id = %s AND is_active = TRUE ORDER BY display_order",
+                (laundry_id,),
+            )
+            category_rows = cur.fetchall()
+
+        categories = [row["name"] for row in category_rows]
+        if not categories:
+            from app.migrations.add_item_tracking import DEFAULT_CATEGORIES
+            categories = DEFAULT_CATEGORIES
+
+        # Call Claude Vision
+        from app.services.vision_service import analyze_photos, flag_low_confidence, VisionServiceError
+        vision_result = await analyze_photos(
+            image_urls=[],  # Not needed when image_data is provided
+            categories=categories,
+            phase=phase,
+            image_data=image_data,
+        )
+
+        # Flag low-confidence items
+        flagged_items = flag_low_confidence(vision_result.items)
+
+        # Store results in appropriate tracking table
+        now = datetime.now(timezone.utc)
+
+        with get_db() as conn:
+            cur = get_cursor(conn)
+
+            if phase == "intake":
+                # Upsert into tracking.intake_records
+                cur.execute(
+                    "SELECT record_id FROM tracking.intake_records WHERE order_id = %s AND laundry_id = %s",
+                    (order_id, laundry_id),
+                )
+                existing = cur.fetchone()
+
+                items_for_db = [{"category": item["category"], "count": item["count"]} for item in flagged_items]
+
+                if existing:
+                    # Update existing record with vision results
+                    cur.execute("""
+                        UPDATE tracking.intake_records
+                        SET items = %s::jsonb, employee_id = %s, status = 'ai_detected', confirmed_at = %s
+                        WHERE order_id = %s AND laundry_id = %s
+                    """, (json.dumps(items_for_db), employee_id, now, order_id, laundry_id))
+                else:
+                    # Insert new intake record
+                    cur.execute("""
+                        INSERT INTO tracking.intake_records
+                            (order_id, laundry_id, employee_id, items, photo_urls, status, confirmed_at)
+                        VALUES (%s, %s, %s, %s::jsonb, %s::jsonb, 'ai_detected', %s)
+                    """, (order_id, laundry_id, employee_id, json.dumps(items_for_db), json.dumps([]), now))
+
+            else:
+                # Upsert into tracking.fold_records
+                cur.execute(
+                    "SELECT record_id FROM tracking.fold_records WHERE order_id = %s AND laundry_id = %s",
+                    (order_id, laundry_id),
+                )
+                existing = cur.fetchone()
+
+                items_for_db = [{"category": item["category"], "count": item["count"]} for item in flagged_items]
+
+                if existing:
+                    cur.execute("""
+                        UPDATE tracking.fold_records
+                        SET items = %s::jsonb, employee_id = %s, status = 'ai_detected', confirmed_at = %s
+                        WHERE order_id = %s AND laundry_id = %s
+                    """, (json.dumps(items_for_db), employee_id, now, order_id, laundry_id))
+                else:
+                    cur.execute("""
+                        INSERT INTO tracking.fold_records
+                            (order_id, laundry_id, employee_id, items, photo_urls, discrepancies, acknowledgements, status, confirmed_at)
+                        VALUES (%s, %s, %s, %s::jsonb, %s::jsonb, '[]'::jsonb, '[]'::jsonb, 'ai_detected', %s)
+                    """, (order_id, laundry_id, employee_id, json.dumps(items_for_db), json.dumps([]), now))
+
+        logger.info(f"[photo-upload-vision] Vision analysis complete: order={order_id} phase={phase} items={len(flagged_items)}")
+
+    except Exception as e:
+        logger.error(f"[photo-upload-vision] Vision analysis failed for order={order_id} phase={phase}: {e}")

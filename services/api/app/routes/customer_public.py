@@ -116,7 +116,7 @@ async def customer_place_order(
                 grand_total = round(total_cost + tip_amount, 2)
             # Create a single service entry for bag pricing
             services = [{"serviceName": "Per Bag Service", "servicePrice": bag_price, "weightOrCount": laundry_bags}]
-        elif pricing_type == "mixed" or pricing_type == "per_pound":
+        elif pricing_type == "mixed" or pricing_type == "per_pound" or pricing_type == "per_item":
             # Per-pound or mixed pricing: calculate from services array
             if sub_total == 0 and services:
                 for svc in services:

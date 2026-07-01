@@ -38,14 +38,14 @@ export function getCategoryBadgeCount(items, categoryId) {
 /**
  * Derives the pricing type from cart items.
  * @param {Array} items - Array of CartItem objects
- * @returns {"per_pound"|"per_bag"|"mixed"} pricing type
+ * @returns {"per_pound"|"per_item"|"per_bag"|"mixed"} pricing type
  */
 export function derivePricingType(items) {
   if (!items || items.length === 0) return "per_bag";
   const allWeight = items.every(item => item.inputWeight === true);
   const allPiece = items.every(item => item.inputWeight === false);
   if (allWeight) return "per_pound";
-  if (allPiece) return "per_bag";
+  if (allPiece) return "per_item";
   return "mixed";
 }
 

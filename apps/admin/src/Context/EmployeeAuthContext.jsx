@@ -1,8 +1,8 @@
 /**
  * EmployeeAuthContext — lightweight auth context for employee QR scan sessions.
  * Separate from the admin AuthContext (which requires store-level JWT login).
- * Employees authenticate with their emp ID + 4-digit passcode.
- * Session persists for 8 hours in localStorage.
+ * Employees authenticate with a 4-digit PIN passcode only.
+ * Session persists in sessionStorage — automatically cleared when browser tab closes.
  */
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
@@ -11,21 +11,16 @@ const EmployeeAuthContext = createContext(null);
 
 const API_URL = process.env.REACT_APP_AWS_API_URL || '';
 const SESSION_KEY = 'empSession';
-const SESSION_TTL_MS = 8 * 60 * 60 * 1000; // 8 hours in milliseconds
 
 /**
- * Check if a session object is still valid (not expired and matching laundryId).
- * @param {object|null} session - The session object from localStorage
+ * Check if a session object is valid (matching laundryId if provided).
+ * No expiration check needed — sessionStorage auto-clears on tab close.
+ * @param {object|null} session - The session object from sessionStorage
  * @param {string} [laundryId] - Optional laundryId to verify scope
  * @returns {boolean}
  */
 function checkSessionValidity(session, laundryId) {
-  if (!session || !session.expiresAt) return false;
-
-  const now = new Date();
-  const expiresAt = new Date(session.expiresAt);
-
-  if (now >= expiresAt) return false;
+  if (!session) return false;
 
   if (laundryId && session.laundryId !== String(laundryId)) return false;
 
@@ -35,47 +30,43 @@ function checkSessionValidity(session, laundryId) {
 export function EmployeeAuthProvider({ children }) {
   const [session, setSession] = useState(null);
 
-  // Load session from localStorage on mount
+  // Load session from sessionStorage on mount
   useEffect(() => {
-    const stored = localStorage.getItem(SESSION_KEY);
+    const stored = sessionStorage.getItem(SESSION_KEY);
     if (stored) {
       try {
         const parsed = JSON.parse(stored);
         if (checkSessionValidity(parsed)) {
           setSession(parsed);
         } else {
-          // Expired or invalid — clear it
-          localStorage.removeItem(SESSION_KEY);
+          sessionStorage.removeItem(SESSION_KEY);
         }
       } catch (e) {
-        localStorage.removeItem(SESSION_KEY);
+        sessionStorage.removeItem(SESSION_KEY);
       }
     }
   }, []);
 
   /**
-   * Authenticate an employee via ID + passcode.
+   * Authenticate an employee via 4-digit PIN passcode.
    * @param {string} laundryId
-   * @param {string} empId
    * @param {string} passcode
    * @returns {Promise<object>} The session object on success
    * @throws {Error} On invalid credentials or network error
    */
-  const login = useCallback(async (laundryId, empId, passcode) => {
-    const response = await axios.post(`${API_URL}/api/employees/validate-credentials`, {
+  const login = useCallback(async (laundryId, passcode) => {
+    const response = await axios.post(`${API_URL}/api/employees/validate-pin`, {
       laundryId,
-      empId,
       passcode,
     });
 
     const data = response.data?.body || response.data;
 
     if (!data.isValidated) {
-      throw new Error(data.error || 'Invalid credentials');
+      throw new Error(data.error || 'Invalid PIN');
     }
 
     const authenticatedAt = new Date().toISOString();
-    const expiresAt = new Date(Date.now() + SESSION_TTL_MS).toISOString();
 
     const newSession = {
       employeeId: data.empId,
@@ -83,10 +74,9 @@ export function EmployeeAuthProvider({ children }) {
       role: data.role || 'Employee',
       fullName: data.fullName || data.empId,
       authenticatedAt,
-      expiresAt,
     };
 
-    localStorage.setItem(SESSION_KEY, JSON.stringify(newSession));
+    sessionStorage.setItem(SESSION_KEY, JSON.stringify(newSession));
     setSession(newSession);
 
     return newSession;
@@ -96,7 +86,7 @@ export function EmployeeAuthProvider({ children }) {
    * Clear the employee session.
    */
   const logout = useCallback(() => {
-    localStorage.removeItem(SESSION_KEY);
+    sessionStorage.removeItem(SESSION_KEY);
     setSession(null);
   }, []);
 

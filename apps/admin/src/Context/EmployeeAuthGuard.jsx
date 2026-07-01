@@ -16,7 +16,7 @@ export default function EmployeeAuthGuard({ children }) {
     const returnUrl = encodeURIComponent(location.pathname);
     return (
       <Navigate
-        to={`/${laundryId}/admin/employee-login?returnUrl=${returnUrl}`}
+        to={`/${laundryId}/admin/pin?returnUrl=${returnUrl}`}
         replace
       />
     );
