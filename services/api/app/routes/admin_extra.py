@@ -496,11 +496,11 @@ async def send_notifications(
             try:
                 with get_db() as conn:
                     cur = get_cursor(conn)
-                    cur.execute("SELECT laundry_name, laundry_email FROM shop.laundry_shops WHERE laundry_id = %s", (laundry_id,))
+                    cur.execute("SELECT laundry_name, contact_email FROM shop.laundry_shops WHERE laundry_id = %s", (laundry_id,))
                     shop = cur.fetchone()
                     if shop:
                         sender_name = shop.get("laundry_name")
-                        reply_to = shop.get("laundry_email")
+                        reply_to = shop.get("contact_email")
             except Exception:
                 pass
         send_email(recipient, subject, message, sender_name=sender_name, reply_to=reply_to)

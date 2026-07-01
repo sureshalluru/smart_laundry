@@ -474,13 +474,13 @@ async def customer_place_order(
                 """, (customer_id,))
                 cust = cur_notif.fetchone()
 
-                cur_notif.execute("SELECT laundry_name, laundry_email FROM shop.laundry_shops WHERE laundry_id = %s", (laundry_id,))
+                cur_notif.execute("SELECT laundry_name, contact_email FROM shop.laundry_shops WHERE laundry_id = %s", (laundry_id,))
                 shop = cur_notif.fetchone()
 
             if cust and shop:
                 first_name = cust["first_name"] or "Customer"
                 laundry_name = shop["laundry_name"] or "Your Laundry"
-                laundry_email = shop.get("laundry_email") or None
+                contact_email = shop.get("contact_email") or None
 
                 # Build service summary
                 if pricing_type == "per_bag":
@@ -505,7 +505,7 @@ async def customer_place_order(
 
                 if cust.get("notif_email", True) and cust["email"]:
                     send_email(cust["email"], f"Order Confirmed - {order_id}", html_body,
-                              sender_name=laundry_name, reply_to=laundry_email)
+                              sender_name=laundry_name, reply_to=contact_email)
 
                 if cust.get("notif_phone", True) and cust["phone_number"]:
                     sms_msg = f"Hi {first_name}! Order {order_id} confirmed. Pickup: {pickup_date} ({pickup_time_interval}). - {laundry_name}"

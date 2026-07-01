@@ -30,10 +30,10 @@ def _send_frequency_notification(customer_id, laundry_id, order_id, pickup_date,
                 return
 
             # Get laundry name
-            cur.execute("SELECT laundry_name, laundry_email FROM shop.laundry_shops WHERE laundry_id = %s", (laundry_id,))
+            cur.execute("SELECT laundry_name, contact_email FROM shop.laundry_shops WHERE laundry_id = %s", (laundry_id,))
             shop = cur.fetchone()
             laundry_name = shop["laundry_name"] if shop else "Your Laundry"
-            laundry_email = shop.get("laundry_email") if shop else None
+            contact_email = shop.get("contact_email") if shop else None
 
         first_name = customer["first_name"] or "Customer"
         email = customer["email"]
@@ -51,7 +51,7 @@ def _send_frequency_notification(customer_id, laundry_id, order_id, pickup_date,
             <p>Thank you for choosing {laundry_name}!</p>
             """
             send_email(email, f"Recurring Order Scheduled - {order_id}", html_body,
-                       sender_name=laundry_name, reply_to=laundry_email)
+                       sender_name=laundry_name, reply_to=contact_email)
 
         # SMS
         if customer.get("notif_phone", True) and phone:

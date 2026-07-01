@@ -780,7 +780,7 @@ async def update_order_endpoint(
                         FROM shop.customers WHERE customer_id = %s
                     """, (customer_id_for_notif,))
                     cust = cur.fetchone()
-                    cur.execute("SELECT laundry_name, laundry_email FROM shop.laundry_shops WHERE laundry_id = %s", (laundryId,))
+                    cur.execute("SELECT laundry_name, contact_email FROM shop.laundry_shops WHERE laundry_id = %s", (laundryId,))
                     shop = cur.fetchone()
 
                     if cust and shop:
@@ -818,7 +818,7 @@ async def update_order_endpoint(
                             """
                             send_email(cust["email"], f"Your Laundry is Ready - {orderId}", html_body,
                                       sender_name=laundry_name,
-                                      reply_to=shop.get("laundry_email") or None)
+                                      reply_to=shop.get("contact_email") or None)
 
                         # SMS
                         if cust.get("notif_phone", True) and cust["phone_number"]:
@@ -901,7 +901,7 @@ async def update_order_endpoint(
                         FROM shop.customers WHERE customer_id = %s
                     """, (customer_id_for_review,))
                     cust = cur.fetchone()
-                    cur.execute("SELECT laundry_name, user_domain, laundry_email FROM shop.laundry_shops WHERE laundry_id = %s", (laundryId,))
+                    cur.execute("SELECT laundry_name, user_domain, contact_email FROM shop.laundry_shops WHERE laundry_id = %s", (laundryId,))
                     shop = cur.fetchone()
 
                     # Get who processed the laundry (employee who set status to ProcessingCompleted)
@@ -944,7 +944,7 @@ async def update_order_endpoint(
                             """
                             send_email(cust["email"], f"How was your experience? - {laundry_name}", html_body,
                                       sender_name=laundry_name,
-                                      reply_to=shop.get("laundry_email") or None)
+                                      reply_to=shop.get("contact_email") or None)
 
                         if cust.get("notif_phone", True) and cust["phone_number"]:
                             sms = f"Hi {first_name}! Your order {orderId} is complete."
