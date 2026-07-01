@@ -102,11 +102,24 @@ def _send_reminder(cur, customer_id, laundry_id, reminder_type, stage, message, 
     """Send reminder via SMS/email and log it."""
     from app.services.notification_service import send_sms, send_email
 
+    # Get laundry branding for tenant-branded emails
+    laundry_name = None
+    laundry_email = None
+    try:
+        cur.execute("SELECT laundry_name, laundry_email FROM shop.laundry_shops WHERE laundry_id = %s", (laundry_id,))
+        shop = cur.fetchone()
+        if shop:
+            laundry_name = shop.get("laundry_name")
+            laundry_email = shop.get("laundry_email")
+    except Exception:
+        pass
+
     sent = False
     if phone:
         sent = send_sms(phone, message)
     if email:
-        send_email(email, "We miss you! 🧺", f"<p>{message}</p>")
+        send_email(email, "We miss you! 🧺", f"<p>{message}</p>",
+                   sender_name=laundry_name, reply_to=laundry_email)
         sent = True
 
     # Log the reminder

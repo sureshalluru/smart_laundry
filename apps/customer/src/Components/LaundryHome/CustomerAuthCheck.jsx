@@ -51,6 +51,9 @@ const CustomerAuthCheck = ({ children }) => {
                 } else if (authStatus === "unauthenticated") {
                     const currentPath = window.location.pathname + window.location.search;
                     navigate(`/${laundryId}/login?redirectTo=${encodeURIComponent(currentPath)}`);
+                } else if (authStatus === "authenticated" && !user?.phone) {
+                    // Authenticated but no phone — use sub as customerId
+                    setCustomerId(user?.sub || 'unknown');
                 }
             } catch (error) {
                 console.error("Validation error:", error);
@@ -66,14 +69,23 @@ const CustomerAuthCheck = ({ children }) => {
     }, [authStatus, user, laundryId, navigate]);
 
     if (loading || authStatus === 'configuring') {
-        return <div>Loading...</div>;
+        return (
+            <div style={{display:'flex',justifyContent:'center',alignItems:'center',minHeight:'60vh'}}>
+                <div>Loading...</div>
+            </div>
+        );
     }
 
     if (customerId !== null) {
         return React.cloneElement(children, { laundryId, customerId, customerPaymentId, specialInstructions });
     }
 
-    return null;
+    // Fallback — should not normally reach here, but prevent blank page
+    return (
+        <div style={{display:'flex',justifyContent:'center',alignItems:'center',minHeight:'60vh'}}>
+            <div>Loading your account...</div>
+        </div>
+    );
 };
 
 export default CustomerAuthCheck;

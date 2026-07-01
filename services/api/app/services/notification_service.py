@@ -9,8 +9,15 @@ from app.config import settings
 logger = logging.getLogger(__name__)
 
 
-def send_email(to_email: str, subject: str, html_body: str, sender: str = None):
-    """Send HTML email via Brevo API."""
+def send_email(to_email: str, subject: str, html_body: str, sender: str = None,
+               sender_name: str = None, reply_to: str = None):
+    """Send HTML email via Brevo API.
+    
+    For multi-tenant branding:
+    - sender_name: Display name (e.g., "Spin & Shine Laundromat")
+    - reply_to: Tenant's actual email for customer replies (e.g., "spinandshine@gmail.com")
+    - sender: Override the from email (defaults to platform notifications address)
+    """
     api_key = settings.brevo_api_key
     from_email = sender or settings.source_email
 
@@ -19,22 +26,35 @@ def send_email(to_email: str, subject: str, html_body: str, sender: str = None):
         return False
 
     try:
+        # Build sender with display name for tenant branding
+        sender_payload = {"email": from_email}
+        if sender_name:
+            sender_payload["name"] = sender_name
+
+        email_payload = {
+            "sender": sender_payload,
+            "to": [{"email": to_email}],
+            "subject": subject,
+            "htmlContent": html_body,
+        }
+
+        # Set Reply-To so customer replies go to the tenant's email
+        if reply_to:
+            email_payload["replyTo"] = {"email": reply_to}
+            if sender_name:
+                email_payload["replyTo"]["name"] = sender_name
+
         response = httpx.post(
             "https://api.brevo.com/v3/smtp/email",
             headers={
                 "api-key": api_key,
                 "Content-Type": "application/json",
             },
-            json={
-                "sender": {"email": from_email},
-                "to": [{"email": to_email}],
-                "subject": subject,
-                "htmlContent": html_body,
-            },
+            json=email_payload,
             timeout=10,
         )
         if response.status_code in (200, 201):
-            logger.info("Email sent to %s via Brevo", to_email)
+            logger.info("Email sent to %s via Brevo (from: %s)", to_email, sender_name or from_email)
             return True
         else:
             logger.error("Brevo email failed: %s %s", response.status_code, response.text)
