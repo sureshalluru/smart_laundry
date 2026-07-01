@@ -1,5 +1,5 @@
 import React, { useContext, useEffect, useState } from "react";
-import { Box, Flex, useToast } from "@chakra-ui/react";
+import { Box, Flex, useToast, Image } from "@chakra-ui/react";
 import LoginPage from "../Components/Authentication/LoginPage";
 import SignupPage from "../Components/Authentication/SignupPage";
 import OTPValidationPage from "../Components/Authentication/OTPValidationPage";
@@ -132,7 +132,18 @@ export default function AuthenticationPage() {
             align="center"
             justify="center"
             p={4}
+            direction="column"
         >
+            {laundryData?.laundryLogo && (
+                <Image
+                    src={laundryData.laundryLogo}
+                    alt={laundryData?.laundryName}
+                    maxW="160px"
+                    maxH="80px"
+                    objectFit="contain"
+                    mb={4}
+                />
+            )}
             <Box
                 bg="white"
                 borderRadius="2xl"

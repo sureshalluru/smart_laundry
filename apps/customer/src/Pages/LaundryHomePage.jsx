@@ -102,6 +102,9 @@ const LaundryHomePage = ({laundryId, customerId, customerPaymentId: initialCusto
                                 variant="ghost"
                                 color="white"
                             />
+                            {laundryData?.laundryLogo && (
+                                <img src={laundryData.laundryLogo} alt="" style={{height: '28px', objectFit: 'contain', marginRight: '8px'}} />
+                            )}
                             <Text
                                 as="a"
                                 href={`/${laundryId}/site`}
@@ -178,6 +181,17 @@ const LaundryHomePage = ({laundryId, customerId, customerPaymentId: initialCusto
                             bg={sidebarDarkBg}
                             _hover={{bg: sidebarHoverBg}}
                         />
+
+                        {/* Tenant Logo */}
+                        {!isCollapsed && laundryData?.laundryLogo && (
+                            <img src={laundryData.laundryLogo} alt="" style={{maxHeight: '50px', objectFit: 'contain', marginBottom: '16px', borderRadius: '6px'}} />
+                        )}
+                        {isCollapsed && laundryData?.laundryLogo && (
+                            <img src={laundryData.laundryLogo} alt="" style={{maxHeight: '32px', objectFit: 'contain', marginBottom: '12px', borderRadius: '4px'}} />
+                        )}
+                        {!isCollapsed && !laundryData?.laundryLogo && (
+                            <Text fontSize="sm" fontWeight="bold" mb={3} opacity={0.9}>{laundryData?.laundryName || ''}</Text>
+                        )}
 
                         {/* Sidebar items */}
                         <Stack spacing={4} align="start">

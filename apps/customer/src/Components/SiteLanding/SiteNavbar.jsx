@@ -32,6 +32,9 @@ export default function SiteNavbar({ config }) {
         <Box as="nav" position="sticky" top="0" zIndex="1000" bg="white" borderBottom="1px solid" borderColor="gray.100" boxShadow="sm">
             <Flex maxW="1200px" mx="auto" px={{ base: 4, md: 8 }} py={3} align="center" justify="space-between">
                 <HStack spacing={3}>
+                    {config?.laundryLogo && (
+                        <Image src={config.laundryLogo} alt={laundryName} boxSize={{ base: '32px', md: '40px' }} objectFit="contain" borderRadius="md" />
+                    )}
                     <VStack spacing={0} align="flex-start">
                         <Text fontSize={{ base: 'sm', md: 'md' }} fontWeight="800" color={`${themeColor}.600`}>
                             {laundryName}

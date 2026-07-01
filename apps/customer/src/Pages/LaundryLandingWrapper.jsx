@@ -35,6 +35,7 @@ export default function LaundryLandingWrapper() {
                     setLaundryConfig({
                         laundryId,
                         laundryName: infoRes.data.laundryName,
+                        laundryLogo: infoRes.data.laundryLogo || "",
                         laundryAddress: infoRes.data.laundryAddress,
                         laundryTimeZone: infoRes.data.laundryTimeZone,
                         services: infoRes.data.laundryServices || [],

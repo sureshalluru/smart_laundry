@@ -464,14 +464,26 @@ export default function LaundryPickupPage({laundryId,customerId,customerPaymentI
                                 textAlign="center"
                                 mb={6}
                             >
-                                <Image
-                                    src={LaundryPickupImage}
-                                    alt="Free Laundry Pickup & Delivery"
-                                    mx="auto"
-                                    w={{ base: '260px', md: '340px' }}
-                                    h={{ base: '180px', md: '220px' }}
-                                    objectFit="contain"
-                                />
+                                {laundryData?.laundryLogo ? (
+                                    <Image
+                                        src={laundryData.laundryLogo}
+                                        alt={laundryData?.laundryName}
+                                        mx="auto"
+                                        maxW={{ base: '180px', md: '220px' }}
+                                        maxH={{ base: '100px', md: '120px' }}
+                                        objectFit="contain"
+                                        mb={2}
+                                    />
+                                ) : (
+                                    <Image
+                                        src={LaundryPickupImage}
+                                        alt="Free Laundry Pickup & Delivery"
+                                        mx="auto"
+                                        w={{ base: '260px', md: '340px' }}
+                                        h={{ base: '180px', md: '220px' }}
+                                        objectFit="contain"
+                                    />
+                                )}
                                 <Heading size={{ base: 'md', md: 'lg' }} color="blue.700" mt={4}>
                                     Welcome to {laundryData?.laundryName}
                                 </Heading>
@@ -560,6 +572,11 @@ export default function LaundryPickupPage({laundryId,customerId,customerPaymentI
                                     Change
                                 </Button>
                             </Flex>
+                        )}
+                        {laundryData?.laundryLogo && (
+                            <Box mb={3} textAlign="center">
+                                <Image src={laundryData.laundryLogo} alt={laundryData?.laundryName} maxH={{ base: '60px', md: '80px' }} objectFit="contain" mx="auto" />
+                            </Box>
                         )}
                         <Stepper index={activeStep} size="md" gap="0" colorScheme="blue">
                             {steps.map((step, index) => (

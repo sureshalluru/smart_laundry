@@ -157,7 +157,7 @@ async def create_laundry(body: dict = Body(...), x_platform_key: str = Header(No
     state = body.get("state", "")
     zip_code = body.get("zipCode", "")
     country = body.get("country", "USA")
-    bag_price = float(body.get("bagPrice", 30))
+    bag_price = float(body.get("bagPrice") or 30)
 
     # Owner details
     owner_first_name = body.get("ownerFirstName", "")
