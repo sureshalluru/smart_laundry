@@ -267,7 +267,9 @@ const LaundryHomePage = ({laundryId, customerId, customerPaymentId: initialCusto
                                     <MyOrders customerId={customerId} laundryId={laundryId} laundryTimeZone={laundryTimeZone} />
                                 </Elements>
                                 ) : (
+                                <Elements stripe={loadStripe('pk_test_placeholder')}>
                                     <MyOrders customerId={customerId} laundryId={laundryId} laundryTimeZone={laundryTimeZone} />
+                                </Elements>
                                 )
                             }
                         />

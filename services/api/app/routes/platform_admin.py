@@ -109,37 +109,74 @@ async def delete_laundry(laundry_id: str, x_platform_key: str = Header(None)):
 
         laundry_name = row["laundry_name"]
 
-        # Delete in dependency order (child tables first)
-        # Use safe deletes — skip if table doesn't exist
-        safe_deletes = [
-            "DELETE FROM routes.route_assignments WHERE laundry_id = %s",
-            "DELETE FROM shop.engagement_config WHERE laundry_id = %s",
-            "DELETE FROM shop.customer_reminders WHERE laundry_id = %s",
-            "DELETE FROM orders.order_payments WHERE order_id IN (SELECT order_id FROM orders.orders WHERE laundry_id = %s)",
-            "DELETE FROM orders.order_services WHERE order_id IN (SELECT order_id FROM orders.orders WHERE laundry_id = %s)",
-            "DELETE FROM orders.order_products WHERE order_id IN (SELECT order_id FROM orders.orders WHERE laundry_id = %s)",
-            "DELETE FROM orders.laundry_frequency WHERE laundry_id = %s",
-            "DELETE FROM orders.orders WHERE laundry_id = %s",
-            "UPDATE shop.laundry_services SET category_id = NULL WHERE laundry_id = %s",
-            "DELETE FROM shop.service_categories WHERE laundry_id = %s",
-            "DELETE FROM shop.laundry_services WHERE laundry_id = %s",
-            "DELETE FROM shop.employees WHERE laundry_id = %s",
-            "DELETE FROM shop.delivery_time_slots WHERE laundry_id = %s",
-            "DELETE FROM shop.instore_pickup_time_slots WHERE laundry_id = %s",
-            "DELETE FROM shop.promotions WHERE laundry_id = %s",
-            "DELETE FROM shop.customer_payment_profiles WHERE laundry_id = %s",
-            "DELETE FROM shop.laundry_uber_credentials WHERE laundry_id = %s",
-            "DELETE FROM shop.laundry_shops WHERE laundry_id = %s",
-        ]
+        # Dynamically find and delete ALL rows referencing this laundry_id across all tables.
+        # Query pg_catalog for every FK that references laundry_shops, then delete from those tables first.
+        cur.execute("""
+            SELECT
+                tc.table_schema || '.' || tc.table_name AS child_table,
+                kcu.column_name AS child_column
+            FROM information_schema.table_constraints tc
+            JOIN information_schema.key_column_usage kcu
+                ON tc.constraint_name = kcu.constraint_name AND tc.table_schema = kcu.table_schema
+            JOIN information_schema.constraint_column_usage ccu
+                ON tc.constraint_name = ccu.constraint_name AND tc.table_schema = ccu.table_schema
+            WHERE tc.constraint_type = 'FOREIGN KEY'
+              AND ccu.table_schema = 'shop'
+              AND ccu.table_name = 'laundry_shops'
+              AND ccu.column_name = 'laundry_id'
+        """)
+        fk_refs = cur.fetchall()
 
-        for sql in safe_deletes:
+        # Delete from all referencing tables first
+        for ref in fk_refs:
+            table = ref["child_table"]
+            column = ref["child_column"]
             try:
-                cur.execute(sql, (laundry_id,))
+                cur.execute(f'DELETE FROM {table} WHERE "{column}" = %s', (laundry_id,))
             except Exception as e:
-                # Table might not exist — rollback the failed statement and continue
+                print(f"[DELETE] FK cleanup skipped {table}: {e}")
+                logger.warning(f"FK cleanup skipped {table}.{column}: {e}")
                 conn.rollback()
-                logger.warning(f"Skipped during delete: {e}")
                 cur = get_cursor(conn)
+
+        # Now delete order-related child tables (FKs reference orders.orders, not laundry_shops directly)
+        order_child_tables = [
+            "orders.order_tips",
+            "orders.order_payments",
+            "orders.order_services",
+            "orders.order_products",
+        ]
+        for table in order_child_tables:
+            try:
+                cur.execute(f"DELETE FROM {table} WHERE order_id IN (SELECT order_id FROM orders.orders WHERE laundry_id = %s)", (laundry_id,))
+            except Exception as e:
+                print(f"[DELETE] Order child cleanup skipped {table}: {e}")
+                conn.rollback()
+                cur = get_cursor(conn)
+
+        # Delete orders themselves
+        try:
+            cur.execute("DELETE FROM orders.orders WHERE laundry_id = %s", (laundry_id,))
+        except Exception as e:
+            print(f"[DELETE] Orders delete failed: {e}")
+            conn.rollback()
+            cur = get_cursor(conn)
+
+        # Delete tracking tables (reference laundry_id directly)
+        for table in ["tracking.fold_records", "tracking.intake_records", "tracking.tracking_sessions"]:
+            try:
+                cur.execute(f"DELETE FROM {table} WHERE laundry_id = %s", (laundry_id,))
+            except Exception as e:
+                conn.rollback()
+                cur = get_cursor(conn)
+
+        # Finally delete the laundry shop itself
+        try:
+            cur.execute("DELETE FROM shop.laundry_shops WHERE laundry_id = %s", (laundry_id,))
+        except Exception as e:
+            logger.error(f"FAILED to delete laundry_shops row for {laundry_id}: {e}")
+            conn.rollback()
+            return {"status": "error", "message": f"Failed to delete laundry: {e}"}
 
     logger.info(f"Deleted laundry: {laundry_name} (ID: {laundry_id})")
     return {"status": "success", "message": f"Laundry '{laundry_name}' and all associated data deleted."}
