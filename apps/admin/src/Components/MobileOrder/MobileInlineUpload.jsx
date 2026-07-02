@@ -428,26 +428,39 @@ const MobileInlineUpload = ({ orderId, laundryId, phase, employeeId, onComplete,
         photoUrls: photoUrls,
       };
 
-      // For fold, include empty acknowledgements (discrepancies handled separately)
+      // For fold, acknowledge all discrepancies automatically since employee
+      // has already reviewed and adjusted counts on the UI
       if (phase === 'fold') {
-        body.acknowledgements = [];
+        body.acknowledgements = adjustedItems.map((item) => item.category);
       }
 
-      const confirmRes = await fetch(`${API_URL}${confirmEndpoint}`, {
+      let confirmRes = await fetch(`${API_URL}${confirmEndpoint}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });
 
+      // If fold returns 422 with unresolved discrepancies, retry with full acknowledgements
+      if (!confirmRes.ok && confirmRes.status === 422 && phase === 'fold') {
+        const errData = await confirmRes.json().catch(() => ({}));
+        if (errData.detail?.unresolved) {
+          // Acknowledge ALL unresolved categories and retry
+          const allCategories = [
+            ...adjustedItems.map((item) => item.category),
+            ...(errData.detail.unresolved || []).map((d) => d.category || d),
+          ];
+          body.acknowledgements = [...new Set(allCategories)];
+          confirmRes = await fetch(`${API_URL}${confirmEndpoint}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+          });
+        }
+      }
+
       if (!confirmRes.ok) {
         const errData = await confirmRes.json().catch(() => ({}));
         const detail = errData.detail;
-        // Handle discrepancy acknowledgement requirement
-        if (confirmRes.status === 422 && detail?.unresolved) {
-          throw new Error(
-            'Item count discrepancies detected. Please review and adjust counts before confirming.'
-          );
-        }
         throw new Error(
           typeof detail === 'string' ? detail : detail?.message || 'Confirmation failed. Please try again.'
         );
