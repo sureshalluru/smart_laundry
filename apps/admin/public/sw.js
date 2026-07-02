@@ -1,14 +1,24 @@
 // Minimal service worker for PWA install support
 // This makes the app installable as a desktop shortcut
 
-const CACHE_NAME = 'slb-pos-v1';
+const CACHE_NAME = 'slb-pos-v2';
 
 self.addEventListener('install', (event) => {
+  // Force the new service worker to activate immediately
   self.skipWaiting();
 });
 
 self.addEventListener('activate', (event) => {
-  event.waitUntil(self.clients.claim());
+  // Delete ALL old caches to ensure fresh content loads
+  event.waitUntil(
+    caches.keys().then((cacheNames) => {
+      return Promise.all(
+        cacheNames
+          .filter((name) => name !== CACHE_NAME)
+          .map((name) => caches.delete(name))
+      );
+    }).then(() => self.clients.claim())
+  );
 });
 
 // Network-first strategy — always fetch from network, fall back to cache

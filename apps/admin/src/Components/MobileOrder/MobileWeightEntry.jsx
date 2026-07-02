@@ -50,6 +50,38 @@ function fileToBase64(file) {
 }
 
 /**
+ * Compress an image file client-side before sending to the API.
+ * Resizes to max 1024px on longest side and compresses to JPEG quality 0.75.
+ * This reduces a typical 3-5MB phone photo to ~150-300KB while keeping scale numbers readable.
+ */
+function compressImage(file, maxDimension = 1024, quality = 0.75) {
+  return new Promise((resolve, reject) => {
+    const img = new window.Image();
+    img.onload = () => {
+      let { width, height } = img;
+      if (width > maxDimension || height > maxDimension) {
+        if (width > height) {
+          height = Math.round((height * maxDimension) / width);
+          width = maxDimension;
+        } else {
+          width = Math.round((width * maxDimension) / height);
+          height = maxDimension;
+        }
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, width, height);
+      const dataUrl = canvas.toDataURL('image/jpeg', quality);
+      resolve(dataUrl);
+    };
+    img.onerror = reject;
+    img.src = URL.createObjectURL(file);
+  });
+}
+
+/**
  * MobileWeightEntry — Drawer for entering weight/count values for order services.
  *
  * Displays all services on the order with appropriate numeric inputs:
@@ -257,12 +289,11 @@ const MobileWeightEntry = ({ order, laundryId, employeeId, isOpen, onClose, onSa
       return;
     }
 
-    // Create preview and add to bagPhotos array
-    const reader = new FileReader();
-    reader.onload = (e) => {
+    // Create preview and add to bagPhotos array — compress before sending
+    compressImage(file, 1024, 0.75).then((compressedDataUrl) => {
       const newPhoto = {
         file,
-        preview: e.target.result,
+        preview: compressedDataUrl,
         detectedWeight: null,
         detecting: true,
         uploaded: false,
@@ -270,14 +301,45 @@ const MobileWeightEntry = ({ order, laundryId, employeeId, isOpen, onClose, onSa
       };
       setBagPhotos((prev) => [...prev, newPhoto]);
 
-      // Trigger auto-detect for this photo
-      detectWeightFromPhoto(e.target.result, bagPhotos.length);
-    };
-    reader.readAsDataURL(file);
+      // Trigger auto-detect with compressed image
+      detectWeightFromPhoto(compressedDataUrl, bagPhotos.length);
+    }).catch(() => {
+      // Fallback: use uncompressed if canvas fails
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const newPhoto = {
+          file,
+          preview: e.target.result,
+          detectedWeight: null,
+          detecting: true,
+          uploaded: false,
+          error: null,
+        };
+        setBagPhotos((prev) => [...prev, newPhoto]);
+        detectWeightFromPhoto(e.target.result, bagPhotos.length);
+      };
+      reader.readAsDataURL(file);
+    });
   };
 
-  // Send photo to Vision AI for weight detection
+  // Send photo to Vision AI for weight detection + persist in parallel
   const detectWeightFromPhoto = async (base64Image, photoIndex) => {
+    // Fire BOTH calls in parallel: detect weight + persist to S3
+    const persistParams = new URLSearchParams({
+      laundryId: laundryId,
+      orderId: order.orderId,
+      imageType: 'weight',
+      targetStatus: order.orderStatus || 'ReceivedAtFacility',
+      empId: employeeId || 'EMP',
+    });
+
+    // Persist photo (fire-and-forget, don't block detection)
+    axios.post(
+      `${API_URL}/api/admin/photo-upload-status?${persistParams}`,
+      { imageBase64: base64Image }
+    ).catch((err) => console.error('Failed to persist scale photo:', err));
+
+    // Detect weight (this is what we await for UI feedback)
     try {
       const response = await axios.post(
         `${API_URL}/api/admin/item-tracking/detect-weight`,
@@ -291,19 +353,6 @@ const MobileWeightEntry = ({ order, laundryId, employeeId, isOpen, onClose, onSa
       const body = response.data?.body || response.data;
       const detectedWeight = body?.weight;
       const confidence = body?.confidence || 0;
-
-      // Fire-and-forget: persist the scale photo to the order via S3 upload
-      const persistParams = new URLSearchParams({
-        laundryId: laundryId,
-        orderId: order.orderId,
-        imageType: 'weight',
-        targetStatus: order.orderStatus || 'ReceivedAtFacility',
-        empId: employeeId || 'EMP',
-      });
-      axios.post(
-        `${API_URL}/api/admin/photo-upload-status?${persistParams}`,
-        { imageBase64: base64Image }
-      ).catch((err) => console.error('Failed to persist scale photo:', err));
 
       setBagPhotos((prev) =>
         prev.map((photo, idx) =>

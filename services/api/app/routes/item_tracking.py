@@ -1180,7 +1180,7 @@ async def detect_weight(request: DetectWeightRequest):
 
         # Resize image if needed (reuse the utility from vision_service)
         from app.services.vision_service import _resize_image
-        image_bytes = _resize_image(image_bytes, media_type, max_dimension=1568)
+        image_bytes = _resize_image(image_bytes, media_type, max_dimension=1024)
 
         # Re-encode after potential resize
         img_base64_encoded = base64.standard_b64encode(image_bytes).decode("utf-8")
@@ -1188,10 +1188,10 @@ async def detect_weight(request: DetectWeightRequest):
         # Build the weight detection prompt
         weight_prompt = build_weight_detection_prompt()
 
-        # Call Claude Vision
+        # Call Claude Vision — use Sonnet for reliable scale reading
         response = client.messages.create(
-            model="claude-sonnet-4-6",
-            max_tokens=256,
+            model="claude-sonnet-4-20250514",
+            max_tokens=128,
             system=weight_prompt,
             messages=[
                 {
