@@ -1,7 +1,7 @@
 // Minimal service worker for PWA install support
 // This makes the app installable as a desktop shortcut
 
-const CACHE_NAME = 'slb-pos-v2';
+const CACHE_NAME = 'slb-pos-v3';
 
 self.addEventListener('install', (event) => {
   // Force the new service worker to activate immediately

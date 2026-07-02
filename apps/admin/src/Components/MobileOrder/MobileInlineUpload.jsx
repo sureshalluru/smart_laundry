@@ -15,6 +15,37 @@ function fileToBase64(file) {
 }
 
 /**
+ * Compress an image file to max 1024px and JPEG quality 0.75 before uploading.
+ * Reduces 3-5MB phone photos to ~200-300KB for faster upload + faster Vision AI processing.
+ */
+function compressForUpload(file) {
+  return new Promise((resolve, reject) => {
+    const img = new window.Image();
+    img.onload = () => {
+      let { width, height } = img;
+      const maxDim = 1024;
+      if (width > maxDim || height > maxDim) {
+        if (width > height) {
+          height = Math.round((height * maxDim) / width);
+          width = maxDim;
+        } else {
+          width = Math.round((width * maxDim) / height);
+          height = maxDim;
+        }
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, width, height);
+      resolve(canvas.toDataURL('image/jpeg', 0.75));
+    };
+    img.onerror = reject;
+    img.src = URL.createObjectURL(file);
+  });
+}
+
+/**
  * Steps in the inline upload flow.
  */
 const STEPS = {
@@ -310,14 +341,20 @@ const MobileInlineUpload = ({ orderId, laundryId, phase, employeeId, onComplete,
       const uploadToken = qrData.token;
       setToken(uploadToken);
 
-      // Step 2: Convert photos to base64 and upload
+      // Step 2: Compress photos and upload (reduces 3-5MB phone photos to ~200KB each)
       const base64Images = [];
       for (const photo of photos) {
-        const b64 = await fileToBase64(photo.file);
-        base64Images.push(b64);
+        try {
+          const compressed = await compressForUpload(photo.file);
+          base64Images.push(compressed);
+        } catch (e) {
+          // Fallback to uncompressed if canvas fails
+          const b64 = await fileToBase64(photo.file);
+          base64Images.push(b64);
+        }
       }
 
-      const uploadRes = await fetch(`${API_URL}/track/upload`, {
+      const uploadRes = await fetch(`${API_URL}/api/track/upload`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -376,7 +413,7 @@ const MobileInlineUpload = ({ orderId, laundryId, phase, employeeId, onComplete,
 
     try {
       const confirmEndpoint =
-        phase === 'intake' ? '/track/confirm-intake' : '/track/confirm-fold';
+        phase === 'intake' ? '/api/track/confirm-intake' : '/api/track/confirm-fold';
 
       const confirmItems = adjustedItems.map((item) => ({
         category: item.category,
