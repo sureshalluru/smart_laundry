@@ -157,6 +157,7 @@ function ItemTrackingPanel({ orderId, laundryId, orderStatus, employeeId, onSkip
         {/* Mobile Inline Upload (shown when mobile upload phase is set) */}
         {isMobile && mobileUploadPhase && (
           <MobileInlineUpload
+            key={mobileUploadPhase}
             orderId={orderId}
             laundryId={laundryId}
             phase={mobileUploadPhase}
