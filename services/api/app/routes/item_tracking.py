@@ -1190,7 +1190,7 @@ async def detect_weight(request: DetectWeightRequest):
 
         # Call Claude Vision — use Sonnet for reliable scale reading
         response = client.messages.create(
-            model="claude-sonnet-4-20250514",
+            model="claude-sonnet-4-6",
             max_tokens=128,
             system=weight_prompt,
             messages=[
