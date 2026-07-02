@@ -1271,8 +1271,8 @@ const MyOrders = ({ customerId, laundryId, laundryTimeZone }) => {
                                     )}
                                 </Box>
 
-                                {/* Laundry Photos (pickup/scale/fold) */}
-                                {(orderDetails.imageUrl || orderDetails.weightImageUrl || orderDetails.foldImageUrl) && (
+                                {/* Laundry Photos (pickup/scale/fold/tracking) */}
+                                {(orderDetails.imageUrl || orderDetails.weightImageUrl || orderDetails.foldImageUrl || orderDetails.intakeImageUrls?.length || orderDetails.foldTrackingImageUrls?.length) && (
                                     <Box mt={4} p={3} bg="white" borderRadius="md" boxShadow="sm">
                                         <Text fontWeight="600" fontSize="sm" mb={2}>📷 Laundry Photos</Text>
                                         <HStack spacing={3} flexWrap="wrap">
@@ -1298,6 +1298,18 @@ const MyOrders = ({ customerId, laundryId, laundryTimeZone }) => {
                                                     <Image src={orderDetails.foldImageUrl.startsWith('data:') || orderDetails.foldImageUrl.startsWith('http') ? orderDetails.foldImageUrl : `data:image/jpeg;base64,${orderDetails.foldImageUrl}`} alt="Fold photo" maxH="150px" borderRadius="md" objectFit="cover" />
                                                 </Box>
                                             )}
+                                            {orderDetails.intakeImageUrls && orderDetails.intakeImageUrls.map((url, idx) => (
+                                                <Box key={`intake-${idx}`}>
+                                                    <Text fontSize="xs" color="gray.500" mb={1}>Count {idx + 1}</Text>
+                                                    <Image src={url} alt={`Count photo ${idx + 1}`} maxH="150px" borderRadius="md" objectFit="cover" />
+                                                </Box>
+                                            ))}
+                                            {orderDetails.foldTrackingImageUrls && orderDetails.foldTrackingImageUrls.map((url, idx) => (
+                                                <Box key={`fold-track-${idx}`}>
+                                                    <Text fontSize="xs" color="gray.500" mb={1}>Folded {idx + 1}</Text>
+                                                    <Image src={url} alt={`Fold photo ${idx + 1}`} maxH="150px" borderRadius="md" objectFit="cover" />
+                                                </Box>
+                                            ))}
                                         </HStack>
                                     </Box>
                                 )}
@@ -1480,7 +1492,7 @@ c
                                 <Button
                                     colorScheme="blue"
                                     width="100%"
-                                    onClick={handleCardPayment}
+                                    onClick={handleCard                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              t}
                                     isLoading={isProcessing}
                                 >
                                     Submit Card Payment

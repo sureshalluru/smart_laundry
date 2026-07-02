@@ -267,6 +267,9 @@ async def analyze_photos(
 
         import base64
 
+        # Angle labels matching the capture order (Front, Top, Left, Right)
+        angle_labels = ["FRONT VIEW", "TOP VIEW", "LEFT SIDE VIEW", "RIGHT SIDE VIEW"]
+
         content = []
 
         if image_data:
@@ -275,6 +278,9 @@ async def analyze_photos(
                 img_bytes = _resize_image(img_bytes, media_type, max_dimension=1568)
                 img_base64 = base64.standard_b64encode(img_bytes).decode("utf-8")
                 logger.info(f"[VISION] Using pre-loaded image {i+1}/{len(image_data)}: {len(img_bytes)} bytes, {media_type}")
+                # Add angle label before each image
+                label = angle_labels[i] if i < len(angle_labels) else f"ANGLE {i+1}"
+                content.append({"type": "text", "text": f"[Photo {i+1}: {label}]"})
                 content.append({
                     "type": "image",
                     "source": {
@@ -300,6 +306,9 @@ async def analyze_photos(
                         img_bytes = _resize_image(resp.content, media_type, max_dimension=1568)
                         img_base64 = base64.standard_b64encode(img_bytes).decode("utf-8")
                         logger.info(f"[VISION] Image {i+1} fetched OK: {len(img_bytes)} bytes, {media_type}")
+                        # Add angle label before each image
+                        label = angle_labels[i] if i < len(angle_labels) else f"ANGLE {i+1}"
+                        content.append({"type": "text", "text": f"[Photo {i+1}: {label}]"})
                         content.append({
                             "type": "image",
                             "source": {
@@ -318,7 +327,7 @@ async def analyze_photos(
 
         content.append({
             "type": "text",
-            "text": "Please identify and count all laundry items visible in these photos. The photos show the same set of items from different angles.",
+            "text": "These photos show the SAME pile of laundry from different angles (front, top, side). Count each item ONCE — do not add counts from different photos together. A shirt seen from the front is the SAME shirt seen from the top.",
         })
 
         # Call Claude Vision

@@ -674,6 +674,50 @@ async def confirm_fold(request: ConfirmFoldRequest):
 
     # Send completion SMS
     sms_sent = False
+
+    # Auto-charge card on file for online orders
+    try:
+        with get_db() as conn:
+            cur = get_cursor(conn)
+            cur.execute("""
+                SELECT o.order_type, o.payment_status, o.grand_total, o.customer_id, o.order_id,
+                       o.pay_by_invoice
+                FROM orders.orders o
+                WHERE o.order_id = %s AND o.laundry_id = %s
+            """, (payload.order_id, payload.laundry_id))
+            order_for_payment = cur.fetchone()
+
+        if (order_for_payment
+            and order_for_payment["order_type"] == "Online"
+            and order_for_payment["payment_status"] in ("Unpaid", "Hold")
+            and not order_for_payment.get("pay_by_invoice")
+            and float(order_for_payment["grand_total"] or 0) > 0):
+
+            from app.services.payment_service import check_payment_gate
+            gate_result = check_payment_gate(
+                dict(order_for_payment),
+                "ProcessingCompleted",
+                payload.laundry_id,
+            )
+            if gate_result.get("allowed") and gate_result.get("charged"):
+                logger.info(f"[confirm-fold] Auto-charged card for order {payload.order_id}: {gate_result.get('paymentIntentId')}")
+                # Update payment status
+                with get_db() as conn:
+                    cur = get_cursor(conn)
+                    cur.execute("""
+                        UPDATE orders.orders SET payment_status = 'Paid', updated_at = NOW()
+                        WHERE order_id = %s
+                    """, (payload.order_id,))
+                    if gate_result.get("paymentIntentId"):
+                        cur.execute("""
+                            INSERT INTO orders.order_payments (order_id, payment_intent_id, amount, payment_method)
+                            VALUES (%s, %s, %s, 'Card') ON CONFLICT DO NOTHING
+                        """, (payload.order_id, gate_result["paymentIntentId"], float(order_for_payment["grand_total"])))
+            elif not gate_result.get("allowed"):
+                logger.warning(f"[confirm-fold] Payment gate blocked for order {payload.order_id}: {gate_result.get('error')}")
+    except Exception as payment_err:
+        logger.warning(f"[confirm-fold] Auto-charge error for order {payload.order_id}: {payment_err}")
+
     try:
         with get_db() as conn:
             cur = get_cursor(conn)

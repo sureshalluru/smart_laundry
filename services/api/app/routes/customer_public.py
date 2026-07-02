@@ -635,6 +635,30 @@ async def get_customer_order_detail(
             if emp:
                 employee_info = {"empId": emp["emp_id"], "firstName": emp["first_name"], "lastName": emp["last_name"]}
 
+        # Get item tracking photos (intake/fold) for customer view
+        intake_image_urls = []
+        fold_tracking_urls = []
+        try:
+            cur.execute("""
+                SELECT phase, image_urls FROM orders.item_tracking_records
+                WHERE order_id = %s AND laundry_id = %s
+                ORDER BY created_at ASC
+            """, (orderId, order["laundry_id"]))
+            for tr in cur.fetchall():
+                urls = tr.get("image_urls") or []
+                if isinstance(urls, str):
+                    import json as _j
+                    try:
+                        urls = _j.loads(urls)
+                    except Exception:
+                        urls = [urls] if urls else []
+                if tr["phase"] == "intake" and urls:
+                    intake_image_urls = urls
+                elif tr["phase"] == "fold" and urls:
+                    fold_tracking_urls = urls
+        except Exception:
+            pass
+
         return {
             "statusCode": 200,
             "body": {
@@ -660,6 +684,9 @@ async def get_customer_order_detail(
                     "coupon": order["coupon"],
                     "imageUrl": order["image_url"],
                     "weightImageUrl": order.get("weight_image_url"),
+                    "foldImageUrl": order.get("fold_image_url"),
+                    "intakeImageUrls": intake_image_urls,
+                    "foldTrackingImageUrls": fold_tracking_urls,
                     "isReviewed": order.get("is_reviewed", False),
                     "address": address_data.get("address", ""),
                     "addressInstructions": address_data.get("address_instructions", ""),
