@@ -563,7 +563,22 @@ async def create_employee(
             if not cur.fetchone():
                 break
 
-        passcode = str(random.randint(1000, 9999))
+        # Generate a unique passcode within this laundry (prevents wrong employee on PIN login)
+        passcode = None
+        for _ in range(50):  # Try up to 50 times for unique passcode
+            candidate = str(random.randint(1000, 9999))
+            cur.execute(
+                "SELECT emp_id FROM shop.employees WHERE laundry_id = %s AND passcode = %s AND is_active = TRUE",
+                (laundry_id, candidate)
+            )
+            if not cur.fetchone():
+                passcode = candidate
+                break
+        if not passcode:
+            return {"statusCode": 200, "body": {
+                "createdEmployees": [],
+                "failedEmployees": [{"error": "Could not generate a unique PIN. Too many employees with 4-digit PINs. Please contact support.", "data": {"email": email}}],
+            }}
 
         try:
             cur.execute("""
