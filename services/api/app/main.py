@@ -161,6 +161,22 @@ async def block_bot_scanners(request: Request, call_next):
     return await call_next(request)
 
 
+# ── App Version endpoint ──────────────────────────────────────────────────────
+# Returns the build timestamp so clients can detect stale bundles.
+# The version is set at server startup time (each deploy = new version).
+import time as _time
+_APP_BUILD_VERSION = str(int(_time.time()))
+
+@app.get("/api/version")
+async def app_version():
+    """Returns current app build version. Clients poll this to detect deploys."""
+    from fastapi.responses import JSONResponse
+    return JSONResponse(
+        content={"version": _APP_BUILD_VERSION},
+        headers={"Cache-Control": "no-cache, no-store, must-revalidate"},
+    )
+
+
 @app.get("/health")
 async def health_check():
     import os
@@ -193,10 +209,21 @@ async def serve_admin(request: Request, full_path: str = ""):
     if full_path:
         file_path = ADMIN_BUILD / full_path
         if file_path.is_file():
-            return FileResponse(file_path)
+            # Static assets with hashes — cache forever; others no-cache
+            if full_path.startswith("static/"):
+                return FileResponse(file_path, headers={
+                    "Cache-Control": "public, max-age=31536000, immutable",
+                })
+            return FileResponse(file_path, headers={
+                "Cache-Control": "no-cache, no-store, must-revalidate",
+            })
     index = ADMIN_BUILD / "index.html"
     if index.exists():
-        return FileResponse(index)
+        return FileResponse(index, headers={
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            "Pragma": "no-cache",
+            "Expires": "0",
+        })
     return {"error": "Admin app not built. Run: cd apps/admin && npm run build"}
 
 
@@ -231,21 +258,37 @@ async def serve_customer(request: Request, full_path: str):
         # Check admin build first
         file_path = ADMIN_BUILD / full_path
         if _is_file_safe(file_path):
-            return FileResponse(file_path)
+            # Hashed filenames (main.abc123.js) are immutable — cache forever
+            return FileResponse(file_path, headers={
+                "Cache-Control": "public, max-age=31536000, immutable",
+            })
         # Then customer build
         file_path = CUSTOMER_BUILD / full_path
         if _is_file_safe(file_path):
-            return FileResponse(file_path)
+            return FileResponse(file_path, headers={
+                "Cache-Control": "public, max-age=31536000, immutable",
+            })
         return {"error": "Static file not found"}
 
     # Check if it's a real file in customer build (favicon, manifest, etc.)
     file_path = CUSTOMER_BUILD / full_path
     if _is_file_safe(file_path):
+        # sw.js and manifest must never be cached by Safari
+        if full_path in ("sw.js", "manifest.json", "service-worker.js"):
+            return FileResponse(file_path, headers={
+                "Cache-Control": "no-cache, no-store, must-revalidate",
+                "Pragma": "no-cache",
+            })
         return FileResponse(file_path)
 
     # Check admin build files
     file_path = ADMIN_BUILD / full_path
     if _is_file_safe(file_path):
+        if full_path in ("sw.js", "manifest.json", "service-worker.js"):
+            return FileResponse(file_path, headers={
+                "Cache-Control": "no-cache, no-store, must-revalidate",
+                "Pragma": "no-cache",
+            })
         return FileResponse(file_path)
 
     # Route decision: paths with /admin, /driver, or /company go to admin app, everything else to customer

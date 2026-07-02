@@ -46,6 +46,14 @@ async def instore_payment(
             tip_payload = body.get("tip_payload", {})
             payment_updates = body.get("payment_updates", [])
             is_cash_refunded = body.get("is_cash_refunded", False)
+            card_payment_method_id = body.get("cardPaymentMethodId") or body.get("cardPaymentId")
+
+            # If frontend sent a cardPaymentMethodId directly (customer paying via payment link),
+            # create a payment_update entry so it gets charged below
+            if card_payment_method_id and not payment_updates:
+                order_grand_total = float(order["grand_total"] or 0)
+                if order_grand_total > 0:
+                    payment_updates = [{"amount": order_grand_total, "paymentIntentId": card_payment_method_id, "paymentMethod": "Card"}]
 
             # Get existing payments
             cur.execute("SELECT * FROM orders.order_payments WHERE order_id = %s", (orderId,))
@@ -111,14 +119,27 @@ async def instore_payment(
                         VALUES (%s, %s, %s, %s)
                     """, (orderId, intent_id, amt, method))
 
-            # Update order status
-            new_status = "EnRouteToDelivery" if order["order_type"] != "Commercial" else order["order_status"]
-            cur.execute("""
-                UPDATE orders.orders
-                SET payment_status = 'Paid', order_status = %s, grand_total = %s,
-                    sub_total = %s, last_updated_by = %s, updated_at = NOW()
-                WHERE order_id = %s
-            """, (new_status, grand_total, sub_total, empId, orderId))
+            # Determine if any payment was actually collected
+            cur.execute("SELECT COALESCE(SUM(amount), 0) as total_paid FROM orders.order_payments WHERE order_id = %s", (orderId,))
+            total_paid_row = cur.fetchone()
+            total_paid = float(total_paid_row["total_paid"]) if total_paid_row else 0
+
+            # Only mark as Paid if payment was actually collected
+            if total_paid >= grand_total or payment_updates:
+                new_status = "EnRouteToDelivery" if order["order_type"] != "Commercial" else order["order_status"]
+                cur.execute("""
+                    UPDATE orders.orders
+                    SET payment_status = 'Paid', order_status = %s, grand_total = %s,
+                        sub_total = %s, last_updated_by = %s, updated_at = NOW()
+                    WHERE order_id = %s
+                """, (new_status, grand_total, sub_total, empId, orderId))
+            else:
+                # No payment collected — update totals but NOT payment_status
+                cur.execute("""
+                    UPDATE orders.orders
+                    SET grand_total = %s, sub_total = %s, last_updated_by = %s, updated_at = NOW()
+                    WHERE order_id = %s
+                """, (grand_total, sub_total, empId, orderId))
 
             # Fetch updated order to return
             from app.routes.orders_info import get_single_order

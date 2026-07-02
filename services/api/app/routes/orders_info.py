@@ -473,8 +473,41 @@ async def instore_place_order(
                 logger.exception(f"Card charge failed for in-store order")
                 return {"status": "error", "message": f"Card payment failed: {str(card_err)}"}
         elif is_pay_now:
-            final_payments = [{"amount": amount_to_collect, "paymentIntentId": None, "paymentMethod": "Cash"}]
-            payment_status = "Paid"
+            # Pay-now requested but no direct card_payment_method_id — try charging saved card on file
+            try:
+                from app.services.payment_service import capture_payment
+                with get_db() as conn_pp:
+                    cur_pp = get_cursor(conn_pp)
+                    cur_pp.execute("""
+                        SELECT stripe_customer_id FROM shop.customer_payment_profiles
+                        WHERE customer_id = %s AND laundry_id = %s
+                    """, (customer_id, laundry_id))
+                    pp_row = cur_pp.fetchone()
+
+                if pp_row and pp_row.get("stripe_customer_id"):
+                    charge_result = capture_payment(
+                        customer_payment_id=pp_row["stripe_customer_id"],
+                        price=amount_to_collect,
+                        order_id=order_id,
+                        description=f"In-store pay-now order {order_id}",
+                        customer_id=customer_id,
+                        laundry_id=laundry_id,
+                    )
+                    if charge_result.get("status") == "success":
+                        final_payments = [{"amount": amount_to_collect, "paymentIntentId": charge_result.get("paymentIntentId"), "paymentMethod": "Card"}]
+                        payment_status = "Paid"
+                        logger.info(f"Charged saved card for in-store order {order_id}: {charge_result.get('paymentIntentId')}")
+                    else:
+                        # Card charge failed — leave Unpaid, customer will need to pay via link
+                        logger.warning(f"Saved card charge failed for order {order_id}: {charge_result.get('message')}")
+                        payment_status = "Unpaid"
+                else:
+                    # No saved card on file — leave Unpaid
+                    logger.warning(f"is_pay_now=True but no saved card for customer {customer_id}, order {order_id}")
+                    payment_status = "Unpaid"
+            except Exception as pay_now_err:
+                logger.exception(f"Pay-now charge error for order {order_id}")
+                payment_status = "Unpaid"
 
         with get_db() as conn:
             cur = get_cursor(conn)

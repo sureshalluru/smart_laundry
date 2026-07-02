@@ -2,22 +2,31 @@ import React from 'react';
 import { Box, Flex, Text, Circle, Divider } from '@chakra-ui/react';
 import { CheckIcon } from '@chakra-ui/icons';
 
-const STAGES = ["Order Placed", "In Progress", "On Its Way", "Delivered"];
+const STAGES = ["Received", "Processing", "Ready", "Delivered"];
 
 /**
  * Maps an order status string to the active stage index (0-based).
+ * Stages: 0=Received, 1=Processing, 2=Ready, 3=Delivered
+ * 
+ * The index represents the CURRENT stage. Stages below it show checkmarks.
  * Returns -1 for unknown statuses.
  */
 export function getActiveStageIndex(orderStatus) {
   switch (orderStatus) {
     case 'OrderSubmitted':
-      return 0;
     case 'ReadyForIntake':
+      return 0;
+    case 'ReceivedAtFacility':
     case 'InProgress':
+    case 'ProcessingStarted':
       return 1;
+    case 'ProcessingCompleted':
+    case 'ReadyForDelivery':
+      return 2;
     case 'EnRouteToDelivery':
       return 2;
     case 'Delivered':
+    case 'OrderPickedUp':
       return 3;
     default:
       return -1;
