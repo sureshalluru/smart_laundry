@@ -93,14 +93,14 @@ function ItemTrackingPanel({ orderId, laundryId, orderStatus, employeeId, onSkip
                   colorScheme="blue"
                   onClick={() => setMobileUploadPhase('intake')}
                 >
-                  📷 {hasIntakeRecord ? 'Redo Intake' : 'Upload Intake'}
+                  📷 {hasIntakeRecord ? 'Redo Count' : 'Count Items'}
                 </Button>
                 <Button
                   size="xs"
                   colorScheme="green"
                   onClick={() => setMobileUploadPhase('fold')}
                 >
-                  📷 {hasFoldRecord ? 'Redo Fold' : 'Upload Fold'}
+                  👕 {hasFoldRecord ? 'Redo Fold' : 'Fold Complete'}
                 </Button>
               </>
             ) : (

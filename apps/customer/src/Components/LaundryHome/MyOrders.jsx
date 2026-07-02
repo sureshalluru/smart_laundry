@@ -1271,8 +1271,8 @@ const MyOrders = ({ customerId, laundryId, laundryTimeZone }) => {
                                     )}
                                 </Box>
 
-                                {/* Laundry Photos (pickup/scale) */}
-                                {(orderDetails.imageUrl || orderDetails.weightImageUrl) && (
+                                {/* Laundry Photos (pickup/scale/fold) */}
+                                {(orderDetails.imageUrl || orderDetails.weightImageUrl || orderDetails.foldImageUrl) && (
                                     <Box mt={4} p={3} bg="white" borderRadius="md" boxShadow="sm">
                                         <Text fontWeight="600" fontSize="sm" mb={2}>📷 Laundry Photos</Text>
                                         <HStack spacing={3} flexWrap="wrap">
@@ -1292,6 +1292,12 @@ const MyOrders = ({ customerId, laundryId, laundryTimeZone }) => {
                                                 </Box>
                                                 );
                                             })}
+                                            {orderDetails.foldImageUrl && (
+                                                <Box>
+                                                    <Text fontSize="xs" color="gray.500" mb={1}>Fold</Text>
+                                                    <Image src={orderDetails.foldImageUrl.startsWith('data:') || orderDetails.foldImageUrl.startsWith('http') ? orderDetails.foldImageUrl : `data:image/jpeg;base64,${orderDetails.foldImageUrl}`} alt="Fold photo" maxH="150px" borderRadius="md" objectFit="cover" />
+                                                </Box>
+                                            )}
                                         </HStack>
                                     </Box>
                                 )}

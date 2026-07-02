@@ -1210,6 +1210,10 @@ def get_orders_by_status(cur, laundry_id, operation, page=1, limit=30, order_typ
             "customerPaymentId": r["customer_payment_id"] or "",
             "imageUrl": r["image_url"],
             "weightImageUrl": r.get("weight_image_url"),
+            "processingImageUrl": r.get("processing_image_url"),
+            "foldImageUrl": r.get("fold_image_url"),
+            "washingImageUrl": r.get("washing_image_url"),
+            "dryingImageUrl": r.get("drying_image_url"),
             "payByInvoice": r.get("pay_by_invoice", False),
             "balanceDue": float(balance_due),
             "paidAmount": float(paid_amount),
@@ -1443,6 +1447,10 @@ def get_single_order(cur, laundry_id, order_id):
             "isReviewed": order["is_reviewed"],
             "imageUrl": order["image_url"],
             "weightImageUrl": order.get("weight_image_url"),
+            "processingImageUrl": order.get("processing_image_url"),
+            "foldImageUrl": order.get("fold_image_url"),
+            "washingImageUrl": order.get("washing_image_url"),
+            "dryingImageUrl": order.get("drying_image_url"),
             "holdPaymentIntentId": order["hold_payment_intent_id"],
             "lastUpdatedBy": order["last_updated_by"],
             "createdAt": str(order["created_at"]),
@@ -1534,8 +1542,8 @@ def fetch_laundry_shop_info(cur, laundry_id, operation):
         services = [serialize_row(r) for r in cur.fetchall()]
         return {"statusCode": 200, "body": {"message": "Services fetched successfully", "data": services}}
     elif operation == 'fetchStatuses':
-        statuses = ['OrderSubmitted', 'ReadyForIntake', 'ReceivedAtFacility', 'ProcessingStarted',
-                    'ProcessingCompleted', 'EnRouteToDelivery', 'Delivered', 'OrderPickedUp', 'Cancelled']
+        statuses = ['OrderSubmitted', 'ReadyForIntake', 'ReceivedAtFacility', 'Processing', 'ProcessingStarted',
+                    'ProcessingCompleted', 'ReadyForDelivery', 'EnRouteToDelivery', 'Delivered', 'OrderPickedUp', 'Cancelled']
         return {"statusCode": 200, "body": {"message": "Statuses fetched successfully", "data": statuses}}
 
 

@@ -7,6 +7,7 @@ import {
     Tooltip,
     IconButton,
     Image,
+    Button,
     Drawer,
     DrawerOverlay,
     DrawerContent,
@@ -228,11 +229,23 @@ const OrderActionsDrawer = ({ isOpen, onClose, order, handleOrderHistory, handle
                                     <Text fontSize="xs" color="gray.600" mt={1} textAlign="center">
                                         Scan with phone
                                     </Text>
+                                    <Button
+                                        as="a"
+                                        href={buildOrderUrl(laundryId, order.orderId, null)}
+                                        target="_blank"
+                                        size="xs"
+                                        colorScheme="blue"
+                                        variant="link"
+                                        mt={1}
+                                        fontSize="xs"
+                                    >
+                                        📱 Open Mobile View
+                                    </Button>
                                 </Box>
                             </Tooltip>
 
                             {/* Order Photos Section */}
-                            {(order.weightImageUrl || order.processingImageUrl || order.foldImageUrl) && (
+                            {(order.weightImageUrl || order.processingImageUrl || order.foldImageUrl || order.washingImageUrl || order.dryingImageUrl) && (
                                 <Box
                                     mt={3}
                                     p={2}
@@ -255,6 +268,30 @@ const OrderActionsDrawer = ({ isOpen, onClose, order, handleOrderHistory, handle
                                                     borderRadius="md"
                                                 />
                                                 <Text fontSize="2xs" color="gray.600">Bag {idx + 1}</Text>
+                                            </VStack>
+                                        ))}
+                                        {order.washingImageUrl && order.washingImageUrl.split('|||').map((url, idx) => (
+                                            <VStack spacing={1} key={`washing-${idx}`}>
+                                                <Image
+                                                    src={url.trim()}
+                                                    alt={`Washing photo ${idx + 1}`}
+                                                    boxSize="60px"
+                                                    objectFit="cover"
+                                                    borderRadius="md"
+                                                />
+                                                <Text fontSize="2xs" color="gray.600">Washer {idx + 1}</Text>
+                                            </VStack>
+                                        ))}
+                                        {order.dryingImageUrl && order.dryingImageUrl.split('|||').map((url, idx) => (
+                                            <VStack spacing={1} key={`drying-${idx}`}>
+                                                <Image
+                                                    src={url.trim()}
+                                                    alt={`Drying photo ${idx + 1}`}
+                                                    boxSize="60px"
+                                                    objectFit="cover"
+                                                    borderRadius="md"
+                                                />
+                                                <Text fontSize="2xs" color="gray.600">Dryer {idx + 1}</Text>
                                             </VStack>
                                         ))}
                                         {order.processingImageUrl && (

@@ -1720,7 +1720,7 @@ async def photo_upload_status(
         return {"statusCode": 400, "body": {"message": "Missing imageBase64 in request body"}}
 
     # Validate imageType
-    valid_image_types = ("weight", "processing", "scan_received", "fold_complete")
+    valid_image_types = ("weight", "processing", "scan_received", "fold_complete", "washing", "drying")
     if imageType not in valid_image_types:
         return {"statusCode": 400, "body": {"message": f"Invalid imageType. Must be one of: {', '.join(valid_image_types)}"}}
 
@@ -1730,6 +1730,8 @@ async def photo_upload_status(
         "processing": "processing_image_url",
         "scan_received": "weight_image_url",
         "fold_complete": "fold_image_url",
+        "washing": "washing_image_url",
+        "drying": "drying_image_url",
     }
     db_column = image_type_to_column[imageType]
 
@@ -1770,14 +1772,20 @@ async def photo_upload_status(
                 return {"statusCode": 400, "body": {"message": gate_result["error"], "photoUploaded": True}}
 
             # Update order: status, image column, last_updated_by, updated_at
-            # For weight photos, append to existing (comma-separated) to support multi-bag
-            if db_column == "weight_image_url":
-                cur.execute("""
+            # For weight/washing/drying photos, append to existing (|||‐separated) to support multi-photo
+            if db_column in ("weight_image_url", "washing_image_url", "drying_image_url"):
+                # Log current value for debugging
+                cur.execute(f"SELECT {db_column} FROM orders.orders WHERE order_id = %s FOR UPDATE", (orderId,))
+                current_row = cur.fetchone()
+                current_url = current_row[db_column] if current_row else None
+                logger.info(f"[photo-upload] Appending {imageType} photo for {orderId}. Current value length: {len(current_url) if current_url else 0}, has separator: {'|||' in (current_url or '')}")
+
+                cur.execute(f"""
                     UPDATE orders.orders
                     SET order_status = %s,
-                        weight_image_url = CASE
-                            WHEN weight_image_url IS NULL OR weight_image_url = '' THEN %s
-                            ELSE weight_image_url || '|||' || %s
+                        {db_column} = CASE
+                            WHEN {db_column} IS NULL OR {db_column} = '' THEN %s
+                            ELSE {db_column} || '|||' || %s
                         END,
                         last_updated_by = %s,
                         updated_at = NOW()

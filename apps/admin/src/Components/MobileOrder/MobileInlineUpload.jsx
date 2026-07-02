@@ -284,7 +284,7 @@ const MobileInlineUpload = ({ orderId, laundryId, phase, employeeId, onComplete,
 
   const handleUpload = async () => {
     if (photos.length < 2) {
-      setError('Please capture at least 2 photos (2-4 recommended).');
+      setError('Front and Top view photos are required. Please capture both before analyzing.');
       return;
     }
 
@@ -451,46 +451,88 @@ const MobileInlineUpload = ({ orderId, laundryId, phase, employeeId, onComplete,
     );
   };
 
-  const renderCaptureStep = () => (
+  const renderCaptureStep = () => {
+    // Define the 4 angle slots — Front and Top are mandatory
+    const ANGLES = [
+      { key: 'front', label: '📸 Front View', required: true },
+      { key: 'top', label: '📸 Top View', required: true },
+      { key: 'left', label: '📸 Left Side', required: false },
+      { key: 'right', label: '📸 Right Side', required: false },
+    ];
+
+    // Map photos to angle slots by index
+    const getPhotoForSlot = (idx) => photos[idx] || null;
+    const mandatoryCount = photos.filter((_, i) => i < 2).length; // first 2 are mandatory
+    const canAnalyze = mandatoryCount >= 2; // Front + Top captured
+
+    return (
     <div>
       <p style={styles.sectionTitle}>
-        📷 Take {phase === 'intake' ? 'Intake' : 'Fold'} Photos (2-4)
+        📷 {phase === 'intake' ? 'Count Items' : 'Fold Complete'} — Take Photos
+      </p>
+      <p style={{ fontSize: '11px', color: '#718096', marginBottom: '12px' }}>
+        Front and Top views are <strong>required</strong>. Left and Right are optional for better accuracy.
       </p>
 
-      {photos.length > 0 && (
-        <div style={styles.photoGrid}>
-          {photos.map((photo, idx) => (
-            <div key={idx} style={{ position: 'relative' }}>
-              <img src={photo.preview} alt={`Photo ${idx + 1}`} style={styles.photoThumb} />
-              <button
-                onClick={() => removePhoto(idx)}
-                aria-label={`Remove photo ${idx + 1}`}
-                style={{
-                  position: 'absolute',
-                  top: '4px',
-                  right: '4px',
-                  width: '24px',
-                  height: '24px',
-                  borderRadius: '50%',
-                  backgroundColor: 'rgba(0,0,0,0.6)',
-                  color: 'white',
-                  border: 'none',
-                  fontSize: '14px',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              >
-                ×
-              </button>
+      <div style={styles.photoGrid}>
+        {ANGLES.map((angle, idx) => {
+          const photo = getPhotoForSlot(idx);
+          return (
+            <div key={angle.key} style={{ position: 'relative' }}>
+              {photo ? (
+                <>
+                  <img src={photo.preview} alt={angle.label} style={styles.photoThumb} />
+                  <button
+                    onClick={() => removePhoto(idx)}
+                    aria-label={`Remove ${angle.label}`}
+                    style={{
+                      position: 'absolute',
+                      top: '4px',
+                      right: '4px',
+                      width: '24px',
+                      height: '24px',
+                      borderRadius: '50%',
+                      backgroundColor: 'rgba(0,0,0,0.6)',
+                      color: 'white',
+                      border: 'none',
+                      fontSize: '14px',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    ×
+                  </button>
+                </>
+              ) : (
+                <div
+                  style={{
+                    ...styles.photoThumb,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    backgroundColor: angle.required ? '#EBF8FF' : '#F7FAFC',
+                    border: angle.required ? '2px dashed #3182CE' : '1px dashed #CBD5E0',
+                    cursor: 'pointer',
+                  }}
+                  onClick={handleCaptureClick}
+                >
+                  <span style={{ fontSize: '20px' }}>📷</span>
+                  <span style={{ fontSize: '10px', color: angle.required ? '#2B6CB0' : '#718096', fontWeight: angle.required ? '600' : '400', marginTop: '2px' }}>
+                    {angle.label.replace('📸 ', '')}
+                  </span>
+                  {angle.required && <span style={{ fontSize: '9px', color: '#E53E3E', fontWeight: '600' }}>Required</span>}
+                </div>
+              )}
             </div>
-          ))}
-        </div>
-      )}
+          );
+        })}
+      </div>
 
       <p style={{ fontSize: '12px', color: '#718096', marginBottom: '12px', textAlign: 'center' }}>
-        {photos.length}/4 photos captured
+        {photos.length}/4 views captured ({canAnalyze ? '✓ Ready' : 'Need Front + Top'})
       </p>
 
       {photos.length < 4 && (
@@ -499,11 +541,11 @@ const MobileInlineUpload = ({ orderId, laundryId, phase, employeeId, onComplete,
           style={styles.bigButton('blue')}
           aria-label="Take photo"
         >
-          📷 {photos.length === 0 ? 'Take Photos' : 'Add More Photos'}
+          📷 {photos.length === 0 ? 'Take Front View' : `Take ${ANGLES[photos.length]?.label.replace('📸 ', '') || 'Photo'}`}
         </button>
       )}
 
-      {photos.length >= 2 && (
+      {canAnalyze && (
         <button
           onClick={handleUpload}
           style={{ ...styles.bigButton('green'), marginTop: '8px' }}
@@ -519,7 +561,8 @@ const MobileInlineUpload = ({ orderId, laundryId, phase, employeeId, onComplete,
         </button>
       </div>
     </div>
-  );
+    );
+  };
 
   const renderUploadStep = () => (
     <div style={{ textAlign: 'center', padding: '24px 0' }}>
