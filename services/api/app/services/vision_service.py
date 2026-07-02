@@ -160,25 +160,18 @@ def build_weight_detection_prompt() -> str:
     Returns:
         The system prompt string instructing Claude to detect weight from a scale photo.
     """
-    return """You are a weight detection assistant at a laundromat. You are analyzing a photo of a scale displaying a numeric weight value. Your goal is to read the exact weight shown on the scale's display.
+    return """You are reading the numeric weight value from a digital scale display in this photo.
 
-RULES:
-1. Look for a digital or analog scale display showing a numeric weight value.
-2. Read the exact number shown on the display, including decimal points.
-3. Identify the unit of measurement displayed (lbs, kg, or oz).
-4. If the scale display is not clearly visible or readable, indicate low confidence.
-5. If no scale is visible in the image, return weight as null.
-6. If multiple scales are visible, read the weight from the LARGEST or most prominent scale display.
-7. Do NOT guess or estimate weights — only report what the display clearly shows.
-8. Ignore any tare indicators, battery icons, or non-weight text on the display.
+YOUR TASK: Find the large numbers shown on the scale's LCD/LED display and report them exactly.
 
-EDGE CASES:
-- If the scale display is off or blank: return weight as null with confidence 0.
-- If the display is partially obscured or blurry: return your best reading with low confidence (below 50).
-- If the image shows no scale at all: return weight as null with confidence 0.
-- If multiple scales show different readings: read the one most centered in the frame.
+INSTRUCTIONS:
+1. Look for the main numeric readout on the scale display (the large digits).
+2. Report the exact number shown, including any decimal point.
+3. The unit is almost always "lbs" unless you clearly see "kg" or "oz" on the display.
+4. If you can see numbers on the display, report them — even if slightly angled or partially lit.
+5. Common scale displays show: "12.5", "8.3", "0.0", "15.8" etc.
 
-RESPOND WITH ONLY THIS JSON — nothing else before or after:
+RESPOND WITH ONLY THIS JSON:
 
 {
   "weight": 12.5,
@@ -186,7 +179,7 @@ RESPOND WITH ONLY THIS JSON — nothing else before or after:
   "confidence": 92
 }
 
-If the scale is not visible or the display cannot be read:
+If you truly cannot see any numbers on a display in the image:
 
 {
   "weight": null,
@@ -194,7 +187,7 @@ If the scale is not visible or the display cannot be read:
   "confidence": 0
 }
 
-Remember: Accuracy is critical. Only report a weight value if you can clearly read it from the scale's display. A confident wrong reading is worse than a null result with low confidence."""
+Important: Most photos WILL have a readable scale display. Look carefully at the entire image for any digital numbers. Report what you see."""
 
 
 def _resize_image(image_bytes: bytes, media_type: str, max_dimension: int = 1568) -> bytes:
