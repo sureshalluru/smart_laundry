@@ -308,7 +308,7 @@ const MobileOrderPage = () => {
         laundryId,
         orderId,
         imageType: 'washing',
-        targetStatus: 'Processing',
+        targetStatus: 'ProcessingStarted',
         empId: employeeId || 'EMP',
       });
       await axios.post(
@@ -810,7 +810,7 @@ const MobileOrderPage = () => {
             <MobilePhotoAction
               order={order}
               actionType="processing"
-              targetStatus="Processing"
+              targetStatus="ProcessingStarted"
               imageType="processing"
               employeeId={employeeId}
               onComplete={() => handlePhotoComplete('processing')}

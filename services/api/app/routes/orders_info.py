@@ -1542,7 +1542,7 @@ def fetch_laundry_shop_info(cur, laundry_id, operation):
         services = [serialize_row(r) for r in cur.fetchall()]
         return {"statusCode": 200, "body": {"message": "Services fetched successfully", "data": services}}
     elif operation == 'fetchStatuses':
-        statuses = ['OrderSubmitted', 'ReadyForIntake', 'ReceivedAtFacility', 'Processing', 'ProcessingStarted',
+        statuses = ['OrderSubmitted', 'ReadyForIntake', 'ReceivedAtFacility', 'ProcessingStarted',
                     'ProcessingCompleted', 'ReadyForDelivery', 'EnRouteToDelivery', 'Delivered', 'OrderPickedUp', 'Cancelled']
         return {"statusCode": 200, "body": {"message": "Statuses fetched successfully", "data": statuses}}
 
