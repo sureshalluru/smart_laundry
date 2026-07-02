@@ -1282,12 +1282,16 @@ const MyOrders = ({ customerId, laundryId, laundryTimeZone }) => {
                                                     <Image src={orderDetails.imageUrl.startsWith('data:') || orderDetails.imageUrl.startsWith('http') ? orderDetails.imageUrl : `data:image/jpeg;base64,${orderDetails.imageUrl}`} alt="Pickup photo" maxH="150px" borderRadius="md" objectFit="cover" />
                                                 </Box>
                                             )}
-                                            {orderDetails.weightImageUrl && (
-                                                <Box>
-                                                    <Text fontSize="xs" color="gray.500" mb={1}>Weight</Text>
-                                                    <Image src={orderDetails.weightImageUrl.startsWith('data:') || orderDetails.weightImageUrl.startsWith('http') ? orderDetails.weightImageUrl : `data:image/jpeg;base64,${orderDetails.weightImageUrl}`} alt="Weight photo" maxH="150px" borderRadius="md" objectFit="cover" />
+                                            {orderDetails.weightImageUrl && orderDetails.weightImageUrl.split('|||').map((url, idx) => {
+                                                const trimmedUrl = url.trim();
+                                                const imgSrc = trimmedUrl.startsWith('data:') || trimmedUrl.startsWith('http') ? trimmedUrl : `data:image/jpeg;base64,${trimmedUrl}`;
+                                                return (
+                                                <Box key={`weight-${idx}`}>
+                                                    <Text fontSize="xs" color="gray.500" mb={1}>Bag {idx + 1}</Text>
+                                                    <Image src={imgSrc} alt={`Weight photo ${idx + 1}`} maxH="150px" borderRadius="md" objectFit="cover" />
                                                 </Box>
-                                            )}
+                                                );
+                                            })}
                                         </HStack>
                                     </Box>
                                 )}

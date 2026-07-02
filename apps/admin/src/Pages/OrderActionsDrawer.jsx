@@ -245,18 +245,18 @@ const OrderActionsDrawer = ({ isOpen, onClose, order, handleOrderHistory, handle
                                         Order Photos
                                     </Text>
                                     <HStack spacing={2} justify="center" wrap="wrap">
-                                        {order.weightImageUrl && (
-                                            <VStack spacing={1}>
+                                        {order.weightImageUrl && order.weightImageUrl.split('|||').map((url, idx) => (
+                                            <VStack spacing={1} key={`weight-${idx}`}>
                                                 <Image
-                                                    src={order.weightImageUrl}
-                                                    alt="Weight photo"
+                                                    src={url.trim()}
+                                                    alt={`Weight photo ${idx + 1}`}
                                                     boxSize="60px"
                                                     objectFit="cover"
                                                     borderRadius="md"
                                                 />
-                                                <Text fontSize="2xs" color="gray.600">Weight</Text>
+                                                <Text fontSize="2xs" color="gray.600">Bag {idx + 1}</Text>
                                             </VStack>
-                                        )}
+                                        ))}
                                         {order.processingImageUrl && (
                                             <VStack spacing={1}>
                                                 <Image

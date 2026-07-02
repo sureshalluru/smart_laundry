@@ -140,9 +140,12 @@ const MobileWeightEntry = ({ order, laundryId, employeeId, isOpen, onClose, onSa
     return sum + (isNaN(w) ? 0 : w);
   }, 0);
 
-  // Auto-fill weight-based service inputs when detected weights change (and user hasn't manually edited)
+  // Auto-fill weight-based service inputs whenever a new weight is detected from Claude.
+  // Always overrides — the customer estimate is just a guess, Claude's reading from the
+  // actual scale is more accurate. Employee can still manually override after auto-fill.
   useEffect(() => {
-    if (!weightManuallyEdited && totalDetectedWeight > 0) {
+    if (totalDetectedWeight > 0) {
+      setWeightManuallyEdited(false);
       setServiceValues((prev) =>
         prev.map((svc) =>
           svc.inputWeight
@@ -151,7 +154,7 @@ const MobileWeightEntry = ({ order, laundryId, employeeId, isOpen, onClose, onSa
         )
       );
     }
-  }, [totalDetectedWeight, weightManuallyEdited]);
+  }, [totalDetectedWeight]);
 
   // Handle value change for a service (marks as manually edited)
   const handleValueChange = (index, value) => {

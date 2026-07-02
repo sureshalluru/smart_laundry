@@ -1322,8 +1322,14 @@ def get_single_order(cur, laundry_id, order_id):
             return {"statusCode": 404, "body": {"message": "Order not found"}}
 
         cur.execute("SELECT * FROM orders.order_services WHERE order_id = %s", (order_id,))
+        services_rows = cur.fetchall()
+
+        # Look up input_weight from service catalog to determine weight vs count display
+        cur.execute("SELECT service_name, input_weight FROM shop.laundry_services WHERE laundry_id = %s", (laundry_id or order["laundry_id"],))
+        catalog_map = {r["service_name"]: r["input_weight"] for r in cur.fetchall()}
+
         services = []
-        for r in cur.fetchall():
+        for r in services_rows:
             services.append({
                 "id": r["id"],
                 "orderId": r["order_id"],
@@ -1331,6 +1337,7 @@ def get_single_order(cur, laundry_id, order_id):
                 "serviceName": r["service_name"],
                 "servicePrice": float(r["service_price"]) if r["service_price"] else 0,
                 "weightOrCount": float(r["weight_or_count"]) if r["weight_or_count"] else 0,
+                "inputWeight": catalog_map.get(r["service_name"], False),
             })
 
         cur.execute("SELECT * FROM orders.order_products WHERE order_id = %s", (order_id,))

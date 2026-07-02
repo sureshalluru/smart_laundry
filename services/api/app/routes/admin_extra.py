@@ -1770,14 +1770,28 @@ async def photo_upload_status(
                 return {"statusCode": 400, "body": {"message": gate_result["error"], "photoUploaded": True}}
 
             # Update order: status, image column, last_updated_by, updated_at
-            cur.execute(f"""
-                UPDATE orders.orders
-                SET order_status = %s,
-                    {db_column} = %s,
-                    last_updated_by = %s,
-                    updated_at = NOW()
-                WHERE order_id = %s AND laundry_id = %s
-            """, (targetStatus, image_url, empId, orderId, laundryId))
+            # For weight photos, append to existing (comma-separated) to support multi-bag
+            if db_column == "weight_image_url":
+                cur.execute("""
+                    UPDATE orders.orders
+                    SET order_status = %s,
+                        weight_image_url = CASE
+                            WHEN weight_image_url IS NULL OR weight_image_url = '' THEN %s
+                            ELSE weight_image_url || '|||' || %s
+                        END,
+                        last_updated_by = %s,
+                        updated_at = NOW()
+                    WHERE order_id = %s AND laundry_id = %s
+                """, (targetStatus, image_url, image_url, empId, orderId, laundryId))
+            else:
+                cur.execute(f"""
+                    UPDATE orders.orders
+                    SET order_status = %s,
+                        {db_column} = %s,
+                        last_updated_by = %s,
+                        updated_at = NOW()
+                    WHERE order_id = %s AND laundry_id = %s
+                """, (targetStatus, image_url, empId, orderId, laundryId))
 
             if cur.rowcount == 0:
                 return {"statusCode": 404, "body": {"message": "Order not found or update failed"}}
