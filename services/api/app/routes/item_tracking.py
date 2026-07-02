@@ -1191,7 +1191,7 @@ async def detect_weight(request: DetectWeightRequest):
         # Call Claude Vision — use Sonnet for reliable scale reading
         response = client.messages.create(
             model="claude-sonnet-4-6",
-            max_tokens=128,
+            max_tokens=256,
             system=weight_prompt,
             messages=[
                 {
@@ -1215,8 +1215,18 @@ async def detect_weight(request: DetectWeightRequest):
         )
 
         # Parse the response
-        response_text = response.content[0].text
-        logger.info(f"[item-tracking] Weight detection response for order={request.orderId}: {response_text[:200]}")
+        response_text = ""
+        if response.content and len(response.content) > 0:
+            response_text = response.content[0].text or ""
+        
+        logger.info(f"[item-tracking] Weight detection for order={request.orderId}: stop_reason={response.stop_reason}, text='{response_text[:300]}'")
+
+        if not response_text.strip():
+            logger.warning(f"[item-tracking] Empty response from Claude for order={request.orderId}")
+            return DetectWeightResponse(
+                statusCode=200,
+                body={"weight": None, "unit": None, "confidence": 0}
+            )
 
         # Extract JSON from response
         text = response_text.strip()
@@ -1225,6 +1235,19 @@ async def detect_weight(request: DetectWeightRequest):
             text = "\n".join(lines[1:])
             if text.endswith("```"):
                 text = text[:-3].strip()
+
+        # Try to find JSON in the response if it has extra text around it
+        if not text.startswith("{"):
+            import re
+            json_match = re.search(r'\{[^{}]*"weight"[^{}]*\}', text)
+            if json_match:
+                text = json_match.group()
+            else:
+                logger.warning(f"[item-tracking] No JSON found in response: {text[:200]}")
+                return DetectWeightResponse(
+                    statusCode=200,
+                    body={"weight": None, "unit": None, "confidence": 0}
+                )
 
         result_data = json.loads(text)
 
