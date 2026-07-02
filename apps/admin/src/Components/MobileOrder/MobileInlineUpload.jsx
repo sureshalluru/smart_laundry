@@ -431,7 +431,10 @@ const MobileInlineUpload = ({ orderId, laundryId, phase, employeeId, onComplete,
       // For fold, acknowledge all discrepancies automatically since employee
       // has already reviewed and adjusted counts on the UI
       if (phase === 'fold') {
-        body.acknowledgements = adjustedItems.map((item) => item.category);
+        body.acknowledgements = adjustedItems.map((item) => ({
+          category: item.category,
+          reason: "Employee reviewed and adjusted count"
+        }));
       }
 
       let confirmRes = await fetch(`${API_URL}${confirmEndpoint}`, {
@@ -449,7 +452,10 @@ const MobileInlineUpload = ({ orderId, laundryId, phase, employeeId, onComplete,
             ...adjustedItems.map((item) => item.category),
             ...(errData.detail.unresolved || []).map((d) => d.category || d),
           ];
-          body.acknowledgements = [...new Set(allCategories)];
+          body.acknowledgements = [...new Set(allCategories)].map((cat) => ({
+            category: cat,
+            reason: "Employee reviewed and adjusted count"
+          }));
           confirmRes = await fetch(`${API_URL}${confirmEndpoint}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
