@@ -404,14 +404,14 @@ async def instore_place_order(
             logger.info("Using walk-in customer: %s", customer_id)
 
             # Determine order type and pay_by_invoice based on account commercial status
-            # order_type = channel (InStore), pay_by_invoice = TRUE if account is commercial
-            order_type = "InStore"
-            pay_by_invoice = body.get("payByInvoice", False)
+        # order_type = channel (InStore), pay_by_invoice = TRUE if account is commercial
+        order_type = "InStore"
+        pay_by_invoice = body.get("payByInvoice", False)
 
-            # Check if customer account is commercial
-            if customer_id:
-                with get_db() as conn_comm:
-                    cur_comm = get_cursor(conn_comm)
+        # Check if customer account is commercial
+        if customer_id:
+            with get_db() as conn_comm:
+                cur_comm = get_cursor(conn_comm)
                 cur_comm.execute(
                     "SELECT is_commercial FROM shop.customers WHERE customer_id = %s",
                     (customer_id,),
