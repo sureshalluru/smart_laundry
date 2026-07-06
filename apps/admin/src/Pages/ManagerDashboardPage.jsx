@@ -734,6 +734,39 @@ const ManagerDashboardPage = () => {
         }
     };
 
+    const [convertingCommercial, setConvertingCommercial] = useState({});
+
+    const handleConvertToCommercial = async (frequencyId) => {
+        setConvertingCommercial((prev) => ({ ...prev, [frequencyId]: true }));
+        try {
+            await axios.patch(
+                `${process.env.REACT_APP_AWS_API_URL}/api/admin/frequency-commercial`,
+                { frequencyId, laundryId, isCommercial: true },
+                { headers: { Authorization: `Bearer ${authToken}` } }
+            );
+            toast({
+                title: "Converted to Commercial",
+                description: "Frequency record has been marked as commercial.",
+                status: "success",
+                duration: 3000,
+                isClosable: true,
+            });
+            // Refresh the list to show updated status
+            fetchUpcomingOrders();
+        } catch (error) {
+            console.error("Error converting to commercial:", error);
+            toast({
+                title: "Conversion failed",
+                description: error?.response?.data?.body?.message || "Could not convert frequency to commercial.",
+                status: "error",
+                duration: 5000,
+                isClosable: true,
+            });
+        } finally {
+            setConvertingCommercial((prev) => ({ ...prev, [frequencyId]: false }));
+        }
+    };
+
     // Group upcoming orders by week
     const groupedUpcomingByWeek = useMemo(() => {
         if (!upcomingOrders.length) return [];
@@ -1273,9 +1306,14 @@ const ManagerDashboardPage = () => {
                                         <h2>
                                             <AccordionButton>
                                                 <Box flex="1" textAlign="left">
-                                                    <Text color="blue.600" fontWeight="bold">
-                                                        {cust.firstName} {cust.lastName}
-                                                    </Text>
+                                                    <HStack spacing={2}>
+                                                        <Text color="blue.600" fontWeight="bold">
+                                                            {cust.firstName} {cust.lastName}
+                                                        </Text>
+                                                        {cust.isCommercial && (
+                                                            <Badge colorScheme="purple" fontSize="xs">Commercial</Badge>
+                                                        )}
+                                                    </HStack>
                                                     <Text fontSize="sm">
                                                         Phone: {cust.phoneNumber} | Email: {cust.email}
                                                     </Text>
@@ -1432,6 +1470,34 @@ const ManagerDashboardPage = () => {
                                                     onClick={() => { setPricingCustomer(cust); setPricingModalOpen(true); fetchCustomerPricing(cust.customerId); }}>
                                                     💰 Custom Pricing
                                                 </Button>
+                                                {/* Commercial Account Conversion */}
+                                                <HStack spacing={2} mt={1}>
+                                                    {cust.isCommercial ? (
+                                                        <Badge colorScheme="purple" fontSize="sm" px={3} py={1} borderRadius="md">
+                                                            ✅ Commercial Account
+                                                        </Badge>
+                                                    ) : (
+                                                        <Button size="sm" colorScheme="purple" variant="outline"
+                                                            onClick={async () => {
+                                                                const billingEmail = prompt("Enter billing email for this commercial account:");
+                                                                if (!billingEmail) return;
+                                                                try {
+                                                                    await axios.patch(
+                                                                        `${process.env.REACT_APP_AWS_API_URL}/api/admin/customer-commercial`,
+                                                                        { customerId: cust.customerId, laundryId, billingEmail, isCommercial: true },
+                                                                        { headers: { Authorization: `Bearer ${authToken}` } }
+                                                                    );
+                                                                    toast({ title: "Converted to Commercial", description: `${cust.firstName} is now a commercial customer.`, status: "success", duration: 3000 });
+                                                                    // Update local state
+                                                                    setCustomers(prev => prev.map(c => c.customerId === cust.customerId ? { ...c, isCommercial: true, billingEmail } : c));
+                                                                } catch (err) {
+                                                                    toast({ title: "Error", description: err.response?.data?.body?.message || err.message, status: "error", duration: 4000 });
+                                                                }
+                                                            }}>
+                                                            🏢 Convert to Commercial
+                                                        </Button>
+                                                    )}
+                                                </HStack>
                                             </VStack>
                                         </AccordionPanel>
                                     </AccordionItem>
@@ -1509,6 +1575,7 @@ const ManagerDashboardPage = () => {
                                                     <Th color="white">Time Slot</Th>
                                                     <Th color="white">Service</Th>
                                                     <Th color="white">Auto-Charge</Th>
+                                                    <Th color="white">Commercial</Th>
                                                 </Tr>
                                             </Thead>
                                             <Tbody>
@@ -1532,6 +1599,24 @@ const ManagerDashboardPage = () => {
                                                             <Badge colorScheme={order.autoCharge ? "green" : "gray"} variant="subtle" borderRadius="full" px={2}>
                                                                 {order.autoCharge ? "Yes" : "No"}
                                                             </Badge>
+                                                        </Td>
+                                                        <Td>
+                                                            {order.effectiveCommercial ? (
+                                                                <Badge colorScheme="purple" variant="solid" borderRadius="full" px={2}>
+                                                                    Commercial
+                                                                </Badge>
+                                                            ) : (
+                                                                <Button
+                                                                    size="xs"
+                                                                    colorScheme="purple"
+                                                                    variant="outline"
+                                                                    borderRadius="full"
+                                                                    isLoading={convertingCommercial[order.frequencyId]}
+                                                                    onClick={() => handleConvertToCommercial(order.frequencyId)}
+                                                                >
+                                                                    Convert to Commercial
+                                                                </Button>
+                                                            )}
                                                         </Td>
                                                     </Tr>
                                                 ))}

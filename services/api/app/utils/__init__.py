@@ -1,5 +1,7 @@
 """
 Shared utility functions — migrated from Lambda utils.py modules.
+Re-exported here so `from app.utils import serialize, serialize_row` continues to work
+after the utils package was created for sub-modules (e.g. invoice_helpers).
 """
 from datetime import datetime, date, time, timezone
 from decimal import Decimal, ROUND_HALF_UP

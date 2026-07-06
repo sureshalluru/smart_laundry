@@ -8,6 +8,7 @@ const baseNavLinks = [
     { label: 'Pricing', href: '#pricing' },
     { label: 'Location', href: '#location' },
     { label: 'About', href: '#about' },
+    { label: 'My Account', href: null, isAccount: true },
     { label: 'Admin', href: null, isAdmin: true },
     { label: 'Driver', href: null, isDriver: true },
 ];
@@ -52,9 +53,9 @@ export default function SiteNavbar({ config }) {
                 <HStack spacing={6} display={{ base: 'none', md: 'flex' }}>
                     {navLinks.map((link) => (
                         <Box key={link.label} as="a"
-                            href={link.isAdmin ? `/${laundryId}/admin` : link.isDriver ? `/${laundryId}/driver/home` : link.href}
+                            href={link.isAdmin ? `/${laundryId}/admin` : link.isDriver ? `/${laundryId}/driver/home` : link.isAccount ? `/${laundryId}/login` : link.href}
                             fontSize="sm" fontWeight="500"
-                            color={(link.isAdmin || link.isDriver) ? 'gray.400' : 'gray.600'}
+                            color={link.isAccount ? `${themeColor}.600` : (link.isAdmin || link.isDriver) ? 'gray.400' : 'gray.600'}
                             _hover={{ color: `${themeColor}.500` }} transition="color 0.2s">
                             {link.label}
                         </Box>
@@ -71,7 +72,7 @@ export default function SiteNavbar({ config }) {
             <Collapse in={isOpen} animateOpacity>
                 <VStack display={{ base: 'flex', md: 'none' }} spacing={3} pb={4} px={4} align="stretch">
                     {navLinks.map((link) => (
-                        <Box key={link.label} as="a" href={link.isAdmin ? `/${laundryId}/admin` : link.isDriver ? `/${laundryId}/driver/home` : link.href} py={2} fontSize="md" fontWeight="500" color={(link.isAdmin || link.isDriver) ? 'gray.400' : 'gray.700'} _hover={{ color: `${themeColor}.500` }} onClick={onToggle}>
+                        <Box key={link.label} as="a" href={link.isAdmin ? `/${laundryId}/admin` : link.isDriver ? `/${laundryId}/driver/home` : link.isAccount ? `/${laundryId}/login` : link.href} py={2} fontSize="md" fontWeight="500" color={link.isAccount ? `${themeColor}.600` : (link.isAdmin || link.isDriver) ? 'gray.400' : 'gray.700'} _hover={{ color: `${themeColor}.500` }} onClick={onToggle}>
                             {link.label}
                         </Box>
                     ))}

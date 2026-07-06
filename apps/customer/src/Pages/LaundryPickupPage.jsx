@@ -11,7 +11,7 @@ import {
     Stepper,
     StepTitle,
     FormControl, FormLabel, Input,
-    useSteps, StepIcon, StepNumber, useToast, VStack, Image, Heading, Text
+    useSteps, StepIcon, StepNumber, useToast, VStack, Image, Heading, Text, Badge
 } from "@chakra-ui/react";
 import PaymentPage from '../Components/LaundryPickup/PaymentPage';
 import UnifiedServicePage from '../Components/LaundryPickup/UnifiedServicePage';
@@ -80,6 +80,7 @@ export default function LaundryPickupPage({laundryId,customerId,customerPaymentI
     // State management for the payment page
     const [existingPaymentMethods, setExistingPaymentMethods] = useState([]);
     const [payByInvoice, setPayByInvoice] = useState(false);
+    const [isCommercialCustomer, setIsCommercialCustomer] = useState(false);
 
     // State management for the review order page
     const [orderProcessing, setOrderProcessing] = useState(false);
@@ -123,6 +124,29 @@ export default function LaundryPickupPage({laundryId,customerId,customerPaymentI
         const zonedDate = toZonedTime(date, timeZone);
         return format(zonedDate, 'yyyy-MM-dd', { timeZone });
     };
+
+    // Check if customer is a commercial account and auto-set payByInvoice
+    useEffect(() => {
+        const checkCommercialStatus = async () => {
+            if (!customerId || !laundryId || !authToken) return;
+            try {
+                const response = await axios.get(`${process.env.REACT_APP_AWS_API_URL}/api/customer/get-orders-info`, {
+                    params: { operation: 'getCustomerProfile', customerId, laundryId },
+                    headers: { 'x-api-key': authToken },
+                });
+                const profile = response.data?.body;
+                if (profile?.isCommercial) {
+                    setIsCommercialCustomer(true);
+                    setPayByInvoice(true);
+                    setIsPaymentStepValid(true);
+                }
+            } catch (err) {
+                // If the profile check fails, customer proceeds as non-commercial
+                console.debug('Commercial status check skipped:', err.message);
+            }
+        };
+        checkCommercialStatus();
+    }, [customerId, laundryId, authToken]);
 
     // Fetch laundry info when the page loads
     useEffect(() => {
@@ -573,8 +597,8 @@ export default function LaundryPickupPage({laundryId,customerId,customerPaymentI
                                 </Button>
                             </Flex>
                         )}
-                        {laundryData?.laundryLogo && (
-                            <Box mb={3} textAlign="center">
+                        {laundryData?.laundryLogo && activeStep === 0 && (
+                            <Box mb={2} textAlign="center">
                                 <Image src={laundryData.laundryLogo} alt={laundryData?.laundryName} maxH={{ base: '60px', md: '80px' }} objectFit="contain" mx="auto" />
                             </Box>
                         )}
@@ -651,7 +675,19 @@ export default function LaundryPickupPage({laundryId,customerId,customerPaymentI
                             )}
 
                             {/* Step 3: Payment */}
-                            {activeStep === 3 && stripePromise && (
+                            {activeStep === 3 && isCommercialCustomer && (
+                                <Box p={6} textAlign="center">
+                                    <Text fontSize="lg" fontWeight="bold" mb={2}>💼 Commercial Account</Text>
+                                    <Text color="gray.600" mb={4}>
+                                        Your order will be invoiced. No card payment required.
+                                    </Text>
+                                    <Badge colorScheme="purple" fontSize="md" px={3} py={1} mb={4}>Pay by Invoice</Badge>
+                                    <Button colorScheme="blue" onClick={() => { setActiveStep(4); }} w="100%">
+                                        Continue to Review
+                                    </Button>
+                                </Box>
+                            )}
+                            {activeStep === 3 && !isCommercialCustomer && stripePromise && (
                                 <Elements stripe={stripePromise}>
                                     <PaymentPage
                                         customerId={customerId}
@@ -668,7 +704,7 @@ export default function LaundryPickupPage({laundryId,customerId,customerPaymentI
                                     />
                                 </Elements>
                             )}
-                            {activeStep === 3 && !stripePromise && (
+                            {activeStep === 3 && !isCommercialCustomer && !stripePromise && (
                                 <Box p={6} textAlign="center">
                                     <Text fontSize="lg" fontWeight="bold" mb={2}>💵 Pay at Pickup</Text>
                                     <Text color="gray.600" mb={4}>

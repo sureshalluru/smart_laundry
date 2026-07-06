@@ -7,6 +7,7 @@ from typing import Optional
 from app.database import get_db, get_cursor
 from app.auth import get_current_user
 from app.utils import serialize
+from app.utils.invoice_helpers import resolve_invoice_emails
 from decimal import Decimal, ROUND_HALF_UP
 from datetime import datetime
 import logging
@@ -106,6 +107,11 @@ async def instore_payment(
                                 automatic_payment_methods={
                                     "enabled": True,
                                     "allow_redirects": "never",
+                                },
+                                metadata={
+                                    "order_id": orderId,
+                                    "laundry_id": laundryId,
+                                    "type": "instore_online_payment",
                                 },
                             )
                             intent_id = payment_intent.id
@@ -242,11 +248,11 @@ async def create_invoice(
     try:
         _init_stripe(laundry_id)
 
-        # Get order details
+        # Get order details (include billing_email for dual-email resolution)
         with get_db() as conn:
             cur = get_cursor(conn)
             cur.execute("""
-                SELECT o.*, c.email, c.first_name, c.last_name, c.phone_number
+                SELECT o.*, c.email, c.billing_email, c.first_name, c.last_name, c.phone_number
                 FROM orders.orders o
                 JOIN shop.customers c ON c.customer_id = o.customer_id
                 WHERE o.order_id = %s AND o.laundry_id = %s
@@ -268,10 +274,19 @@ async def create_invoice(
             shop = cur.fetchone()
             laundry_name = shop["laundry_name"] if shop else "Laundry"
 
-        # Use provided email or customer's email
-        invoice_email = customer_email or order["email"]
-        if not invoice_email:
-            return {"status": "error", "message": "Customer has no email. Please provide an email address."}
+        # Resolve invoice recipient list using dual-email logic
+        # If frontend explicitly provided a customerEmail, use it directly (backwards compat)
+        # Otherwise use resolve_invoice_emails for dual-email support
+        if customer_email:
+            invoice_email = customer_email
+            secondary_email = None
+        else:
+            invoice_emails = resolve_invoice_emails(order)
+            if not invoice_emails:
+                return {"status": "error", "message": "Customer has no email. Please provide an email address."}
+            # First email is billing_email if set (primary Stripe recipient)
+            invoice_email = invoice_emails[0]
+            secondary_email = invoice_emails[1] if len(invoice_emails) > 1 else None
 
         invoice_name = customer_name or f"{order['first_name'] or ''} {order['last_name'] or ''}".strip()
 
@@ -343,6 +358,32 @@ async def create_invoice(
                 WHERE order_id = %s
             """, (order_id,))
 
+        logger.info(f"Manual invoice sent for order {order_id} to {invoice_email}")
+
+        # Send informational notification to secondary email (if exists)
+        # This notifies the account_email holder when billing_email is primary, or vice versa.
+        if secondary_email:
+            try:
+                from app.services.notification_service import send_email
+                invoice_url = finalized.hosted_invoice_url or ""
+                amount_due = finalized.amount_due / 100
+                html_body = f"""
+                <h2>Invoice Notification - {laundry_name}</h2>
+                <p>An invoice for order <strong>{order_id}</strong> has been sent.</p>
+                <p>Amount: ${amount_due:.2f}</p>
+                {f'<p><a href="{invoice_url}" style="background:#4299E1;color:white;padding:12px 24px;text-decoration:none;border-radius:8px;font-weight:bold;display:inline-block;">View Invoice</a></p>' if invoice_url else ''}
+                <p style="color:#777;font-size:13px;">This is an informational copy. The invoice payment link was sent to {invoice_email}.</p>
+                """
+                send_email(
+                    secondary_email,
+                    f"Invoice sent for order {order_id} - {laundry_name}",
+                    html_body,
+                    sender_name=laundry_name,
+                )
+                logger.info(f"Invoice notification sent to secondary email {secondary_email} for order {order_id}")
+            except Exception as notif_err:
+                logger.warning(f"Failed to send invoice notification to {secondary_email} for order {order_id}: {notif_err}")
+
         return {
             "status": "success",
             "message": f"Invoice sent to {invoice_email}",
@@ -351,6 +392,7 @@ async def create_invoice(
             "invoicePdf": finalized.invoice_pdf,
             "amountDue": finalized.amount_due / 100,
             "dueDate": finalized.due_date,
+            "notifiedEmail": secondary_email,
         }
 
     except Exception as e:

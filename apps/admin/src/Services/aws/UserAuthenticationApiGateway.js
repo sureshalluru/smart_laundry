@@ -23,6 +23,7 @@ export const handlePhoneNumberCheck = async (phoneNumber, laundryId) => {
             customerPaymentId: response.data.customerPaymentId,
             customerFirstName: response.data.firstName,
             specialInstructions: response.data.specialInstructions,
+            isCommercial: response.data.isCommercial || false,
         };
     } catch (error) {
         console.error("Error checking phone number:", error);

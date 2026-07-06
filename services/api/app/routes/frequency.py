@@ -80,9 +80,12 @@ async def process_frequencies():
             # Find subscriptions where pickup is tomorrow (create order day before)
             cur.execute("""
                 SELECT lf.*, ca.address, ca.door_number, ca.address_instructions,
-                       cpp.stripe_customer_id
+                       cpp.stripe_customer_id,
+                       lf.is_commercial AS freq_is_commercial,
+                       c.is_commercial AS customer_is_commercial
                 FROM orders.laundry_frequency lf
                 JOIN shop.customer_addresses ca ON ca.address_id = lf.address_id
+                JOIN shop.customers c ON c.customer_id = lf.customer_id
                 LEFT JOIN shop.customer_payment_profiles cpp
                     ON cpp.customer_id = lf.customer_id AND cpp.laundry_id = lf.laundry_id
                 WHERE lf.is_active = TRUE
@@ -162,6 +165,11 @@ async def process_frequencies():
                         order_grand_total = order_total
                         order_pricing_type = 'per_bag'
 
+                # Determine commercial status from frequency or customer flags
+                is_commercial = bool(sub.get("freq_is_commercial")) or bool(sub.get("customer_is_commercial"))
+                order_type = 'Commercial' if is_commercial else 'Online'
+                pay_by_invoice = True if is_commercial else False
+
                 with get_db() as conn:
                     cur = get_cursor(conn)
                     cur.execute("""
@@ -173,19 +181,23 @@ async def process_frequencies():
                             sub_total, discounted_price, total_cost, grand_total,
                             pricing_type, pickup_service, dropoff_service,
                             auto_generated, is_reviewed, cancel_reason,
+                            pay_by_invoice,
                             created_at, updated_at
                         ) VALUES (
-                            %s,%s,%s,%s,'Online','OrderSubmitted','Active','Unpaid',
+                            %s,%s,%s,%s,%s,'OrderSubmitted','Active','Unpaid',
                             %s,%s,%s,%s,1,'',%s,%s,%s,%s,%s,%s,
-                            %s,%s,%s,TRUE,FALSE,'',NOW(),NOW()
+                            %s,%s,%s,TRUE,FALSE,'',
+                            %s,
+                            NOW(),NOW()
                         )
                     """, (
-                        order_id, laundry_id, customer_id, address_id,
+                        order_id, laundry_id, customer_id, address_id, order_type,
                         future_pickup_date, pickup_time_interval,
                         dropoff_date, dropoff_time_interval,
                         None, frequency,
                         order_sub_total, order_discounted, order_total, order_grand_total,
                         order_pricing_type, pickup_service, dropoff_service,
+                        pay_by_invoice,
                     ))
 
                 # Create $1 hold if payment info exists
@@ -409,7 +421,9 @@ async def get_active_frequencies(
     with get_db() as conn:
         cur = get_cursor(conn)
         cur.execute("""
-            SELECT lf.*, c.first_name, c.last_name, c.phone_number
+            SELECT lf.*, c.first_name, c.last_name, c.phone_number,
+                   lf.is_commercial AS frequency_is_commercial,
+                   c.is_commercial AS customer_is_commercial
             FROM orders.laundry_frequency lf
             JOIN shop.customers c ON c.customer_id = lf.customer_id
             WHERE lf.laundry_id = %s AND lf.is_active = TRUE
@@ -417,6 +431,8 @@ async def get_active_frequencies(
         """, (laundryId,))
         frequencies = []
         for r in cur.fetchall():
+            freq_commercial = bool(r["frequency_is_commercial"])
+            cust_commercial = bool(r["customer_is_commercial"])
             frequencies.append({
                 "frequencyId": str(r["frequency_id"]),
                 "customerId": r["customer_id"],
@@ -430,6 +446,9 @@ async def get_active_frequencies(
                 "futurePickupDate": str(r["future_pickup_date"]) if r["future_pickup_date"] else None,
                 "frequencyStartDate": str(r["frequency_start_date"]) if r["frequency_start_date"] else None,
                 "isActive": r["is_active"],
+                "isCommercial": freq_commercial,
+                "customerIsCommercial": cust_commercial,
+                "effectiveCommercial": freq_commercial or cust_commercial,
             })
     return {"body": {"status": "success", "data": frequencies}}
 
@@ -474,7 +493,9 @@ async def get_upcoming_orders(
             SELECT lf.frequency_id, lf.customer_id, lf.frequency,
                    lf.future_pickup_date, lf.pickup_time_interval, lf.dropoff_time_interval,
                    lf.auto_charge,
+                   lf.is_commercial AS frequency_is_commercial,
                    c.first_name, c.last_name, c.phone_number,
+                   c.is_commercial AS customer_is_commercial,
                    ca.address
             FROM orders.laundry_frequency lf
             JOIN shop.customers c ON c.customer_id = lf.customer_id
@@ -491,6 +512,9 @@ async def get_upcoming_orders(
 
     for sub in subscriptions:
         frequency = sub["frequency"]
+        freq_commercial = bool(sub.get("frequency_is_commercial"))
+        cust_commercial = bool(sub.get("customer_is_commercial"))
+        effective_commercial = freq_commercial or cust_commercial
         if frequency.lower() == 'weekly':
             freq_days = 7
         elif frequency.lower() == 'monthly':
@@ -524,6 +548,9 @@ async def get_upcoming_orders(
                     "autoCharge": sub["auto_charge"] or False,
                     "pickupService": "LaundryDriver",
                     "dropoffService": "LaundryDriver",
+                    "isCommercial": freq_commercial,
+                    "customerIsCommercial": cust_commercial,
+                    "effectiveCommercial": effective_commercial,
                 })
             next_date = next_date + timedelta(days=freq_days)
 

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   Box, Flex, Grid, GridItem, Button, Text, Input, VStack, HStack, Badge,
-  Icon, IconButton, InputGroup, InputLeftAddon, useToast, InputLeftElement, Divider
+  Icon, IconButton, InputGroup, InputLeftAddon, useToast, InputLeftElement, Divider, Checkbox
 } from '@chakra-ui/react';
 import { keyframes } from '@emotion/react';
 import { useNavigate } from 'react-router-dom';
@@ -30,6 +30,7 @@ export default function QuickPOSPage({ laundryId, stripePublicKey, stripeTermina
   const [customerPhone, setCustomerPhone] = useState('');
   const [customerName, setCustomerName] = useState('');
   const [customerId, setCustomerId] = useState('');
+  const [isCustomerCommercial, setIsCustomerCommercial] = useState(false);
   const [phoneSuggestions, setPhoneSuggestions] = useState([]);
   const [bags, setBags] = useState(1);
   const [tip, setTip] = useState({ tipOption: 'noTip', tipType: 'noTip', tipPercentage: 0, tipAmount: '0.00', customTip: '' });
@@ -45,6 +46,8 @@ export default function QuickPOSPage({ laundryId, stripePublicKey, stripeTermina
   const [newFirstName, setNewFirstName] = useState('');
   const [newLastName, setNewLastName] = useState('');
   const [newEmail, setNewEmail] = useState('');
+  const [newIsCommercial, setNewIsCommercial] = useState(false);
+  const [newBillingEmail, setNewBillingEmail] = useState('');
   const [isRegistering, setIsRegistering] = useState(false);
   const toast = useToast();
 
@@ -97,18 +100,25 @@ export default function QuickPOSPage({ laundryId, stripePublicKey, stripeTermina
       const suggestions = res.data?.body?.suggestions || [];
       setPhoneSuggestions(suggestions);
       const exact = suggestions.find(s => s.phoneNumber?.replace('+1','') === phone);
-      if (exact) { setCustomerName(`${exact.firstName||''} ${exact.lastName||''}`.trim()); setCustomerId(exact.customerId); setPhoneSuggestions([]); setIsNewCustomer(false); }
-      else {
+      if (exact) {
+        setCustomerName(`${exact.firstName||''} ${exact.lastName||''}`.trim());
+        setCustomerId(exact.customerId);
+        setPhoneSuggestions([]);
+        setIsNewCustomer(false);
+        setIsCustomerCommercial(exact.isCommercial || false);
+      } else {
         setCustomerName(''); setCustomerId('');
+        setIsCustomerCommercial(false);
         if (phone.length === 10) setIsNewCustomer(true);
       }
     } catch (err) { /* ok */ }
   };
 
-  const selectCustomer = (s) => {
+  const selectCustomer = async (s) => {
     setCustomerPhone(s.phoneNumber?.replace('+1','') || '');
     setCustomerName(`${s.firstName||''} ${s.lastName||''}`.trim());
     setCustomerId(s.customerId); setPhoneSuggestions([]); setIsNewCustomer(false);
+    setIsCustomerCommercial(s.isCommercial || false);
   };
 
   // Register new customer inline
@@ -130,7 +140,18 @@ export default function QuickPOSPage({ laundryId, stripePublicKey, stripeTermina
       setCustomerId(result.customerId);
       setCustomerName(`${newFirstName.trim()} ${newLastName.trim()}`);
       setIsNewCustomer(false);
-      setNewFirstName(''); setNewLastName(''); setNewEmail('');
+      setIsCustomerCommercial(newIsCommercial);
+      // Save commercial account settings if flagged
+      if (newIsCommercial && newBillingEmail.trim()) {
+        try {
+          await axios.patch(
+            `${process.env.REACT_APP_AWS_API_URL}/api/admin/customer-commercial`,
+            { customerId: result.customerId, laundryId, billingEmail: newBillingEmail.trim(), isCommercial: true },
+            { headers: { Authorization: `Bearer ${localStorage.getItem('idToken')}` } }
+          );
+        } catch (err) { console.warn("Failed to save commercial settings:", err); }
+      }
+      setNewFirstName(''); setNewLastName(''); setNewEmail(''); setNewIsCommercial(false); setNewBillingEmail('');
       toast({ title: result.isNew ? 'Customer registered' : 'Customer found', status: 'success', duration: 2000, isClosable: true });
     } catch (err) {
       toast({ title: 'Registration failed', description: err.message, status: 'error', duration: 4000, isClosable: true });
@@ -316,14 +337,25 @@ export default function QuickPOSPage({ laundryId, stripePublicKey, stripeTermina
               <Input placeholder="Last name *" value={newLastName} onChange={(e) => setNewLastName(e.target.value)}
                 size="sm" bg="white" />
             </HStack>
-            <HStack spacing={2}>
+            <HStack spacing={2} mb={1}>
               <Input placeholder="Email (optional)" value={newEmail} onChange={(e) => setNewEmail(e.target.value)}
                 size="sm" bg="white" type="email" />
-              <Button size="sm" colorScheme="orange" onClick={handleRegisterCustomer} isLoading={isRegistering}
-                isDisabled={!newFirstName.trim() || !newLastName.trim()} minW="80px">
-                Register
-              </Button>
             </HStack>
+            <HStack spacing={2} mb={1}>
+              <Checkbox size="sm" colorScheme="purple" isChecked={newIsCommercial} onChange={(e) => setNewIsCommercial(e.target.checked)}>
+                <Text fontSize="xs">Commercial Account</Text>
+              </Checkbox>
+            </HStack>
+            {newIsCommercial && (
+              <HStack spacing={2} mb={1}>
+                <Input placeholder="Billing email (required) *" value={newBillingEmail} onChange={(e) => setNewBillingEmail(e.target.value)}
+                  size="sm" bg="white" type="email" borderColor={newIsCommercial && !newBillingEmail.trim() ? "red.300" : undefined} />
+              </HStack>
+            )}
+            <Button size="sm" colorScheme="orange" onClick={handleRegisterCustomer} isLoading={isRegistering}
+              isDisabled={!newFirstName.trim() || !newLastName.trim() || (newIsCommercial && !newBillingEmail.trim())} minW="80px">
+              Register
+            </Button>
           </Box>
         )}
 
@@ -506,6 +538,7 @@ export default function QuickPOSPage({ laundryId, stripePublicKey, stripeTermina
         customerPhone={customerPhone}
         customerName={customerName}
         customerId={customerId}
+        isCommercial={isCustomerCommercial}
         initialTip={tip}
         needBy={needBy}
         laundryId={laundryId}

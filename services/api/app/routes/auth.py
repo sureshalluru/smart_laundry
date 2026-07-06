@@ -531,6 +531,8 @@ async def customer_register(body: dict = Body(...)):
     last_name = body.get("lastName", "")
     laundry_id = body.get("laundryId")
     receive_phone_notification = body.get("receivePhoneNotification", True)
+    is_commercial = body.get("isCommercial", False)
+    billing_email = body.get("billingEmail", "")
 
     if not phone:
         raise HTTPException(status_code=400, detail="Phone number required")
@@ -548,10 +550,10 @@ async def customer_register(body: dict = Body(...)):
         customer_id = str(uuid.uuid4())
         cur.execute("""
             INSERT INTO shop.customers (customer_id, phone_number, email, first_name, last_name,
-                                        notif_phone, notif_sms, notif_email)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                                        notif_phone, notif_sms, notif_email, is_commercial, billing_email)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """, (customer_id, phone, email, first_name, last_name,
-              receive_phone_notification, True, bool(email)))
+              receive_phone_notification, True, bool(email), is_commercial, billing_email))
 
         # Create laundry stats record
         if laundry_id:

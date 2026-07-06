@@ -68,6 +68,7 @@ export default function QuickPOSPaymentModal({
   customerPhone = "",
   customerName = "",
   customerId = "",
+  isCommercial = false,
   initialTip = null,
   needBy = "asap",
   laundryId = "",
@@ -197,6 +198,8 @@ export default function QuickPOSPaymentModal({
       cardPaymentMethodId: cardPaymentMethodId,
       isTerminalPayment: isTerminalPayment,
       customerPhone: customerPhone.startsWith("+1") ? customerPhone : `+1${customerPhone}`,
+      orderType: isCommercial ? "Commercial" : "InStore",
+      payByInvoice: isCommercial,
     };
   };
 

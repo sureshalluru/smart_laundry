@@ -900,7 +900,7 @@ const MyOrders = ({ customerId, laundryId, laundryTimeZone }) => {
                                         </Badge>
                                     </Box>
                                     <Box textAlign={{ base: 'left', md: 'right' }}>
-                                        <Text fontSize={["sm", "md"]}>Payment Status: {order.paymentStatus}</Text>
+                                        <Text fontSize={["sm", "md"]}>Payment Status: {(order.orderType === 'Commercial' || order.payByInvoice) && order.paymentStatus === 'Unpaid' ? 'Pay by Invoice' : order.paymentStatus}</Text>
                                         <Text fontSize={["sm", "md"]} fontWeight="bold">
                                             Total Cost: ${order.totalCost}
                                         </Text>
@@ -1207,7 +1207,11 @@ const MyOrders = ({ customerId, laundryId, laundryTimeZone }) => {
                                             <Text fontWeight="bold">Status:</Text>
                                         </GridItem>
                                         <GridItem>
-                                            <Text>{orderDetails.paymentStatus}</Text>
+                                            <Text>
+                                                {(orderDetails.orderType === 'Commercial' || orderDetails.payByInvoice) && orderDetails.paymentStatus === 'Unpaid'
+                                                    ? 'Pay by Invoice'
+                                                    : orderDetails.paymentStatus}
+                                            </Text>
                                         </GridItem>
                                         {orderDetails.tip ? (
                                             <>
@@ -1359,7 +1363,11 @@ const MyOrders = ({ customerId, laundryId, laundryTimeZone }) => {
                     {orderDetails && (
                         <DrawerFooter bg="#ccf0ed" borderTopWidth="1px" display="flex" justifyContent="center">
                             {orderDetails && (() => {
-                                const { orderType, orderStatus, paymentStatus } = orderDetails;
+                                const { orderType, orderStatus, paymentStatus, payByInvoice } = orderDetails;
+                                // Commercial/pay-by-invoice orders never show Pay Now
+                                if (orderType === 'Commercial' || payByInvoice) {
+                                    return null;
+                                }
                                 if (orderType === 'Online' || orderStatus === 'Delivered' || orderStatus === 'OrderPickedUp') {
                                     return null;
                                 }

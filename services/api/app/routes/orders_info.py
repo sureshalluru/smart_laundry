@@ -8,6 +8,7 @@ from app.database import get_db, get_cursor
 from app.auth import get_current_user
 from app.utils import serialize, serialize_row
 from app.services.payment_service import check_payment_gate
+from app.utils.invoice_helpers import resolve_invoice_emails
 from decimal import Decimal, ROUND_HALF_UP
 from datetime import datetime, timedelta
 from base64 import b64decode, b64encode
@@ -402,6 +403,24 @@ async def instore_place_order(
                     """, (customer_id, f"walkin-{laundry_id}"))
             logger.info("Using walk-in customer: %s", customer_id)
 
+            # Determine order type and pay_by_invoice based on account commercial status
+            # order_type = channel (InStore), pay_by_invoice = TRUE if account is commercial
+            order_type = "InStore"
+            pay_by_invoice = body.get("payByInvoice", False)
+
+            # Check if customer account is commercial
+            if customer_id:
+                with get_db() as conn_comm:
+                    cur_comm = get_cursor(conn_comm)
+                cur_comm.execute(
+                    "SELECT is_commercial FROM shop.customers WHERE customer_id = %s",
+                    (customer_id,),
+                )
+                comm_row = cur_comm.fetchone()
+                if comm_row and comm_row.get("is_commercial"):
+                    pay_by_invoice = True
+                    logger.info(f"Commercial account detected in instore order: customer_id={customer_id}, order_type=InStore, pay_by_invoice=True")
+
         tip_amount = round(float(str(tip_data.get("tipAmount", 0) or 0)), 2)
         order_id = f"IS-{uuid.uuid4().hex[:8].upper()}"
         order_status = "ReceivedAtFacility"
@@ -465,6 +484,12 @@ async def instore_place_order(
                         "enabled": True,
                         "allow_redirects": "never",
                     },
+                    metadata={
+                        "order_id": order_id,
+                        "laundry_id": laundry_id,
+                        "customer_id": customer_id or "",
+                        "type": "instore",
+                    },
                 )
                 final_payments = [{"amount": amount_to_collect, "paymentIntentId": payment_intent.id, "paymentMethod": "Card"}]
                 payment_status = "Paid"
@@ -518,19 +543,21 @@ async def instore_place_order(
                     pickup_date, pickup_time_interval, dropoff_date, dropoff_time_interval,
                     laundry_bags, special_instructions, coupon,
                     sub_total, discounted_price, total_cost, grand_total, tax_amount,
+                    pay_by_invoice,
                     auto_generated, is_reviewed, cancel_reason,
                     created_at, updated_at
                 ) VALUES (
-                    %s,%s,%s,'InStore',%s,'Active',%s,
+                    %s,%s,%s,%s,%s,'Active',%s,
                     %s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,
-                    FALSE,FALSE,'',NOW(),NOW()
+                    %s,FALSE,FALSE,'',NOW(),NOW()
                 )
             """, (
                 order_id, laundry_id, customer_id,
-                order_status, payment_status,
+                order_type, order_status, payment_status,
                 pickup_date, pickup_time_interval, dropoff_date, dropoff_time_interval,
                 laundry_bags, special_instructions, coupon,
                 sub_total, discounted_price, total_cost, grand_total, tax_amount,
+                pay_by_invoice,
             ))
 
             for svc in services:
@@ -872,17 +899,26 @@ async def update_order_endpoint(
                     from app.services.payment_service import _init_stripe
                     _init_stripe(laundryId)
 
-                    # Get customer email
-                    cur.execute("SELECT email, first_name, last_name, phone_number FROM shop.customers WHERE customer_id = %s", (current_order["customer_id"],))
+                    # Get customer email and billing_email for dual-email resolution
+                    cur.execute("SELECT email, billing_email, first_name, last_name, phone_number FROM shop.customers WHERE customer_id = %s", (current_order["customer_id"],))
                     inv_cust = cur.fetchone()
-                    cur.execute("SELECT laundry_name FROM shop.laundry_shops WHERE laundry_id = %s", (laundryId,))
+                    cur.execute("SELECT laundry_name, contact_email FROM shop.laundry_shops WHERE laundry_id = %s", (laundryId,))
                     inv_shop = cur.fetchone()
 
-                    if inv_cust and inv_cust["email"]:
-                        # Find or create Stripe customer
-                        existing = stripe.Customer.list(email=inv_cust["email"], limit=1)
+                    # Resolve invoice recipient list using dual-email logic
+                    invoice_emails = resolve_invoice_emails(inv_cust) if inv_cust else []
+
+                    if not invoice_emails:
+                        logger.warning(f"Cannot auto-invoice {orderId}: no customer email resolved (both account_email and billing_email empty)")
+                    else:
+                        # First email in list is the primary Stripe invoice recipient
+                        # (billing_email if set, otherwise account_email)
+                        primary_email = invoice_emails[0]
+
+                        # Find or create Stripe customer using primary email
+                        existing = stripe.Customer.list(email=primary_email, limit=1)
                         stripe_cust = existing.data[0] if existing.data else stripe.Customer.create(
-                            email=inv_cust["email"],
+                            email=primary_email,
                             name=f"{inv_cust['first_name'] or ''} {inv_cust['last_name'] or ''}".strip(),
                             phone=inv_cust["phone_number"] or "",
                         )
@@ -918,9 +954,34 @@ async def update_order_endpoint(
                         # Update order
                         cur.execute("UPDATE orders.orders SET payment_status = 'Invoice Sent', stripe_invoice_id = %s WHERE order_id = %s",
                                     (invoice.id, orderId))
-                        logger.info(f"Auto-invoice sent for order {orderId} to {inv_cust['email']}")
-                    else:
-                        logger.warning(f"Cannot auto-invoice {orderId}: no customer email")
+                        logger.info(f"Auto-invoice sent for order {orderId} to {primary_email}")
+
+                        # Send informational notification to second email (if exists)
+                        # This notifies the account_email holder about the invoice when
+                        # billing_email is the primary recipient, or vice versa.
+                        if len(invoice_emails) > 1:
+                            secondary_email = invoice_emails[1]
+                            try:
+                                from app.services.notification_service import send_email
+                                laundry_name = inv_shop["laundry_name"] if inv_shop else "Laundry"
+                                invoice_url = invoice.hosted_invoice_url or ""
+                                html_body = f"""
+                                <h2>Invoice Notification - {laundry_name}</h2>
+                                <p>An invoice for order <strong>{orderId}</strong> has been sent.</p>
+                                <p>Amount: ${grand_total:.2f}</p>
+                                {f'<p><a href="{invoice_url}" style="background:#4299E1;color:white;padding:12px 24px;text-decoration:none;border-radius:8px;font-weight:bold;display:inline-block;">View Invoice</a></p>' if invoice_url else ''}
+                                <p style="color:#777;font-size:13px;">This is an informational copy. The invoice payment link was sent to {primary_email}.</p>
+                                """
+                                send_email(
+                                    secondary_email,
+                                    f"Invoice sent for order {orderId} - {laundry_name}",
+                                    html_body,
+                                    sender_name=laundry_name,
+                                    reply_to=inv_shop.get("contact_email") if inv_shop else None,
+                                )
+                                logger.info(f"Invoice notification sent to secondary email {secondary_email} for order {orderId}")
+                            except Exception as notif_err:
+                                logger.warning(f"Failed to send invoice notification to {secondary_email} for {orderId}: {notif_err}")
                 except Exception as inv_err:
                     logger.warning(f"Auto-invoice error for {orderId}: {inv_err}")
 
@@ -994,7 +1055,7 @@ async def update_order_endpoint(
             result = get_single_order(cur, laundryId, orderId)
 
             # Check if we need to auto-capture (collect vars before leaving DB block)
-            # Skip auto-capture for pay-by-invoice orders (they get invoiced instead)
+            # Skip auto-capture for pay-by-invoice / commercial orders (they get invoiced instead)
             should_auto_capture = (
                 order_status in ("ProcessingCompleted", "EnRouteToDelivery")
                 and current_order["order_type"] == "Online"
@@ -1063,6 +1124,12 @@ async def update_order_endpoint(
                             description=f"Payment for order {orderId}",
                             payment_method_types=["card"],
                             confirm=True,
+                            metadata={
+                                "order_id": orderId,
+                                "laundry_id": laundryId,
+                                "customer_id": capture_customer_id or "",
+                                "type": "auto_capture",
+                            },
                         )
                         if intent['status'] == 'succeeded':
                             captured_intent_id = intent.id

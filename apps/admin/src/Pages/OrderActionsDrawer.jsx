@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
     Box,
     VStack,
@@ -14,7 +14,13 @@ import {
     DrawerHeader,
     DrawerBody,
     DrawerCloseButton,
-    useBreakpointValue
+    useBreakpointValue,
+    Input,
+    FormControl,
+    FormLabel,
+    FormErrorMessage,
+    Switch,
+    Badge
 } from "@chakra-ui/react";
 import { QRCodeSVG } from "qrcode.react";
 import { FaHistory, FaTicketAlt, FaReceipt, FaFileInvoice, FaUserTag, FaTag  } from "react-icons/fa";
@@ -25,6 +31,88 @@ import axios from "axios";
 const OrderActionsDrawer = ({ isOpen, onClose, order, handleOrderHistory, handlePrintTicket, handlePrintReceipt, setSelectedOrder, setInvoiceModalOpen, setPaymentInstructions, setSendEmail, laundryId }) => {
     const drawerSize = useBreakpointValue({ base: "xs", sm: "xs", md: "sm", lg: "xs", xl: "xs" });
     const drawerMaxHeight = useBreakpointValue({ base: "70vh", sm: "65vh", md: "60vh" });
+
+    // Commercial account state
+    const [billingEmail, setBillingEmail] = useState("");
+    const [isCommercial, setIsCommercial] = useState(false);
+    const [emailError, setEmailError] = useState("");
+    const [commercialLoading, setCommercialLoading] = useState(false);
+    const [commercialSaving, setCommercialSaving] = useState(false);
+
+    const validateEmail = useCallback((email) => {
+        if (!email || email.trim() === "") return "";
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(email.trim())) {
+            return "Please enter a valid email address";
+        }
+        return "";
+    }, []);
+
+    // Load commercial data when drawer opens with a customer
+    useEffect(() => {
+        if (isOpen && order?.customerId && laundryId) {
+            setCommercialLoading(true);
+            setEmailError("");
+            axios.get(
+                `${process.env.REACT_APP_AWS_API_URL}/api/admin/customer-commercial`,
+                {
+                    params: { customerId: order.customerId, laundryId: laundryId },
+                    headers: { Authorization: `Bearer ${localStorage.getItem('idToken')}` }
+                }
+            ).then(res => {
+                setBillingEmail(res.data.billingEmail || "");
+                setIsCommercial(res.data.isCommercial || false);
+            }).catch(() => {
+                // If 404 or error, reset to defaults
+                setBillingEmail("");
+                setIsCommercial(false);
+            }).finally(() => {
+                setCommercialLoading(false);
+            });
+        } else if (!isOpen) {
+            // Reset state when drawer closes
+            setBillingEmail("");
+            setIsCommercial(false);
+            setEmailError("");
+        }
+    }, [isOpen, order?.customerId, laundryId]);
+
+    const handleBillingEmailChange = (e) => {
+        const value = e.target.value;
+        setBillingEmail(value);
+        if (emailError) {
+            setEmailError(validateEmail(value));
+        }
+    };
+
+    const handleBillingEmailBlur = () => {
+        setEmailError(validateEmail(billingEmail));
+    };
+
+    const handleSaveCommercial = async () => {
+        const error = validateEmail(billingEmail);
+        if (error) {
+            setEmailError(error);
+            return;
+        }
+        setCommercialSaving(true);
+        try {
+            await axios.patch(
+                `${process.env.REACT_APP_AWS_API_URL}/api/admin/customer-commercial`,
+                {
+                    customerId: order.customerId,
+                    laundryId: laundryId,
+                    billingEmail: billingEmail.trim() || null,
+                    isCommercial: isCommercial
+                },
+                { headers: { Authorization: `Bearer ${localStorage.getItem('idToken')}` } }
+            );
+        } catch (err) {
+            alert(`Error saving commercial settings: ${err.response?.data?.message || err.message}`);
+        } finally {
+            setCommercialSaving(false);
+        }
+    };
 
     const printTag = () => {
         if (!order) return;
@@ -319,6 +407,68 @@ const OrderActionsDrawer = ({ isOpen, onClose, order, handleOrderHistory, handle
                                             </VStack>
                                         )}
                                     </HStack>
+                                </Box>
+                            )}
+
+                            {/* Commercial Account Section */}
+                            {order?.customerId && (
+                                <Box
+                                    mt={3}
+                                    p={3}
+                                    bg="white"
+                                    borderRadius="md"
+                                    boxShadow="sm"
+                                    w="100%"
+                                >
+                                    <HStack justify="center" mb={2}>
+                                        <Text fontSize="xs" fontWeight="bold" color="gray.700" textAlign="center">
+                                            Commercial Account
+                                        </Text>
+                                        {isCommercial && (
+                                            <Badge colorScheme="purple" fontSize="2xs">
+                                                Commercial
+                                            </Badge>
+                                        )}
+                                    </HStack>
+
+                                    <VStack spacing={2} align="stretch">
+                                        <FormControl isInvalid={!!emailError}>
+                                            <FormLabel fontSize="xs" mb={1}>Billing Email</FormLabel>
+                                            <Input
+                                                size="xs"
+                                                placeholder="billing@company.com"
+                                                value={billingEmail}
+                                                onChange={handleBillingEmailChange}
+                                                onBlur={handleBillingEmailBlur}
+                                                isDisabled={commercialLoading}
+                                                type="email"
+                                            />
+                                            {emailError && (
+                                                <FormErrorMessage fontSize="2xs">{emailError}</FormErrorMessage>
+                                            )}
+                                        </FormControl>
+
+                                        <FormControl display="flex" alignItems="center" justifyContent="space-between">
+                                            <FormLabel fontSize="xs" mb={0}>Commercial</FormLabel>
+                                            <Switch
+                                                size="sm"
+                                                colorScheme="purple"
+                                                isChecked={isCommercial}
+                                                onChange={(e) => setIsCommercial(e.target.checked)}
+                                                isDisabled={commercialLoading}
+                                            />
+                                        </FormControl>
+
+                                        <Button
+                                            size="xs"
+                                            colorScheme="purple"
+                                            onClick={handleSaveCommercial}
+                                            isLoading={commercialSaving}
+                                            isDisabled={commercialLoading || !!emailError}
+                                        >
+                                            Save
+                                        </Button>
+                                    </VStack>
                                 </Box>
                             )}
 

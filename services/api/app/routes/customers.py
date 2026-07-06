@@ -230,6 +230,7 @@ def _check_phone_number(cur, phone_number, laundry_id):
     normalized = phone_number.replace("+1", "").strip()
     cur.execute("""
         SELECT c.customer_id, c.first_name, c.special_instructions,
+               c.is_commercial, c.billing_email,
                cpp.stripe_customer_id
         FROM shop.customers c
         LEFT JOIN shop.customer_payment_profiles cpp
@@ -253,6 +254,8 @@ def _check_phone_number(cur, phone_number, laundry_id):
         "customerPaymentId": row["stripe_customer_id"] or "",
         "firstName": row["first_name"],
         "specialInstructions": row["special_instructions"] or "",
+        "isCommercial": bool(row.get("is_commercial")),
+        "billingEmail": row.get("billing_email") or "",
     }
 
 
@@ -267,7 +270,7 @@ async def check_partial_phonenumbers(
         cur = get_cursor(conn)
         normalized = phoneQuery.replace("+1", "").strip()
         cur.execute("""
-            SELECT c.customer_id, c.first_name, c.last_name, c.phone_number
+            SELECT c.customer_id, c.first_name, c.last_name, c.phone_number, c.is_commercial
             FROM shop.customers c
             JOIN shop.customer_laundry_stats cls
               ON cls.customer_id = c.customer_id AND cls.laundry_id = %s
@@ -279,5 +282,6 @@ async def check_partial_phonenumbers(
             "firstName": r["first_name"],
             "lastName": r["last_name"],
             "phoneNumber": r["phone_number"],
+            "isCommercial": bool(r.get("is_commercial")),
         } for r in cur.fetchall()]
     return {"statusCode": 200, "body": {"suggestions": suggestions}}

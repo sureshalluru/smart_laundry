@@ -444,6 +444,8 @@ export default function PaymentSelection({
                 operation: isCommercialOrder ? "CommercialLaundryOrders" : "inStorePlaceOrder",
                 customerId: customerId,
                 laundryId: laundryId,
+                orderType: isCommercialOrder ? "Commercial" : "InStore",
+                payByInvoice: isCommercialOrder,
                 address: address,
                 doorNumber: doorNumber,
                 addressInstructions: deliveryInstructions,

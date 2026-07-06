@@ -152,6 +152,8 @@ const OrdersInfo = ({orderOperation, validateEmpCredentials, stripePublicKey, st
     const [customDropoffAddress, setCustomDropoffAddress] = useState("");
     const [customDropoffDate, setCustomDropoffDate] = useState("");
     const [autocomplete, setAutocomplete] = useState(null);
+    const [commercialBillingEmail, setCommercialBillingEmail] = useState("");
+    const [savingBillingEmail, setSavingBillingEmail] = useState(false);
 const [autocompleteRef, setAutocompleteRef] = useState(null);
 const [mapLatLng, setMapLatLng] = useState(null);
 const apiBaseUrl = process.env.REACT_APP_AWS_API_URL;
@@ -1874,10 +1876,12 @@ const { open: openCancelUber, ModalUI: CancelUberModal } = useCancelUberHandoff(
                                                         // Payment logic:
                                                         // - Can't go past ProcessingCompleted unless paid (or invoice sent)
                                                         // - Exception: In-store can go to OrderPickedUp (pay at counter)
+                                                        // - Exception: Commercial/pay-by-invoice orders skip payment gate entirely
                                                         const isPaid = selectedOrderDetails?.paymentStatus === "Paid" || selectedOrderDetails?.paymentStatus === "Invoice Sent";
                                                         const isInStoreOrder = selectedOrderDetails?.orderType === "InStore";
+                                                        const isCommercialOrder = selectedOrderDetails?.payByInvoice;
                                                         const isPastProcessing = ["EnRouteToDelivery", "Delivered", "OrderPickedUp"].includes(status);
-                                                        const isBlockedByPayment = isPastProcessing && !isPaid 
+                                                        const isBlockedByPayment = isPastProcessing && !isPaid && !isCommercialOrder
                                                             && !(isInStoreOrder && status === "OrderPickedUp");
 
                                                         // For in-store orders: allow jumping from ProcessingCompleted to OrderPickedUp
@@ -1913,16 +1917,21 @@ const { open: openCancelUber, ModalUI: CancelUberModal } = useCancelUberHandoff(
                                             </Badge>
                                         )}
                                         <Badge
-                                            colorScheme={selectedOrderDetails.paymentStatus === "Paid" ? "green" : "red"}
+                                            colorScheme={
+                                                selectedOrderDetails.paymentStatus === "Paid" ? "green"
+                                                : selectedOrderDetails.paymentStatus === "Invoice Sent" ? "purple"
+                                                : selectedOrderDetails.payByInvoice ? "purple"
+                                                : "red"
+                                            }
                                             fontSize={fontSize}
                                             px={3}
                                             py={1}
                                         >
-                                            Payment: {selectedOrderDetails.paymentStatus}
+                                            Payment: {selectedOrderDetails.payByInvoice && selectedOrderDetails.paymentStatus === "Unpaid" ? "Pay by Invoice" : selectedOrderDetails.paymentStatus}
                                         </Badge>
 
-                                        {/* Payment Button - Placed next to Order Status */}
-                                        {isInStoreOrder && !paymentButtonDisplay && (combinedCost > totalPaymentsReceived) && (
+                                        {/* Payment Button - Placed next to Order Status (disabled for Commercial - pay by invoice) */}
+                                        {isInStoreOrder && !paymentButtonDisplay && (combinedCost > totalPaymentsReceived) && !selectedOrderDetails?.payByInvoice && (
                                                 <Tooltip
                                                     label={isEditMode ? "" : "Enable Edit Mode"}
                                                     aria-label="Payment Button Tooltip"
@@ -1952,6 +1961,9 @@ const { open: openCancelUber, ModalUI: CancelUberModal } = useCancelUberHandoff(
                                                     </Button>
                                                 </Tooltip>
                                             )}
+                                        {selectedOrderDetails?.payByInvoice && (
+                                            <Badge colorScheme="purple" fontSize="xs" px={2} py={1} borderRadius="md">Pay by Invoice</Badge>
+                                        )}
                                     </Flex>
 
                                 </Flex>
@@ -1960,9 +1972,14 @@ const { open: openCancelUber, ModalUI: CancelUberModal } = useCancelUberHandoff(
                                 <Flex direction={{base: "column", md: "row"}} gap={3}>
                                     <Box flex="1" bg="gray.50" p={3} borderRadius="md">
                                         <Stack spacing={1}>
-                                            <Text fontWeight="bold" fontSize={fontSize}>
-                                                {selectedOrderDetails.customerName || "N/A"}
-                                            </Text>
+                                            <HStack>
+                                                <Text fontWeight="bold" fontSize={fontSize}>
+                                                    {selectedOrderDetails.customerName || "N/A"}
+                                                </Text>
+                                                {selectedOrderDetails.orderType === "Commercial" && (
+                                                    <Badge colorScheme="purple" fontSize="2xs">Commercial</Badge>
+                                                )}
+                                            </HStack>
                                             <Text fontSize={fontSize}>{selectedOrderDetails.customerPhone}</Text>
                                             {selectedOrderDetails.customerEmail && (
                                                 <Text fontSize={fontSize}>
@@ -3714,7 +3731,7 @@ const handleAssignLaundryDriver = async (customAddress) => {
                 <tbody>
                   ${order.services.map(s => `
                     <tr>
-                      <td>${s.service}</td>
+                      <td>${s.serviceName || s.service || 'Service'}</td>
                       <td>${s.weightOrCount}</td>
                       <td>$${s.servicePrice}</td>
                       <td>$${roundToTwo(s.servicePrice * s.weightOrCount)}</td>
@@ -4173,13 +4190,18 @@ const handleAssignLaundryDriver = async (customAddress) => {
                                         <Flex align="center">
                                             <Text fontWeight="bold" fontSize="sm" mr={2}>Payment:</Text>
                                             <Badge
-                                                colorScheme={order.paymentStatus === "Paid" ? "green" : "red"}
+                                                colorScheme={
+                                                    order.paymentStatus === "Paid" ? "green"
+                                                    : order.paymentStatus === "Invoice Sent" ? "purple"
+                                                    : order.payByInvoice ? "purple"
+                                                    : "red"
+                                                }
                                                 fontSize="xs"
                                                 px={2}
                                                 py={1}
                                                 borderRadius="md"
                                             >
-                                                {order.paymentStatus}
+                                                {(order.orderType === "Commercial" || order.payByInvoice) && order.paymentStatus === "Unpaid" ? "Pay by Invoice" : order.paymentStatus}
                                             </Badge>
 
                                         </Flex>

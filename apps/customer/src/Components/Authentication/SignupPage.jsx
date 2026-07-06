@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import {
     Box, VStack, FormControl, FormLabel, Input, Button,
-    Switch, useToast, Text, Icon, Flex, HStack
+    Switch, useToast, Text, Icon, Flex, HStack, Checkbox, Collapse
 } from "@chakra-ui/react";
 import { FiUserPlus } from "react-icons/fi";
 
@@ -10,11 +10,23 @@ export default function SignupPage({ onSubmit, phoneNumber, isSignUpLoading }) {
     const [lastName, setLastName] = useState("");
     const [email, setEmail] = useState("");
     const [receivePhoneNotification, setReceivePhoneNotification] = useState(true);
+    const [isCommercial, setIsCommercial] = useState(false);
+    const [billingEmail, setBillingEmail] = useState("");
     const toast = useToast();
 
     const handleSubmit = () => {
         if (firstName && lastName && email) {
-            onSubmit(phoneNumber, firstName, lastName, email, receivePhoneNotification);
+            if (isCommercial && !billingEmail) {
+                toast({
+                    title: "Missing Billing Email",
+                    description: "Billing email is required for commercial accounts.",
+                    status: "error",
+                    duration: 4000,
+                    isClosable: true,
+                });
+                return;
+            }
+            onSubmit(phoneNumber, firstName, lastName, email, receivePhoneNotification, isCommercial, billingEmail);
         } else {
             toast({
                 title: "Missing Information",
@@ -82,6 +94,32 @@ export default function SignupPage({ onSubmit, phoneNumber, isSignUpLoading }) {
                     <Input size="lg" value={phoneNumber} isReadOnly bg="gray.50" color="gray.600" />
                 </FormControl>
 
+                {/* Commercial Account */}
+                <Box>
+                    <Checkbox
+                        isChecked={isCommercial}
+                        onChange={(e) => setIsCommercial(e.target.checked)}
+                        colorScheme="blue"
+                        size="md"
+                    >
+                        <Text fontSize="sm" color="gray.700">I'm a business / commercial account</Text>
+                    </Checkbox>
+                    <Collapse in={isCommercial} animateOpacity>
+                        <FormControl mt={3} isRequired>
+                            <FormLabel fontSize="sm" color="gray.600" mb={1}>Billing Email</FormLabel>
+                            <Input
+                                size="lg" type="email" placeholder="billing@company.com"
+                                value={billingEmail} onChange={(e) => setBillingEmail(e.target.value)}
+                                bg="white" border="1px solid" borderColor="gray.200"
+                                _focus={{ borderColor: "blue.400", boxShadow: "0 0 0 1px #63b3ed" }}
+                            />
+                            <Text fontSize="xs" color="gray.500" mt={1}>
+                                Invoices will be sent to this email address.
+                            </Text>
+                        </FormControl>
+                    </Collapse>
+                </Box>
+
                 {/* Notification Toggle */}
                 <HStack justify="space-between" py={2} px={1}>
                     <Text fontSize="sm" color="gray.600">Get SMS order updates</Text>
@@ -97,6 +135,7 @@ export default function SignupPage({ onSubmit, phoneNumber, isSignUpLoading }) {
                 <Button
                     onClick={handleSubmit}
                     isLoading={isSignUpLoading}
+                    isDisabled={isCommercial && !billingEmail}
                     loadingText="Creating account..."
                     bg="linear-gradient(135deg, #4299E1 0%, #63B3ED 100%)"
                     color="white"

@@ -79,7 +79,7 @@ export const verifyOTP = async (otpCode) => {
 };
 
 // Sign up a new customer
-export const initiateSignUp = async (laundryId, email, phoneNumber, firstName, lastName, inStore, receivePhoneNotification) => {
+export const initiateSignUp = async (laundryId, email, phoneNumber, firstName, lastName, inStore, receivePhoneNotification, isCommercial, billingEmail) => {
     try {
         const response = await axios.post(`${API_URL}/api/auth/customer-register`, {
             phoneNumber,
@@ -88,6 +88,8 @@ export const initiateSignUp = async (laundryId, email, phoneNumber, firstName, l
             lastName,
             laundryId,
             receivePhoneNotification,
+            isCommercial: isCommercial || false,
+            billingEmail: billingEmail || '',
         });
         return {
             isSignUpComplete: response.data.isSignUpComplete || false,

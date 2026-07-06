@@ -96,7 +96,7 @@ def delete_card_details(payment_method_id, laundry_id):
         return {"status": "error", "message": str(e)}
 
 
-def create_hold(customer_payment_id, amount, description, laundry_id):
+def create_hold(customer_payment_id, amount, description, laundry_id, order_id=None, customer_id=None):
     """Create a payment hold (manual capture)."""
     _init_stripe(laundry_id)
     payment_intent = None
@@ -106,11 +106,14 @@ def create_hold(customer_payment_id, amount, description, laundry_id):
         if not default_pm:
             return {"status": "error", "message": "No default payment method found"}
         amount_cents = int(round(Decimal(amount) * 100))
-        payment_intent = stripe.PaymentIntent.create(
-            amount=amount_cents, currency='usd', customer=customer_payment_id,
-            description=description, payment_method=default_pm,
-            payment_method_types=["card"], capture_method='manual', confirmation_method='manual'
-        )
+        create_args = {
+            "amount": amount_cents, "currency": "usd", "customer": customer_payment_id,
+            "description": description, "payment_method": default_pm,
+            "payment_method_types": ["card"], "capture_method": "manual", "confirmation_method": "manual",
+        }
+        if order_id:
+            create_args["metadata"] = {"order_id": order_id, "laundry_id": laundry_id, "customer_id": customer_id or "", "type": "hold"}
+        payment_intent = stripe.PaymentIntent.create(**create_args)
         confirmed = stripe.PaymentIntent.confirm(payment_intent.id, payment_method=default_pm)
         if confirmed['status'] == 'requires_capture':
             return {"status": "success", "paymentIntentId": confirmed.id}
@@ -138,7 +141,8 @@ def capture_payment(customer_payment_id, price, order_id, description, customer_
         intent = stripe.PaymentIntent.create(
             amount=amount_cents, currency='usd', customer=customer_payment_id,
             description=description, payment_method=default_pm,
-            payment_method_types=["card"], confirm=True
+            payment_method_types=["card"], confirm=True,
+            metadata={"order_id": order_id, "laundry_id": laundry_id, "customer_id": customer_id or ""},
         )
         if intent['status'] == 'succeeded':
             with get_db() as conn:
@@ -168,7 +172,8 @@ def capture_store_payment(card_payment_id, price, order_id, customer_id, laundry
         desc = f"In-store | Order: {order_id} | Customer: {customer_id} | Laundry: {laundry_id}"
         intent = stripe.PaymentIntent.create(
             amount=amount_cents, currency='usd', payment_method=card_payment_id,
-            payment_method_types=["card"], confirm=True, description=desc
+            payment_method_types=["card"], confirm=True, description=desc,
+            metadata={"order_id": order_id, "laundry_id": laundry_id, "customer_id": customer_id or "", "type": "instore"},
         )
         if intent['status'] == 'succeeded':
             return {"status": "success", "paymentIntentId": intent.id}
@@ -248,6 +253,16 @@ def check_payment_gate(order, target_status, laundry_id):
         return {"allowed": True}
 
     if order.get('payment_status') == 'Paid':
+        return {"allowed": True}
+
+    # Commercial / pay-by-invoice orders bypass the payment gate
+    # (they'll be invoiced after ProcessingCompleted)
+    if order.get('pay_by_invoice'):
+        logger.info(
+            f"Payment gate BYPASS for order {order.get('order_id', '?')}: "
+            f"order_type={order.get('order_type')}, pay_by_invoice={order.get('pay_by_invoice')}, "
+            f"target_status={target_status}"
+        )
         return {"allowed": True}
 
     # Unpaid order targeting a gated status — enforce payment gate

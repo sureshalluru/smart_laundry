@@ -12,7 +12,10 @@ import {
     Spinner,
     FormControl,
     FormLabel,
-    Switch
+    Switch,
+    Badge,
+    Input,
+    Button,
 } from '@chakra-ui/react';
 import {EditIcon, CheckIcon, CloseIcon, DeleteIcon} from '@chakra-ui/icons';
 import axios from 'axios';
@@ -27,6 +30,14 @@ const Account = ({customerId, laundryTimeZone}) => {
     const toast = useToast();
     const [isNotificationUpdateLoading, setIsNotificationUpdateLoading] = useState(false); // Notification Update Spinner
     const [loadingAddressId, setLoadingAddressId] = useState(null); // Delete Address loading state
+
+    // Profile editing state
+    const [isProfileEditing, setIsProfileEditing] = useState(false);
+    const [editFirstName, setEditFirstName] = useState('');
+    const [editLastName, setEditLastName] = useState('');
+    const [editEmail, setEditEmail] = useState('');
+    const [editBillingEmail, setEditBillingEmail] = useState('');
+    const [isProfileUpdateLoading, setIsProfileUpdateLoading] = useState(false);
 
     const authToken = localStorage.getItem('idToken');
 
@@ -71,6 +82,93 @@ const Account = ({customerId, laundryTimeZone}) => {
         };
         fetchCustomerInfo();
     }, [authToken, customerId, toast]);
+
+    // Profile edit handlers
+    const handleProfileEditClick = () => {
+        setEditFirstName(customerInfo?.firstName || '');
+        setEditLastName(customerInfo?.lastName || '');
+        setEditEmail(customerInfo?.email || '');
+        setEditBillingEmail(customerInfo?.billingEmail || '');
+        setIsProfileEditing(true);
+    };
+
+    const handleProfileCancelEdit = () => {
+        setIsProfileEditing(false);
+    };
+
+    const handleProfileSave = async () => {
+        if (!editFirstName.trim() || !editLastName.trim()) {
+            toast({
+                title: 'Validation Error',
+                description: 'First name and last name are required.',
+                status: 'error',
+                duration: 5000,
+                isClosable: true,
+            });
+            return;
+        }
+
+        setIsProfileUpdateLoading(true);
+        try {
+            const payload = {
+                customerId: customerId,
+                firstName: editFirstName.trim(),
+                lastName: editLastName.trim(),
+                email: editEmail.trim(),
+            };
+
+            // Include billing email only for commercial accounts
+            if (customerInfo?.isCommercial) {
+                payload.billingEmail = editBillingEmail.trim();
+            }
+
+            const response = await axios.patch(
+                `${process.env.REACT_APP_AWS_API_URL}/api/customer/update-profile`,
+                payload,
+                {
+                    headers: {
+                        'x-api-key': authToken,
+                    },
+                }
+            );
+
+            const responseBody = JSON.parse(response.data.body);
+            if (responseBody.status === 'success') {
+                setCustomerInfo((prev) => ({
+                    ...prev,
+                    firstName: editFirstName.trim(),
+                    lastName: editLastName.trim(),
+                    email: editEmail.trim(),
+                    ...(prev.isCommercial && { billingEmail: editBillingEmail.trim() }),
+                }));
+                toast({
+                    title: 'Profile updated successfully',
+                    status: 'success',
+                    duration: 5000,
+                    isClosable: true,
+                });
+                setIsProfileEditing(false);
+            } else {
+                toast({
+                    title: 'Failed to update profile',
+                    description: responseBody.message || "An unexpected error occurred.",
+                    status: 'error',
+                    duration: 5000,
+                    isClosable: true,
+                });
+            }
+        } catch (error) {
+            toast({
+                title: 'Failed to update profile',
+                description: error.response?.data?.message || error.message,
+                status: 'error',
+                duration: 5000,
+                isClosable: true,
+            });
+        } finally {
+            setIsProfileUpdateLoading(false);
+        }
+    };
 
     // Function to trigger the edit notifications`
     const handleNotificationEditClick = () => {
@@ -166,18 +264,6 @@ const Account = ({customerId, laundryTimeZone}) => {
         setIsNotificationEditing(false);
     };
 
-    // Function to Edit the Address
-    // const handleEditAddress = (addressId) => {
-    //     // Logic for editing address goes here
-    //     toast({
-    //         title: 'Edit Address',
-    //         description: `Edit functionality for address ID ${addressId} clicked.`,
-    //         status: 'info',
-    //         duration: 3000,
-    //         isClosable: true,
-    //     });
-    // };
-
     // Function to Delete the Address
     const handleDeleteAddress = async (addressId) => {
         setLoadingAddressId(addressId); // Set the loading state to the current address ID
@@ -270,43 +356,190 @@ const Account = ({customerId, laundryTimeZone}) => {
         <Box p={[2,4]} flex="1" overflowY="auto" maxWidth={["100%", "77%"]} mx="auto" mt={[2,4]}  bg="#EBF8FF">
             {/* Personal Information Section */}
             <Box bg="#ccf0ed" p={[2,4]} borderRadius="md" boxShadow="md" mb={[4,6]} >
-                <Heading as="h2" size="md" color="green.800" mb={[2,4]}>
-                    Personal Information
-                </Heading>
+                <Flex justify="space-between" align="center" mb={[2,4]}>
+                    <Flex align="center" gap={2}>
+                        <Heading as="h2" size="md" color="green.800">
+                            Personal Information
+                        </Heading>
+                        {customerInfo?.isCommercial && (
+                            <Badge colorScheme="purple" fontSize="0.75em" px={2} py={1} borderRadius="md">
+                                Commercial Account
+                            </Badge>
+                        )}
+                    </Flex>
+                    {isProfileEditing ? (
+                        <Flex gap={1}>
+                            <IconButton
+                                icon={<CheckIcon />}
+                                aria-label="Save Profile"
+                                colorScheme="green"
+                                variant="ghost"
+                                onClick={handleProfileSave}
+                                isLoading={isProfileUpdateLoading}
+                                size="sm"
+                            />
+                            <IconButton
+                                icon={<CloseIcon />}
+                                aria-label="Cancel Profile Editing"
+                                colorScheme="red"
+                                variant="ghost"
+                                onClick={handleProfileCancelEdit}
+                                size="sm"
+                            />
+                        </Flex>
+                    ) : (
+                        <IconButton
+                            icon={<EditIcon />}
+                            aria-label="Edit Personal Information"
+                            colorScheme="teal"
+                            variant="ghost"
+                            onClick={handleProfileEditClick}
+                            size="sm"
+                        />
+                    )}
+                </Flex>
                 <Divider mb={[2,4]} />
-                <Grid
-                    templateColumns={["105px 1fr", "150px 1fr"]}
-                    rowGap={2}
-                    columnGap={[1,2]}
-                >
-                    <GridItem>
-                        <Text fontWeight="bold">First Name:</Text>
-                    </GridItem>
-                    <GridItem>
-                        <Text wordBreak="break-word">{customerInfo?.firstName || "N/A"}</Text>
-                    </GridItem>
 
-                    <GridItem>
-                        <Text fontWeight="bold">Last Name:</Text>
-                    </GridItem>
-                    <GridItem>
-                        <Text wordBreak="break-word">{customerInfo?.lastName || "N/A"}</Text>
-                    </GridItem>
+                {isProfileEditing ? (
+                    <Grid
+                        templateColumns={["105px 1fr", "150px 1fr"]}
+                        rowGap={3}
+                        columnGap={[1,2]}
+                        alignItems="center"
+                    >
+                        <GridItem>
+                            <Text fontWeight="bold">First Name:</Text>
+                        </GridItem>
+                        <GridItem>
+                            <Input
+                                value={editFirstName}
+                                onChange={(e) => setEditFirstName(e.target.value)}
+                                size="sm"
+                                bg="white"
+                                borderColor="gray.300"
+                            />
+                        </GridItem>
 
-                    <GridItem>
-                        <Text fontWeight="bold">Phone Number:</Text>
-                    </GridItem>
-                    <GridItem>
-                        <Text wordBreak="break-word">{customerInfo?.phoneNumber || "N/A"}</Text>
-                    </GridItem>
+                        <GridItem>
+                            <Text fontWeight="bold">Last Name:</Text>
+                        </GridItem>
+                        <GridItem>
+                            <Input
+                                value={editLastName}
+                                onChange={(e) => setEditLastName(e.target.value)}
+                                size="sm"
+                                bg="white"
+                                borderColor="gray.300"
+                            />
+                        </GridItem>
 
-                    <GridItem>
-                        <Text fontWeight="bold">Email Address:</Text>
-                    </GridItem>
-                    <GridItem>
-                        <Text wordBreak="break-word">{customerInfo?.email || "N/A"}</Text>
-                    </GridItem>
-                </Grid>
+                        <GridItem>
+                            <Text fontWeight="bold">Phone Number:</Text>
+                        </GridItem>
+                        <GridItem>
+                            <Text wordBreak="break-word" color="gray.600">{customerInfo?.phoneNumber || "N/A"}</Text>
+                        </GridItem>
+
+                        <GridItem>
+                            <Text fontWeight="bold">Email Address:</Text>
+                        </GridItem>
+                        <GridItem>
+                            <Input
+                                value={editEmail}
+                                onChange={(e) => setEditEmail(e.target.value)}
+                                size="sm"
+                                bg="white"
+                                borderColor="gray.300"
+                                type="email"
+                            />
+                        </GridItem>
+
+                        {customerInfo?.isCommercial && (
+                            <>
+                                <GridItem>
+                                    <Text fontWeight="bold">Billing Email:</Text>
+                                </GridItem>
+                                <GridItem>
+                                    <Input
+                                        value={editBillingEmail}
+                                        onChange={(e) => setEditBillingEmail(e.target.value)}
+                                        size="sm"
+                                        bg="white"
+                                        borderColor="gray.300"
+                                        type="email"
+                                        placeholder="billing@company.com"
+                                    />
+                                </GridItem>
+                            </>
+                        )}
+
+                        <GridItem colSpan={2}>
+                            <Flex gap={2} mt={2}>
+                                <Button
+                                    colorScheme="green"
+                                    size="sm"
+                                    onClick={handleProfileSave}
+                                    isLoading={isProfileUpdateLoading}
+                                >
+                                    Save
+                                </Button>
+                                <Button
+                                    colorScheme="gray"
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={handleProfileCancelEdit}
+                                >
+                                    Cancel
+                                </Button>
+                            </Flex>
+                        </GridItem>
+                    </Grid>
+                ) : (
+                    <Grid
+                        templateColumns={["105px 1fr", "150px 1fr"]}
+                        rowGap={2}
+                        columnGap={[1,2]}
+                    >
+                        <GridItem>
+                            <Text fontWeight="bold">First Name:</Text>
+                        </GridItem>
+                        <GridItem>
+                            <Text wordBreak="break-word">{customerInfo?.firstName || "N/A"}</Text>
+                        </GridItem>
+
+                        <GridItem>
+                            <Text fontWeight="bold">Last Name:</Text>
+                        </GridItem>
+                        <GridItem>
+                            <Text wordBreak="break-word">{customerInfo?.lastName || "N/A"}</Text>
+                        </GridItem>
+
+                        <GridItem>
+                            <Text fontWeight="bold">Phone Number:</Text>
+                        </GridItem>
+                        <GridItem>
+                            <Text wordBreak="break-word">{customerInfo?.phoneNumber || "N/A"}</Text>
+                        </GridItem>
+
+                        <GridItem>
+                            <Text fontWeight="bold">Email Address:</Text>
+                        </GridItem>
+                        <GridItem>
+                            <Text wordBreak="break-word">{customerInfo?.email || "N/A"}</Text>
+                        </GridItem>
+
+                        {customerInfo?.isCommercial && (
+                            <>
+                                <GridItem>
+                                    <Text fontWeight="bold">Billing Email:</Text>
+                                </GridItem>
+                                <GridItem>
+                                    <Text wordBreak="break-word">{customerInfo?.billingEmail || "N/A"}</Text>
+                                </GridItem>
+                            </>
+                        )}
+                    </Grid>
+                )}
             </Box>
 
             {/* Address Section */}
@@ -322,13 +555,6 @@ const Account = ({customerId, laundryTimeZone}) => {
                                 <Flex justify="space-between" align="center" mb={2}>
                                     <Text fontSize="md" color="gray.600" fontWeight="bold">{`Address ${index + 1}`}</Text>
                                     <Flex>
-                                        {/*<IconButton*/}
-                                        {/*    icon={<EditIcon />}*/}
-                                        {/*    aria-label="Edit Address"*/}
-                                        {/*    colorScheme="blue"*/}
-                                        {/*    variant="ghost"*/}
-                                        {/*    onClick={() => handleEditAddress(address.addressId)}*/}
-                                        {/*/>*/}
                                         <IconButton
                                             icon={<DeleteIcon />}
                                             aria-label="Delete Address"

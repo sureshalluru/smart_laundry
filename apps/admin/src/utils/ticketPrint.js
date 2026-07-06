@@ -134,7 +134,7 @@ export function generateTicketHtml(options) {
 
   // Build item rows for the table
   const serviceRows = services.map((service) => {
-    const serviceName = service.service || 'Unnamed Service';
+    const serviceName = service.serviceName || service.service || service.service_name || 'Unnamed Service';
     const countOrWeight = service.weightOrCount || 1;
     const unitPrice = service.servicePrice || 0;
     const lineTotal = roundToTwo(unitPrice * countOrWeight);

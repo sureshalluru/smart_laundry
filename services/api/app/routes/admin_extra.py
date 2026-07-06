@@ -6,6 +6,7 @@ from typing import Optional
 from app.database import get_db, get_cursor
 from app.auth import get_current_user
 from app.utils import serialize, serialize_row
+from app.utils.invoice_helpers import is_valid_email
 from datetime import datetime
 import json
 import logging
@@ -244,7 +245,7 @@ async def show_all_customers(
         cur = get_cursor(conn)
         cur.execute("""
             SELECT c.customer_id, c.first_name, c.last_name, c.phone_number, c.email,
-                   c.notif_email, c.notif_sms, c.notif_phone,
+                   c.notif_email, c.notif_sms, c.notif_phone, c.is_commercial, c.billing_email,
                    cls.total_orders_placed, cls.total_order_value
             FROM shop.customers c
             JOIN shop.customer_laundry_stats cls
@@ -260,6 +261,8 @@ async def show_all_customers(
             "notificationPreferences": {"email": r["notif_email"], "sms": r["notif_sms"], "phone": r["notif_phone"]},
             "totalOrdersPlaced": r["total_orders_placed"],
             "totalOrderValue": float(r["total_order_value"] or 0),
+            "isCommercial": bool(r.get("is_commercial")),
+            "billingEmail": r.get("billing_email") or "",
         } for r in cur.fetchall()]
     return {"statusCode": 200, "body": {"status": "success", "customers": customers}}
 
@@ -2188,3 +2191,131 @@ async def _run_vision_analysis(
 
     except Exception as e:
         logger.error(f"[photo-upload-vision] Vision analysis failed for order={order_id} phase={phase}: {e}")
+
+
+@router.get("/customer-commercial")
+async def get_customer_commercial(
+    customerId: str = Query(...),
+    laundryId: str = Query(...),
+    current_user: dict = Depends(get_current_user),
+):
+    """Get commercial account fields (billing_email, is_commercial) for a customer."""
+    with get_db() as conn:
+        cur = get_cursor(conn)
+        cur.execute("""
+            SELECT c.billing_email, c.is_commercial
+            FROM shop.customers c
+            JOIN shop.customer_laundry_stats cls
+              ON cls.customer_id = c.customer_id AND cls.laundry_id = %s
+            WHERE c.customer_id = %s
+        """, (laundryId, customerId))
+        row = cur.fetchone()
+        if not row:
+            return {"statusCode": 404, "body": {"message": "Customer not found"}}
+        return {"statusCode": 200, "body": {
+            "billingEmail": row["billing_email"],
+            "isCommercial": row["is_commercial"],
+        }}
+
+
+@router.patch("/customer-commercial")
+async def update_customer_commercial(
+    body: dict = Body({}),
+    current_user: dict = Depends(get_current_user),
+):
+    """Update commercial account fields (billing_email, is_commercial) for a customer."""
+    customer_id = body.get("customerId")
+    laundry_id = body.get("laundryId")
+
+    if not customer_id or not laundry_id:
+        return {"statusCode": 400, "body": {"message": "Missing customerId or laundryId"}}
+
+    # Determine which fields to update
+    update_fields = []
+    update_values = []
+
+    # Handle billingEmail — only update if key is present in body
+    if "billingEmail" in body:
+        billing_email = body["billingEmail"]
+        if billing_email is None or (isinstance(billing_email, str) and billing_email.strip() == ""):
+            # Explicitly clear billing email
+            update_fields.append("billing_email = NULL")
+        else:
+            # Validate email format
+            if not is_valid_email(billing_email):
+                return {"statusCode": 400, "body": {"message": "Invalid billing email format"}}
+            update_fields.append("billing_email = %s")
+            update_values.append(billing_email.strip())
+
+    # Handle isCommercial — only update if key is present in body
+    if "isCommercial" in body:
+        is_commercial = body["isCommercial"]
+        update_fields.append("is_commercial = %s")
+        update_values.append(bool(is_commercial))
+
+    if not update_fields:
+        return {"statusCode": 400, "body": {"message": "No fields to update"}}
+
+    with get_db() as conn:
+        cur = get_cursor(conn)
+
+        # Verify customer exists (same pattern as GET endpoint with JOIN to customer_laundry_stats)
+        cur.execute("""
+            SELECT c.customer_id
+            FROM shop.customers c
+            JOIN shop.customer_laundry_stats cls
+              ON cls.customer_id = c.customer_id AND cls.laundry_id = %s
+            WHERE c.customer_id = %s
+        """, (laundry_id, customer_id))
+        row = cur.fetchone()
+        if not row:
+            return {"statusCode": 404, "body": {"message": "Customer not found"}}
+
+        # Build and execute dynamic UPDATE
+        set_clause = ", ".join(update_fields)
+        update_values.append(customer_id)
+        cur.execute(
+            f"UPDATE shop.customers SET {set_clause} WHERE customer_id = %s",
+            tuple(update_values)
+        )
+
+    return {"statusCode": 200, "body": {"message": "Customer commercial settings updated successfully"}}
+
+
+@router.patch("/frequency-commercial")
+async def update_frequency_commercial(
+    body: dict = Body({}),
+    current_user: dict = Depends(get_current_user),
+):
+    """Update is_commercial flag on a frequency record."""
+    frequency_id = body.get("frequencyId")
+    laundry_id = body.get("laundryId")
+    is_commercial = body.get("isCommercial")
+
+    if not frequency_id or not laundry_id:
+        return {"statusCode": 400, "body": {"message": "Missing frequencyId or laundryId"}}
+
+    if is_commercial is None:
+        return {"statusCode": 400, "body": {"message": "Missing isCommercial"}}
+
+    with get_db() as conn:
+        cur = get_cursor(conn)
+
+        # Verify frequency record exists
+        cur.execute("""
+            SELECT frequency_id
+            FROM orders.laundry_frequency
+            WHERE frequency_id = %s AND laundry_id = %s
+        """, (frequency_id, laundry_id))
+        row = cur.fetchone()
+        if not row:
+            return {"statusCode": 404, "body": {"message": "Frequency record not found"}}
+
+        # Update is_commercial flag
+        cur.execute("""
+            UPDATE orders.laundry_frequency
+            SET is_commercial = %s, updated_at = NOW()
+            WHERE frequency_id = %s AND laundry_id = %s
+        """, (bool(is_commercial), frequency_id, laundry_id))
+
+    return {"statusCode": 200, "body": {"message": "Frequency commercial status updated successfully"}}

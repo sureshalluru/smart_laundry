@@ -103,6 +103,22 @@ async def customer_place_order(
         if not laundry_id or not customer_id:
             return {"status": "error", "message": "Missing required parameters"}
 
+        # Resolve commercial account status for order defaults
+        # Commercial is an account-level property — order_type stays as the channel (Online)
+        # but pay_by_invoice = TRUE means no card payment, invoice will be sent
+        order_type = "Online"
+        pay_by_invoice = False
+        with get_db() as conn_comm:
+            cur_comm = get_cursor(conn_comm)
+            cur_comm.execute(
+                "SELECT is_commercial FROM shop.customers WHERE customer_id = %s",
+                (customer_id,)
+            )
+            comm_row = cur_comm.fetchone()
+            if comm_row and comm_row.get("is_commercial"):
+                pay_by_invoice = True
+                logger.info(f"Commercial account detected: customer_id={customer_id}, order_type=Online, pay_by_invoice=True")
+
         tip_amount = round(float(str(tip_data.get("tipAmount", 0) or 0)), 2)
 
         # Calculate totals based on pricing type
@@ -204,12 +220,12 @@ async def customer_place_order(
                     auto_generated, is_reviewed, cancel_reason,
                     created_at, updated_at
                 ) VALUES (
-                    %s,%s,%s,%s,'Online','OrderSubmitted','Active','Unpaid',
+                    %s,%s,%s,%s,%s,'OrderSubmitted','Active','Unpaid',
                     %s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,
                     %s,%s,%s,%s,FALSE,FALSE,'',NOW(),NOW()
                 )
             """, (
-                order_id, laundry_id, customer_id, address_id,
+                order_id, laundry_id, customer_id, address_id, order_type,
                 pickup_date, pickup_time_interval, dropoff_date, dropoff_time_interval,
                 laundry_bags, special_instructions, coupon, frequency,
                 sub_total, discounted_price, total_cost, grand_total, tax_amount,
@@ -302,6 +318,8 @@ async def customer_place_order(
                     amount=1.00,
                     description=f"$1 auth hold for order {order_id}",
                     laundry_id=laundry_id,
+                    order_id=order_id,
+                    customer_id=customer_id,
                 )
                 if hold_result.get("status") == "success":
                     # Store the hold payment intent ID on the order
@@ -529,7 +547,23 @@ async def get_customer_orders(
     page: int = Query(1),
     limit: int = Query(10),
 ):
-    """Get customer order history."""
+    """Get customer order history or profile."""
+    # Return customer commercial status for profile checks
+    if operation == "getCustomerProfile":
+        with get_db() as conn:
+            cur = get_cursor(conn)
+            cur.execute(
+                "SELECT is_commercial, billing_email FROM shop.customers WHERE customer_id = %s",
+                (customerId,)
+            )
+            row = cur.fetchone()
+            if row:
+                return {"statusCode": 200, "body": {
+                    "isCommercial": bool(row.get("is_commercial")),
+                    "billingEmail": row.get("billing_email", ""),
+                }}
+            return {"statusCode": 200, "body": {"isCommercial": False, "billingEmail": ""}}
+
     with get_db() as conn:
         cur = get_cursor(conn)
         offset = (page - 1) * limit
@@ -537,7 +571,7 @@ async def get_customer_orders(
             SELECT o.order_id, o.order_type, o.order_status, o.payment_status,
                    o.pickup_date, o.pickup_time_interval, o.dropoff_date, o.dropoff_time_interval,
                    o.total_cost, o.grand_total, o.created_at, o.special_instructions,
-                   o.laundry_bags, o.coupon, o.image_url, o.pricing_type
+                   o.laundry_bags, o.coupon, o.image_url, o.pricing_type, o.pay_by_invoice
             FROM orders.orders o
             WHERE o.customer_id = %s AND o.laundry_id = %s
             ORDER BY o.created_at DESC
@@ -567,6 +601,7 @@ async def get_customer_orders(
                 "coupon": r["coupon"],
                 "imageUrl": r["image_url"],
                 "pricingType": r.get("pricing_type", "per_pound"),
+                "payByInvoice": bool(r.get("pay_by_invoice")),
             })
 
         return {"statusCode": 200, "body": {"status": "success", "data": orders, "lastKey": None}}
@@ -707,6 +742,7 @@ async def get_customer_order_detail(
                         "tipMethod": order["tip_method"],
                         "tipReceiverId": order.get("tip_receiver_id"),
                     },
+                    "payByInvoice": bool(order.get("pay_by_invoice")),
                 }
             }
         }
@@ -890,7 +926,8 @@ async def get_customer_info(
         cur = get_cursor(conn)
         cur.execute("""
             SELECT customer_id, first_name, last_name, phone_number, email,
-                   notif_email, notif_sms, notif_phone, special_instructions
+                   notif_email, notif_sms, notif_phone, special_instructions,
+                   is_commercial, billing_email
             FROM shop.customers WHERE customer_id = %s
         """, (customerId,))
         customer = cur.fetchone()
@@ -940,6 +977,8 @@ async def get_customer_info(
                     "phone": customer["notif_phone"],
                 },
                 "frequencyDetails": frequency_details,
+                "isCommercial": bool(customer.get("is_commercial")),
+                "billingEmail": customer.get("billing_email") or "",
             }
         }
         # Return body as JSON string (frontend does JSON.parse on it)
@@ -968,6 +1007,55 @@ async def update_customer_notifications(body: dict = Body({})):
         """, (prefs.get("email", True), prefs.get("sms", True), prefs.get("phone", True), customer_id))
 
     return {"statusCode": 200, "body": {"status": "success", "message": "Notification preferences updated"}}
+
+
+@router.patch("/update-profile")
+async def update_customer_profile(body: dict = Body(...)):
+    """Update customer profile information (name, email, billing email)."""
+    import json as json_mod
+
+    customer_id = body.get("customerId")
+    first_name = body.get("firstName")
+    last_name = body.get("lastName")
+    email = body.get("email")
+    billing_email = body.get("billingEmail")
+
+    if not customer_id:
+        return {"statusCode": 400, "body": json_mod.dumps({"status": "error", "message": "Missing customerId"})}
+
+    # Build dynamic SET clause based on provided fields
+    updates = []
+    params = []
+    if first_name is not None:
+        updates.append("first_name = %s")
+        params.append(first_name.strip())
+    if last_name is not None:
+        updates.append("last_name = %s")
+        params.append(last_name.strip())
+    if email is not None:
+        updates.append("email = %s")
+        params.append(email.strip())
+    if billing_email is not None:
+        updates.append("billing_email = %s")
+        params.append(billing_email.strip())
+
+    if not updates:
+        return {"statusCode": 400, "body": json_mod.dumps({"status": "error", "message": "No fields to update"})}
+
+    params.append(customer_id)
+
+    with get_db() as conn:
+        cur = get_cursor(conn)
+        cur.execute(f"""
+            UPDATE shop.customers
+            SET {', '.join(updates)}
+            WHERE customer_id = %s
+        """, tuple(params))
+
+        if cur.rowcount == 0:
+            return {"statusCode": 404, "body": json_mod.dumps({"status": "error", "message": "Customer not found"})}
+
+    return {"statusCode": 200, "body": json_mod.dumps({"status": "success", "message": "Profile updated successfully"})}
 
 
 @router.post("/create-review")

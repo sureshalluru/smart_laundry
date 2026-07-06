@@ -40,6 +40,8 @@ export default function AdminCreateOrder() {
     const [firstName, setFirstName] = useState("");
     const [lastName, setLastName] = useState("");
     const [email, setEmail] = useState("");
+    const [isCommercialNew, setIsCommercialNew] = useState(false);
+    const [billingEmailNew, setBillingEmailNew] = useState("");
     const [receivePhoneNotification, setReceivePhoneNotification] = useState(true); // By Default true
     const [isCustomerNotFound, setIsCustomerNotFound] = useState(false);
     const [customerId, setCustomerId] = useState('');
@@ -146,10 +148,14 @@ export default function AdminCreateOrder() {
             const checkResponse = await handlePhoneNumberCheck(modifiedPhone, laundryId);
             if (checkResponse.exists) {
                 setCustomerId(checkResponse.customerId);
+                // Auto-detect commercial status from phone check response
+                if (checkResponse.isCommercial) {
+                    setIsCommercialOrder(true);
+                }
                 setActiveStep(1);
                 toast({
                     title: "Customer Found",
-                    description: `Existing customer: ${checkResponse.customerFirstName || firstName}`,
+                    description: `Existing customer: ${checkResponse.customerFirstName || firstName}${checkResponse.isCommercial ? ' (Commercial)' : ''}`,
                     status: "success",
                     duration: 3000,
                     isClosable: true,
@@ -171,6 +177,20 @@ export default function AdminCreateOrder() {
 
             if (isSignUpComplete && nextStep === "DONE") {
                 setCustomerId(userId);
+                // Auto-set commercial order if customer is commercial
+                if (isCommercialNew) {
+                    setIsCommercialOrder(true);
+                }
+                // Save commercial account settings if flagged
+                if (isCommercialNew && billingEmailNew.trim()) {
+                    try {
+                        await axios.patch(
+                            `${process.env.REACT_APP_AWS_API_URL}/api/admin/customer-commercial`,
+                            { customerId: userId, laundryId, billingEmail: billingEmailNew.trim(), isCommercial: true },
+                            { headers: { Authorization: `Bearer ${localStorage.getItem('idToken')}` } }
+                        );
+                    } catch (err) { console.warn("Failed to save commercial settings:", err); }
+                }
                 setActiveStep(1);
                 toast({
                     title: "Registration Successful",
@@ -365,6 +385,25 @@ export default function AdminCreateOrder() {
                   />
                 </FormControl>
                 <Checkbox
+                  isChecked={isCommercialNew}
+                  onChange={(e) => setIsCommercialNew(e.target.checked)}
+                  colorScheme="purple"
+                >
+                  Commercial Account (Pay by Invoice)
+                </Checkbox>
+                {isCommercialNew && (
+                  <FormControl id="billingEmail" isRequired>
+                    <FormLabel>Billing Email</FormLabel>
+                    <Input
+                      type="email"
+                      placeholder="billing@company.com"
+                      value={billingEmailNew}
+                      onChange={(e) => setBillingEmailNew(e.target.value)}
+                      borderColor={isCommercialNew && !billingEmailNew.trim() ? "red.300" : undefined}
+                    />
+                  </FormControl>
+                )}
+                <Checkbox
                   isChecked={receivePhoneNotification}
                   onChange={(e) => setReceivePhoneNotification(e.target.checked)}
                   colorScheme="teal"
@@ -377,6 +416,7 @@ export default function AdminCreateOrder() {
                   onClick={registerCustomer}
                   isLoading={isRegistrationLoading}
                   width="full"
+                  isDisabled={isCommercialNew && !billingEmailNew.trim()}
                 >
                   Register User
                 </Button>

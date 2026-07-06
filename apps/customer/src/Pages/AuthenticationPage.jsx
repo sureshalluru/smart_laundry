@@ -13,6 +13,7 @@ import {
 import { useCustomerAuth } from "../Context/AuthContext";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { LaundryContext } from "../Components/Contexts/LaundryContext";
+import axios from "axios";
 
 export default function AuthenticationPage() {
     const { laundryId } = useParams();
@@ -29,6 +30,7 @@ export default function AuthenticationPage() {
     const [searchParams] = useSearchParams();
     const redirectTo = searchParams.get('redirectTo') || '';
     const [otpTimer, setOtpTimer] = useState(180);
+    const [commercialData, setCommercialData] = useState(null);
 
     const handleLoginSubmit = async (phone) => {
         setPhoneNumber(phone);
@@ -58,6 +60,24 @@ export default function AuthenticationPage() {
             const result = await verifyOTP(otp);
             if (result.isSignedIn) {
                 onOTPVerified(result);
+                // Save commercial account settings if user signed up as commercial
+                if (commercialData && result.user?.sub) {
+                    try {
+                        const API_URL = process.env.REACT_APP_AWS_API_URL || '';
+                        await axios.patch(`${API_URL}/api/admin/customer-commercial`, {
+                            customerId: result.user.sub,
+                            laundryId: laundryId,
+                            billingEmail: commercialData.billingEmail,
+                            isCommercial: true,
+                        }, {
+                            headers: { Authorization: `Bearer ${result.accessToken}` }
+                        });
+                    } catch (commercialError) {
+                        console.error("Failed to save commercial settings:", commercialError);
+                        // Don't block signup - commercial settings can be updated later
+                    }
+                    setCommercialData(null);
+                }
                 toast({ title: "Verified!", status: "success", duration: 2000, isClosable: true });
             } else if (result.nextStep?.additionalInfo) {
                 const remaining = result.nextStep.additionalInfo.attemptsLeft || 0;
@@ -75,10 +95,10 @@ export default function AuthenticationPage() {
         }
     };
 
-    const handleSignupSubmit = async (phone, firstName, lastName, email, receivePhoneNotification) => {
+    const handleSignupSubmit = async (phone, firstName, lastName, email, receivePhoneNotification, isCommercial, billingEmail) => {
         setIsSignUpLoading(true);
         try {
-            const { error } = await initiateSignUp(laundryId, email, phone, firstName, lastName, false, receivePhoneNotification);
+            const { error } = await initiateSignUp(laundryId, email, phone, firstName, lastName, false, receivePhoneNotification, isCommercial, billingEmail);
             if (error) {
                 if (error.includes("UsernameExistsException")) {
                     toast({ title: "Account exists", description: "Sending verification code...", status: "info", duration: 3000, isClosable: true });
@@ -86,6 +106,12 @@ export default function AuthenticationPage() {
                     toast({ title: "Error", description: error, status: "error", duration: 4000, isClosable: true });
                     return;
                 }
+            }
+            // Store commercial data for after OTP verification
+            if (isCommercial && billingEmail) {
+                setCommercialData({ isCommercial: true, billingEmail });
+            } else {
+                setCommercialData(null);
             }
             setPendingAuth(phone, laundryId);
             const otpResponse = await initiateSignIn(phone, laundryId);
