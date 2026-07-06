@@ -111,7 +111,7 @@ async def get_stops(
               AND (
                 (o.order_type = 'Online' AND o.order_status = 'OrderSubmitted' AND o.pickup_date = %s)
                 OR
-                (o.order_status IN ('EnRouteToDelivery', 'ProcessingCompleted')
+                (o.order_status IN ('EnRouteToDelivery', 'ProcessingCompleted', 'ReadyForDelivery')
                  AND o.dropoff_date = %s
                  AND LOWER(REPLACE(o.dropoff_service, ' ', '')) = 'laundrydriver'
                  AND o.address_id IS NOT NULL)
@@ -443,7 +443,7 @@ async def get_assignments(
                 JOIN orders.orders o ON o.order_id = ra.order_id
                 JOIN shop.customers c ON c.customer_id = o.customer_id
                 LEFT JOIN shop.customer_addresses ca ON ca.address_id = o.address_id
-                WHERE ra.laundry_id = %s AND ra.route_date = %s AND ra.driver_id = %s
+                WHERE ra.laundry_id = %s AND ra.route_date = %s AND UPPER(ra.driver_id) = UPPER(%s)
                 ORDER BY ra.sequence_position ASC
             """, (laundryId, route_date, driverId))
         else:
@@ -529,54 +529,64 @@ async def get_unassigned_orders(
     except ValueError:
         return {"status": "error", "message": "Invalid date format. Use YYYY-MM-DD."}
 
-    with get_db() as conn:
-        cur = get_cursor(conn)
-        # Get all order IDs assigned for this date
-        cur.execute("""
-            SELECT order_id FROM routes.route_assignments
-            WHERE laundry_id = %s AND route_date = %s
-        """, (laundryId, route_date))
-        assigned_ids = {row["order_id"] for row in cur.fetchall()}
+    try:
+        with get_db() as conn:
+            cur = get_cursor(conn)
+            # Get all order IDs assigned for this date
+            try:
+                cur.execute("""
+                    SELECT order_id FROM routes.route_assignments
+                    WHERE laundry_id = %s AND route_date = %s
+                """, (laundryId, route_date))
+                assigned_ids = {row["order_id"] for row in cur.fetchall()}
+            except Exception:
+                # routes schema may not exist yet — treat as no assignments
+                assigned_ids = set()
 
-        # Get all orders that need driver action on this date
-        cur.execute("""
-            SELECT o.order_id, o.order_status, o.pickup_date, o.dropoff_date,
-                   o.pickup_service, o.dropoff_service,
-                   c.first_name, c.last_name, c.phone_number,
-                   ca.address AS customer_address
-            FROM orders.orders o
-            JOIN shop.customers c ON c.customer_id = o.customer_id
-            LEFT JOIN shop.customer_addresses ca ON ca.address_id = o.address_id
-            WHERE o.laundry_id = %s
-              AND o.order_type = 'Online'
-              AND (
-                (o.order_status IN ('OrderSubmitted', 'ReadyForIntake')
-                 AND o.pickup_date = %s
-                 AND LOWER(COALESCE(o.pickup_service, 'LaundryDriver')) = 'laundrydriver')
-                OR
-                (o.order_status IN ('EnRouteToDelivery')
-                 AND o.dropoff_date = %s
-                 AND LOWER(COALESCE(o.dropoff_service, 'LaundryDriver')) = 'laundrydriver')
-              )
-            ORDER BY COALESCE(o.pickup_date, o.dropoff_date) ASC
-        """, (laundryId, route_date, route_date))
-        all_orders = cur.fetchall()
+            # Get all orders that need driver action on this date
+            cur.execute("""
+                SELECT o.order_id, o.order_status, o.pickup_date, o.dropoff_date,
+                       o.pickup_service, o.dropoff_service,
+                       c.first_name, c.last_name, c.phone_number,
+                       ca.address AS customer_address
+                FROM orders.orders o
+                JOIN shop.customers c ON c.customer_id = o.customer_id
+                LEFT JOIN shop.customer_addresses ca ON ca.address_id = o.address_id
+                WHERE o.laundry_id = %s
+                  AND (
+                    (o.order_type = 'Online'
+                     AND o.order_status IN ('OrderSubmitted', 'ReadyForIntake')
+                     AND o.pickup_date = %s
+                     AND LOWER(COALESCE(o.pickup_service, 'laundrydriver')) = 'laundrydriver')
+                    OR
+                    (o.order_status IN ('EnRouteToDelivery', 'ProcessingCompleted', 'ReadyForDelivery')
+                     AND o.dropoff_date = %s
+                     AND LOWER(REPLACE(COALESCE(o.dropoff_service, 'LaundryDriver'), ' ', '')) = 'laundrydriver'
+                     AND o.address_id IS NOT NULL)
+                  )
+                ORDER BY COALESCE(o.pickup_date, o.dropoff_date) ASC
+            """, (laundryId, route_date, route_date))
+            all_orders = cur.fetchall()
 
-    # Filter out already-assigned orders
-    unassigned = []
-    for row in all_orders:
-        if row["order_id"] not in assigned_ids:
-            unassigned.append({
-                "orderId": row["order_id"],
-                "orderStatus": row["order_status"],
-                "pickupDate": str(row["pickup_date"]) if row["pickup_date"] else None,
-                "dropoffDate": str(row["dropoff_date"]) if row["dropoff_date"] else None,
-                "customerName": f"{row['first_name'] or ''} {row['last_name'] or ''}".strip(),
-                "customerPhone": row["phone_number"] or "",
-                "address": row["customer_address"] or "",
-            })
+        # Filter out already-assigned orders
+        unassigned = []
+        for row in all_orders:
+            if row["order_id"] not in assigned_ids:
+                unassigned.append({
+                    "orderId": row["order_id"],
+                    "orderStatus": row["order_status"],
+                    "pickupDate": str(row["pickup_date"]) if row["pickup_date"] else None,
+                    "dropoffDate": str(row["dropoff_date"]) if row["dropoff_date"] else None,
+                    "customerName": f"{row['first_name'] or ''} {row['last_name'] or ''}".strip(),
+                    "customerPhone": row["phone_number"] or "",
+                    "address": row["customer_address"] or "",
+                })
 
-    return {"status": "success", "unassignedOrders": unassigned}
+        return {"status": "success", "unassignedOrders": unassigned}
+
+    except Exception as e:
+        logger.exception("Error fetching unassigned orders")
+        return {"status": "error", "unassignedOrders": [], "message": str(e)}
 
 
 # ── POST /claim ────────────────────────────────────────────────────────────────

@@ -19,8 +19,9 @@ import {
 } from '@chakra-ui/react';
 import axios from 'axios';
 import { format } from 'date-fns';
-import DriverSelector, { CLUSTER_COLORS } from '../Components/RouteOptimization/DriverSelector';
+import DriverSelector from '../Components/RouteOptimization/DriverSelector';
 import ClusteredMap from '../Components/RouteOptimization/ClusteredMap';
+import StopsList from '../Components/RouteOptimization/StopsList';
 
 const API_URL = process.env.REACT_APP_AWS_API_URL;
 
@@ -44,6 +45,7 @@ const RoutePlannerPage = ({ laundryId }) => {
   // Re-optimize confirmation dialog
   const { isOpen: isReoptimizeOpen, onOpen: onReoptimizeOpen, onClose: onReoptimizeClose } = useDisclosure();
   const cancelRef = React.useRef();
+  const [highlightedStop, setHighlightedStop] = useState(null);
 
   // Fetch stops and drivers on date change
   const fetchData = useCallback(async () => {
@@ -296,6 +298,17 @@ const RoutePlannerPage = ({ laundryId }) => {
       }
       return newClusters;
     });
+
+    // Assign next sequence position to the reassigned stop
+    setSequencePositions((prev) => {
+      // Find the max sequence position for orders in the target cluster
+      const targetStops = clusters[targetClusterIndex]?.stops || [];
+      const existingPositions = targetStops
+        .map((id) => prev[id] || 0)
+        .filter((p) => p > 0);
+      const maxPos = existingPositions.length > 0 ? Math.max(...existingPositions) : 0;
+      return { ...prev, [orderId]: maxPos + 1 };
+    });
   };
 
   // Single driver fallback: open Google Maps directly
@@ -343,7 +356,7 @@ const RoutePlannerPage = ({ laundryId }) => {
           ) : (
             <Flex direction={{ base: 'column', lg: 'row' }} gap={4}>
               {/* Left panel: driver selector + actions */}
-              <Box minW="240px">
+              <Box minW="240px" maxW={{ lg: '260px' }}>
                 <DriverSelector
                   drivers={drivers}
                   selectedDrivers={selectedDrivers}
@@ -419,26 +432,19 @@ const RoutePlannerPage = ({ laundryId }) => {
                     </>
                   )}
                 </Box>
+              </Box>
 
-                {/* Legend */}
-                {clusters.length > 0 && (
-                  <Box mt={4} p={3} bg="gray.50" borderRadius="md" borderWidth="1px">
-                    <Text fontSize="xs" fontWeight="bold" mb={2}>Legend</Text>
-                    {selectedDrivers.map((dId, idx) => {
-                      const driver = drivers.find((d) => d.driverId === dId);
-                      const color = CLUSTER_COLORS[idx % CLUSTER_COLORS.length];
-                      return (
-                        <HStack key={dId} spacing={2} mb={1}>
-                          <Box w="10px" h="10px" borderRadius="full" bg={color} />
-                          <Text fontSize="xs">{driver?.name || dId}</Text>
-                          <Text fontSize="xs" color="gray.500">
-                            ({clusters[idx]?.stops?.length || 0})
-                          </Text>
-                        </HStack>
-                      );
-                    })}
-                  </Box>
-                )}
+              {/* Middle panel: stops list */}
+              <Box minW="260px" maxW={{ lg: '300px' }}>
+                <StopsList
+                  stops={stops}
+                  clusters={clusters}
+                  selectedDrivers={selectedDrivers}
+                  drivers={drivers}
+                  sequencePositions={sequencePositions}
+                  onHoverStop={setHighlightedStop}
+                  highlightedStop={highlightedStop}
+                />
               </Box>
 
               {/* Map */}
@@ -449,6 +455,7 @@ const RoutePlannerPage = ({ laundryId }) => {
                   selectedDrivers={selectedDrivers}
                   onReassign={handleReassign}
                   sequencePositions={sequencePositions}
+                  highlightedStop={highlightedStop}
                 />
               </Box>
             </Flex>

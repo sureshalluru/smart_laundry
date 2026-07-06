@@ -82,6 +82,10 @@ async def process_frequencies():
                 SELECT lf.*, ca.address, ca.door_number, ca.address_instructions,
                        cpp.stripe_customer_id,
                        lf.is_commercial AS freq_is_commercial,
+                       lf.tip_amount AS freq_tip_amount,
+                       lf.tip_percentage AS freq_tip_percentage,
+                       lf.tip_type AS freq_tip_type,
+                       lf.tip_method AS freq_tip_method,
                        c.is_commercial AS customer_is_commercial
                 FROM orders.laundry_frequency lf
                 JOIN shop.customer_addresses ca ON ca.address_id = lf.address_id
@@ -199,6 +203,25 @@ async def process_frequencies():
                         order_pricing_type, pickup_service, dropoff_service,
                         pay_by_invoice,
                     ))
+
+                # Insert tip data from frequency subscription
+                tip_amount = float(sub.get("freq_tip_amount") or 0)
+                tip_percentage = float(sub.get("freq_tip_percentage") or 0)
+                tip_type = sub.get("freq_tip_type") or ""
+                tip_method = sub.get("freq_tip_method") or ""
+
+                if tip_amount > 0 or tip_percentage > 0:
+                    with get_db() as conn:
+                        cur = get_cursor(conn)
+                        cur.execute("""
+                            INSERT INTO orders.order_tips (order_id, tip_amount, tip_percentage, tip_type, tip_method)
+                            VALUES (%s, %s, %s, %s, %s)
+                            ON CONFLICT (order_id) DO UPDATE SET
+                                tip_amount = EXCLUDED.tip_amount,
+                                tip_percentage = EXCLUDED.tip_percentage,
+                                tip_type = EXCLUDED.tip_type
+                        """, (order_id, tip_amount, tip_percentage, tip_type, tip_method))
+                    logger.info(f"Tip applied to recurring order {order_id}: amount={tip_amount}, pct={tip_percentage}%")
 
                 # Create $1 hold if payment info exists
                 auto_charge = sub.get("auto_charge", False)

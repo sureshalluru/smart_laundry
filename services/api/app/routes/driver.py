@@ -54,9 +54,14 @@ async def driver_orders(
         assigned_order_ids = {row["order_id"] for row in cur.fetchall()}
         logger.info(f"Driver {driver_id} has {len(assigned_order_ids)} assigned orders: {assigned_order_ids}")
 
-        # Fetch orders: either assigned orders OR all orders if no assignments
+        # Check if ANY route assignments exist for this laundry/date range
+        # (to distinguish "route planner not used" from "used but not assigned to this driver")
+        # We no longer return empty — always return orders so the frontend can handle display.
+        # The Available/Unassigned section handles claimable orders separately.
+
+        # Fetch orders based on assignment state
         if assigned_order_ids:
-            # Driver has assignments — fetch those specific orders regardless of date
+            # Driver has assignments — fetch those specific orders
             placeholders = ",".join(["%s"] * len(assigned_order_ids))
             cur.execute(f"""
                 SELECT o.order_id, o.customer_id, o.address_id, o.order_type, o.order_status,
@@ -76,7 +81,7 @@ async def driver_orders(
                 ORDER BY COALESCE(o.pickup_date, o.dropoff_date) ASC
             """, list(assigned_order_ids))
         else:
-            # No assignments — show all orders for the date range (backward compatible)
+            # No assignments for this driver — show all orders for the date range
             cur.execute("""
                 SELECT o.order_id, o.customer_id, o.address_id, o.order_type, o.order_status,
                        o.payment_status, o.pickup_date, o.pickup_time_interval,
@@ -95,7 +100,7 @@ async def driver_orders(
                   AND (
                     (o.order_type = 'Online' AND o.order_status IN ('OrderSubmitted','ReadyForIntake') AND o.pickup_date BETWEEN %s AND %s)
                     OR
-                    (o.order_status IN ('EnRouteToDelivery', 'ProcessingCompleted')
+                    (o.order_status IN ('EnRouteToDelivery', 'ProcessingCompleted', 'ReadyForDelivery')
                      AND o.dropoff_date BETWEEN %s AND %s
                      AND LOWER(REPLACE(o.dropoff_service, ' ', '')) = 'laundrydriver'
                      AND o.address_id IS NOT NULL)

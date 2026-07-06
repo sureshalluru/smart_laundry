@@ -76,6 +76,10 @@ const statusBadge = (status = '') => {
       return { label: 'Picked Up', color: 'green' };
     case 'enroutetodelivery':
       return { label: 'Delivery Order', color: 'blue' };
+    case 'readyfordelivery':
+      return { label: 'Ready for Delivery', color: 'cyan' };
+    case 'processingcompleted':
+      return { label: 'Processing Done', color: 'teal' };
     case 'delivered':
       return { label: 'Delivered', color: 'purple' };
     default:
@@ -231,49 +235,23 @@ const DriverHome = ({ laundryId }) => {
         // Check all selected dates for route assignments
         const allStops = [];
         for (const dateStr of selectedDateValues) {
-          // Fetch assignments — try with empId first, then without if no results
-          let response = await axios.get(
+          // Fetch assignments for this driver
+          const response = await axios.get(
             `${process.env.REACT_APP_AWS_API_URL}/api/routes/assignments`,
             {
               params: { laundryId, date: dateStr, ...(empId ? { driverId: empId } : {}) },
               headers: { Authorization: `Bearer ${authToken}` },
             }
           );
-          let assignments = response.data?.assignments || {};
+          const assignments = response.data?.assignments || {};
 
-          // If empId search returned results, use them keyed by empId
-          let driverStops = empId ? assignments[empId] : null;
-
-          // If no results with empId, fetch all and find this driver's stops
-          // by matching against orders we can see
-          if (!driverStops || driverStops.length === 0) {
-            if (empId) {
-              // Retry without driverId filter to get all assignments
-              response = await axios.get(
-                `${process.env.REACT_APP_AWS_API_URL}/api/routes/assignments`,
-                {
-                  params: { laundryId, date: dateStr },
-                  headers: { Authorization: `Bearer ${authToken}` },
-                }
-              );
-              assignments = response.data?.assignments || {};
-            }
-            // Take the first driver's assignments (for single-driver laundries this is fine)
-            // Or match by checking which assignments contain orders from our orders list
-            const allDriverIds = Object.keys(assignments);
-            for (const dId of allDriverIds) {
-              const stops = assignments[dId];
-              if (stops && stops.length > 0) {
-                // Check if any of these orders are in our visible orders
-                const matchesOurOrders = stops.some((s) =>
-                  orders.some((o) => o.orderId === s.orderId)
-                );
-                if (matchesOurOrders) {
-                  driverStops = stops;
-                  break;
-                }
-              }
-            }
+          // Get this driver's stops (keyed by driver_id in the response)
+          // Use case-insensitive lookup since empId casing may differ from DB
+          let driverStops = null;
+          if (empId) {
+            const empUpper = empId.toUpperCase();
+            const matchingKey = Object.keys(assignments).find(k => k.toUpperCase() === empUpper);
+            driverStops = matchingKey ? assignments[matchingKey] : null;
           }
 
           if (driverStops && driverStops.length > 0) {
@@ -353,6 +331,7 @@ const DriverHome = ({ laundryId }) => {
         'readyforintake',
         'enroutetodelivery',
         'processingcompleted',
+        'readyfordelivery',
         'delivered',
       ];
       if (!allowedStatuses.includes(s)) return false;
@@ -382,7 +361,7 @@ const DriverHome = ({ laundryId }) => {
       }
 
       // Dropoff leg statuses
-      if (s === 'enroutetodelivery' || s === 'delivered' || s === 'processingcompleted') {
+      if (s === 'enroutetodelivery' || s === 'delivered' || s === 'processingcompleted' || s === 'readyfordelivery') {
         // For both online and in-store, include only LaundryDriver dropoffs on matching dropoff date
         const normalizedDropoff = dropoffSvc?.replace(/\s/g, '') || '';
         if (normalizedDropoff !== 'laundrydriver') return false;
@@ -427,22 +406,27 @@ const DriverHome = ({ laundryId }) => {
   useEffect(() => {
     const fetchUnassigned = async () => {
       if (!selectedDateValues.length) return;
-      // Only fetch unassigned orders if the driver has route assignments
-      // (meaning admin has done some assignment but may have missed orders)
-      if (!assignedOrderIds || assignedOrderIds.size === 0) {
-        setUnassignedOrders([]);
-        return;
-      }
-      const dateStr = selectedDateValues[0];
       try {
-        const res = await axios.get(
-          `${process.env.REACT_APP_AWS_API_URL}/api/routes/unassigned`,
-          {
-            params: { laundryId, date: dateStr },
-            headers: { Authorization: `Bearer ${authToken}` },
+        // Fetch unassigned orders for ALL selected dates and merge
+        const allUnassigned = [];
+        const seenIds = new Set();
+        for (const dateStr of selectedDateValues) {
+          const res = await axios.get(
+            `${process.env.REACT_APP_AWS_API_URL}/api/routes/unassigned`,
+            {
+              params: { laundryId, date: dateStr },
+              headers: { Authorization: `Bearer ${authToken}` },
+            }
+          );
+          const orders = res.data?.unassignedOrders || [];
+          for (const o of orders) {
+            if (!seenIds.has(o.orderId)) {
+              seenIds.add(o.orderId);
+              allUnassigned.push(o);
+            }
           }
-        );
-        setUnassignedOrders(res.data?.unassignedOrders || []);
+        }
+        setUnassignedOrders(allUnassigned);
       } catch (err) {
         console.log('Unable to fetch unassigned orders');
         setUnassignedOrders([]);
@@ -1024,16 +1008,20 @@ const DriverHome = ({ laundryId }) => {
         )}
 
         {/* ───────────── Available (Unassigned) Orders ───────────── */}
-        {unassignedOrders.length > 0 && (
+        {(() => {
+          // Filter out orders already shown in the main list
+          const mainOrderIds = new Set(orders.map(o => o.orderId));
+          const claimableOrders = unassignedOrders.filter(o => !mainOrderIds.has(o.orderId));
+          return claimableOrders.length > 0 && (
           <Box mt={6}>
             <HStack mb={3}>
               <Badge colorScheme="orange" fontSize="sm" px={2} py={1}>Available</Badge>
               <Text fontSize="sm" color="gray.600">
-                {unassignedOrders.length} unassigned order{unassignedOrders.length > 1 ? 's' : ''} — tap Claim to add to your route
+                {claimableOrders.length} unassigned order{claimableOrders.length > 1 ? 's' : ''} — tap Claim to add to your route
               </Text>
             </HStack>
             <Stack spacing={3}>
-              {unassignedOrders.map((order) => {
+              {claimableOrders.map((order) => {
                 const { label, color } = statusBadge(order.orderStatus || '');
                 return (
                   <Box
@@ -1068,7 +1056,8 @@ const DriverHome = ({ laundryId }) => {
               })}
             </Stack>
           </Box>
-        )}
+          );
+        })()}
 
         {/* Route modal */}
         <Modal isOpen={isRouteModalOpen} onClose={closeRouteModal} size="md">
