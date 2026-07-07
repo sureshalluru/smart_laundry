@@ -254,76 +254,23 @@ const MobileWeightEntry = ({ order, laundryId, employeeId, isOpen, onClose, onSa
       return;
     }
 
-    // Read file and compress before upload — reduces 3-5MB camera photos to ~200KB
-    // which dramatically speeds up upload over cellular
+    // Read file directly via FileReader — same approach as MobileInlineUpload which
+    // works reliably on iOS Safari camera. Backend handles resize before Claude.
+    // Canvas compression on iOS Safari after camera return can silently hang.
     const reader = new FileReader();
     reader.onload = (e) => {
-      console.log('[MobileWeightEntry] FileReader loaded, compressing...');
-      const rawDataUrl = e.target.result;
-      
-      // Compress via canvas (max 1024px, JPEG 0.75 quality)
-      const img = new window.Image();
-      img.onload = () => {
-        let { width, height } = img;
-        const maxDim = 1024;
-        if (width > maxDim || height > maxDim) {
-          if (width > height) {
-            height = Math.round((height * maxDim) / width);
-            width = maxDim;
-          } else {
-            width = Math.round((width * maxDim) / height);
-            height = maxDim;
-          }
-        }
-        try {
-          const canvas = document.createElement('canvas');
-          canvas.width = width;
-          canvas.height = height;
-          const ctx = canvas.getContext('2d');
-          ctx.drawImage(img, 0, 0, width, height);
-          const compressed = canvas.toDataURL('image/jpeg', 0.75);
-          console.log('[MobileWeightEntry] Compressed:', (rawDataUrl.length / 1024).toFixed(0), 'KB →', (compressed.length / 1024).toFixed(0), 'KB');
-          
-          const newPhoto = {
-            file,
-            preview: compressed,
-            detectedWeight: null,
-            detecting: true,
-            uploaded: false,
-            error: null,
-          };
-          setBagPhotos((prev) => [...prev, newPhoto]);
-          detectWeightFromPhoto(compressed, bagPhotos.length);
-        } catch (canvasErr) {
-          // Canvas compression failed — fall back to raw image
-          console.warn('[MobileWeightEntry] Canvas compression failed, using raw:', canvasErr);
-          const newPhoto = {
-            file,
-            preview: rawDataUrl,
-            detectedWeight: null,
-            detecting: true,
-            uploaded: false,
-            error: null,
-          };
-          setBagPhotos((prev) => [...prev, newPhoto]);
-          detectWeightFromPhoto(rawDataUrl, bagPhotos.length);
-        }
+      console.log('[MobileWeightEntry] FileReader loaded, dataUrl length:', (e.target.result?.length / 1024).toFixed(0), 'KB');
+      const dataUrl = e.target.result;
+      const newPhoto = {
+        file,
+        preview: dataUrl,
+        detectedWeight: null,
+        detecting: true,
+        uploaded: false,
+        error: null,
       };
-      img.onerror = () => {
-        // Image load failed — fall back to raw
-        console.warn('[MobileWeightEntry] Image load for compression failed, using raw');
-        const newPhoto = {
-          file,
-          preview: rawDataUrl,
-          detectedWeight: null,
-          detecting: true,
-          uploaded: false,
-          error: null,
-        };
-        setBagPhotos((prev) => [...prev, newPhoto]);
-        detectWeightFromPhoto(rawDataUrl, bagPhotos.length);
-      };
-      img.src = rawDataUrl;
+      setBagPhotos((prev) => [...prev, newPhoto]);
+      detectWeightFromPhoto(dataUrl, bagPhotos.length);
     };
     reader.onerror = () => {
       console.error('[MobileWeightEntry] FileReader error');

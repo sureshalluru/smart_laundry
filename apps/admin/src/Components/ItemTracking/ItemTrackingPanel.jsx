@@ -100,7 +100,7 @@ function ItemTrackingPanel({ orderId, laundryId, orderStatus, employeeId, onSkip
                   colorScheme="blue"
                   onClick={() => setMobileUploadPhase('intake')}
                 >
-                  📷 {hasIntakeRecord ? 'Redo Count' : 'Count Items'}
+                  📷 {hasIntakeRecord ? 'Redo Count' : 'Received Items'}
                 </Button>
                 <Button
                   size="xs"
@@ -206,7 +206,7 @@ function ItemTrackingPanel({ orderId, laundryId, orderStatus, employeeId, onSkip
         {!hasIntakeRecord && !hasFoldRecord && !showQR && (
           <Text fontSize="xs" color="gray.500" textAlign="center">
             {isMobile
-              ? 'Tap "Upload Intake" to take photos and count items.'
+              ? 'Tap "Received Items" to take photos and count items.'
               : 'Click "Scan Intake" for QR code or "Upload Intake" to upload photos from this computer.'}
           </Text>
         )}

@@ -33,6 +33,7 @@ import {
 import { useEmployeeAuth } from '../Context/EmployeeAuthContext';
 import MobilePhotoAction from '../Components/MobileOrder/MobilePhotoAction';
 import MobileWeightEntry from '../Components/MobileOrder/MobileWeightEntry';
+import MobileInlineUpload from '../Components/MobileOrder/MobileInlineUpload';
 import ItemTrackingPanel from '../Components/ItemTracking/ItemTrackingPanel';
 
 const API_URL = process.env.REACT_APP_AWS_API_URL || '';
@@ -523,16 +524,12 @@ const MobileOrderPage = () => {
             </Button>
             <Button
               leftIcon={<FaCamera />}
-              variant="outline"
+              variant={activeAction === 'received' ? 'solid' : 'outline'}
               colorScheme="blue"
               size="md"
               minH="44px"
               fontSize="xs"
-              onClick={() => {
-                // Open intake phase in ItemTrackingPanel (scroll down)
-                const panel = document.getElementById('item-tracking-section');
-                if (panel) panel.scrollIntoView({ behavior: 'smooth' });
-              }}
+              onClick={() => setActiveAction(activeAction === 'received' ? null : 'received')}
             >
               📷 Received Items
             </Button>
@@ -799,16 +796,38 @@ const MobileOrderPage = () => {
           </Box>
         )}
 
-        {/* Fold Complete Photo Action */}
+        {/* Received Items — Inline 4-angle photo grid for intake */}
+        {activeAction === 'received' && (
+          <Box bg="white" borderRadius="lg" p={4} shadow="sm">
+            <MobileInlineUpload
+              orderId={orderId}
+              laundryId={laundryId}
+              phase="intake"
+              employeeId={employeeId}
+              onComplete={() => {
+                setActiveAction(null);
+                fetchTrackingRecord();
+                silentFetchOrder();
+              }}
+              onCancel={() => setActiveAction(null)}
+            />
+          </Box>
+        )}
+
+        {/* Fold Complete — Inline 4-angle photo grid for fold */}
         {activeAction === 'fold_complete' && (
           <Box bg="white" borderRadius="lg" p={4} shadow="sm">
-            <MobilePhotoAction
-              order={order}
-              actionType="fold_complete"
-              targetStatus="ProcessingCompleted"
-              imageType="fold_complete"
+            <MobileInlineUpload
+              orderId={orderId}
+              laundryId={laundryId}
+              phase="fold"
               employeeId={employeeId}
-              onComplete={() => handlePhotoComplete('fold_complete')}
+              onComplete={() => {
+                setActiveAction(null);
+                fetchTrackingRecord();
+                silentFetchOrder();
+              }}
+              onCancel={() => setActiveAction(null)}
             />
           </Box>
         )}

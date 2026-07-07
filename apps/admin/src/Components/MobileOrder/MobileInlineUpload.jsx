@@ -524,7 +524,7 @@ const MobileInlineUpload = ({ orderId, laundryId, phase, employeeId, onComplete,
     return (
     <div>
       <p style={styles.sectionTitle}>
-        📷 {phase === 'intake' ? 'Count Items' : 'Fold Complete'} — Take Photos
+        📷 {phase === 'intake' ? 'Received Items' : 'Fold Complete'} — Take Photos
       </p>
       <p style={{ fontSize: '11px', color: '#718096', marginBottom: '12px' }}>
         Front and Top views are <strong>required</strong>. Left and Right are optional for better accuracy.
