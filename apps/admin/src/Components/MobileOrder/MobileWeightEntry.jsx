@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import {
   Box,
@@ -28,7 +28,6 @@ import {
   FaCamera,
   FaCheckCircle,
   FaSave,
-  FaTimes,
   FaPlus,
   FaExclamationTriangle,
   FaTrash,
@@ -36,72 +35,6 @@ import {
 
 const API_URL = process.env.REACT_APP_AWS_API_URL || '';
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
-
-/**
- * Converts a File to a base64 data URL string.
- */
-function fileToBase64(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onloadend = () => resolve(reader.result);
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
-}
-
-/**
- * Compress an image file client-side before sending to the API.
- * Resizes to max 1024px on longest side and compresses to JPEG quality 0.75.
- * This reduces a typical 3-5MB phone photo to ~150-300KB while keeping scale numbers readable.
- */
-function compressImage(file, maxDimension = 1024, quality = 0.75) {
-  return new Promise((resolve, reject) => {
-    // Timeout: if image doesn't load in 5s, fall back to FileReader
-    const timeout = setTimeout(() => {
-      URL.revokeObjectURL(img.src);
-      reject(new Error('Image load timeout'));
-    }, 5000);
-
-    const img = new window.Image();
-    img.onload = () => {
-      clearTimeout(timeout);
-      try {
-        let { width, height } = img;
-        if (width > maxDimension || height > maxDimension) {
-          if (width > height) {
-            height = Math.round((height * maxDimension) / width);
-            width = maxDimension;
-          } else {
-            width = Math.round((width * maxDimension) / height);
-            height = maxDimension;
-          }
-        }
-        const canvas = document.createElement('canvas');
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(img, 0, 0, width, height);
-        const dataUrl = canvas.toDataURL('image/jpeg', quality);
-        // Validate the output — canvas.toDataURL can return empty on some browsers
-        if (!dataUrl || dataUrl.length < 100 || dataUrl === 'data:,') {
-          reject(new Error('Canvas compression produced empty result'));
-        } else {
-          resolve(dataUrl);
-        }
-      } catch (e) {
-        reject(e);
-      } finally {
-        URL.revokeObjectURL(img.src);
-      }
-    };
-    img.onerror = (e) => {
-      clearTimeout(timeout);
-      URL.revokeObjectURL(img.src);
-      reject(e || new Error('Image failed to load'));
-    };
-    img.src = URL.createObjectURL(file);
-  });
-}
 
 /**
  * MobileWeightEntry — Drawer for entering weight/count values for order services.
@@ -341,6 +274,18 @@ const MobileWeightEntry = ({ order, laundryId, employeeId, isOpen, onClose, onSa
 
   // Send photo to Vision AI for weight detection + persist in parallel
   const detectWeightFromPhoto = async (base64Image, photoIndex) => {
+    console.log('[MobileWeightEntry] detectWeightFromPhoto called. photoIndex:', photoIndex, 'orderId:', order?.orderId, 'laundryId:', laundryId);
+
+    if (!base64Image || !order?.orderId || !laundryId) {
+      console.error('[MobileWeightEntry] Missing required data for detect-weight', { hasImage: !!base64Image, orderId: order?.orderId, laundryId });
+      setBagPhotos((prev) =>
+        prev.map((photo, idx) =>
+          idx === photoIndex ? { ...photo, detecting: false, error: 'Missing order info. Close and reopen.' } : photo
+        )
+      );
+      return;
+    }
+
     // Fire BOTH calls in parallel: detect weight + persist to S3
     const persistParams = new URLSearchParams({
       laundryId: laundryId,
@@ -354,7 +299,11 @@ const MobileWeightEntry = ({ order, laundryId, employeeId, isOpen, onClose, onSa
     axios.post(
       `${API_URL}/api/admin/photo-upload-status?${persistParams}`,
       { imageBase64: base64Image }
-    ).catch((err) => console.error('Failed to persist scale photo:', err));
+    ).then(() => {
+      console.log('[MobileWeightEntry] photo-upload-status SUCCESS');
+    }).catch((err) => {
+      console.error('[MobileWeightEntry] photo-upload-status FAILED:', err?.response?.status, err?.message);
+    });
 
     // Detect weight (this is what we await for UI feedback)
     try {
@@ -368,6 +317,7 @@ const MobileWeightEntry = ({ order, laundryId, employeeId, isOpen, onClose, onSa
         }
       );
 
+      console.log('[MobileWeightEntry] detect-weight response:', response.status, response.data);
       const body = response.data?.body || response.data;
       const detectedWeight = body?.weight;
       const confidence = body?.confidence || 0;

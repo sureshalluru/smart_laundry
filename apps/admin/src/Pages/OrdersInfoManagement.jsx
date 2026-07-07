@@ -2175,7 +2175,6 @@ const { open: openCancelUber, ModalUI: CancelUberModal } = useCancelUberHandoff(
                                                     id="scalePhotoInput"
                                                     type="file"
                                                     accept="image/*"
-                                                    capture="environment"
                                                     style={{ display: 'none' }}
                                                     onChange={async (e) => {
                                                         const file = e.target.files[0];
@@ -2184,16 +2183,23 @@ const { open: openCancelUber, ModalUI: CancelUberModal } = useCancelUberHandoff(
                                                             const reader = new FileReader();
                                                             reader.onloadend = async () => {
                                                                 const base64 = reader.result;
+                                                                const params = new URLSearchParams({
+                                                                    laundryId,
+                                                                    orderId: selectedOrderDetails.orderId,
+                                                                    imageType: 'weight',
+                                                                    targetStatus: selectedOrderDetails.orderStatus,
+                                                                    empId: getEmpId() || empId || 'ADMIN',
+                                                                });
                                                                 await axios.post(
-                                                                    `${process.env.REACT_APP_AWS_API_URL}/api/driver/upload-image`,
-                                                                    { imageBase64: base64 },
-                                                                    { params: { operation: 'uploadImage', laundryId, orderId: selectedOrderDetails.orderId, imageType: 'weight' }, headers: { Authorization: `Bearer ${authToken}` } }
+                                                                    `${process.env.REACT_APP_AWS_API_URL}/api/admin/photo-upload-status?${params}`,
+                                                                    { imageBase64: base64 }
                                                                 );
-                                                                toast({ title: 'Scale photo uploaded', status: 'success', duration: 3000 });
+                                                                toast({ title: 'Scale photo uploaded — detecting weight...', status: 'success', duration: 3000 });
+                                                                setTimeout(async () => { const od = await fetchSingleOrder(laundryId, selectedOrderDetails.orderId); if (od) setSelectedOrderDetails(od); }, 3000);
                                                             };
                                                             reader.readAsDataURL(file);
                                                         } catch (err) {
-                                                            toast({ title: 'Upload failed', status: 'error', duration: 3000 });
+                                                            toast({ title: 'Upload failed', description: err?.response?.data?.body?.message || 'Please try again', status: 'error', duration: 3000 });
                                                         }
                                                         e.target.value = '';
                                                     }}

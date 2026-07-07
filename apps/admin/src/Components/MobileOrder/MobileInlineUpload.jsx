@@ -747,7 +747,6 @@ const MobileInlineUpload = ({ orderId, laundryId, phase, employeeId, onComplete,
       <input
         type="file"
         accept="image/*"
-        capture="environment"
         multiple
         ref={fileInputRef}
         onChange={handleFileChange}
