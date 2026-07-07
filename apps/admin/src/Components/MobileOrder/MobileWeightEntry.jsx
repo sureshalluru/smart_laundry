@@ -316,38 +316,28 @@ const MobileWeightEntry = ({ order, laundryId, employeeId, isOpen, onClose, onSa
       return;
     }
 
-    // Create preview and add to bagPhotos array — compress before sending
-    compressImage(file, 1024, 0.75).then((compressedDataUrl) => {
+    // Read file directly via FileReader — skip canvas compression for reliability
+    // Backend handles resize to 1024px before sending to Claude
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      console.log('[MobileWeightEntry] FileReader loaded, dataUrl length:', e.target.result?.length);
       const newPhoto = {
         file,
-        preview: compressedDataUrl,
+        preview: e.target.result,
         detectedWeight: null,
         detecting: true,
         uploaded: false,
         error: null,
       };
       setBagPhotos((prev) => [...prev, newPhoto]);
-
-      // Trigger auto-detect with compressed image
-      detectWeightFromPhoto(compressedDataUrl, bagPhotos.length);
-    }).catch((compressErr) => {
-      // Fallback: use FileReader directly if canvas compression fails (Safari/HEIC/desktop)
-      console.warn('[MobileWeightEntry] compressImage failed, using raw FileReader:', compressErr?.message);
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const newPhoto = {
-          file,
-          preview: e.target.result,
-          detectedWeight: null,
-          detecting: true,
-          uploaded: false,
-          error: null,
-        };
-        setBagPhotos((prev) => [...prev, newPhoto]);
-        detectWeightFromPhoto(e.target.result, bagPhotos.length);
-      };
-      reader.readAsDataURL(file);
-    });
+      detectWeightFromPhoto(e.target.result, bagPhotos.length);
+    };
+    reader.onerror = () => {
+      console.error('[MobileWeightEntry] FileReader error');
+      toast({ title: 'Failed to read file', status: 'error', duration: 3000 });
+    };
+    reader.readAsDataURL(file);
+  };
   };
 
   // Send photo to Vision AI for weight detection + persist in parallel
