@@ -140,7 +140,10 @@ const MobilePhotoAction = ({
     setUploadError(null);
 
     try {
-      const imageBase64 = await fileToBase64(selectedFile);
+      // Use the already-read previewUrl (base64) instead of re-reading the file.
+      // On iOS Safari, the File blob can become stale after returning from camera,
+      // causing fileToBase64 to fail. previewUrl is captured immediately on file select.
+      const imageBase64 = previewUrl || await fileToBase64(selectedFile);
 
       const response = await axios.post(
         `${API_URL}/api/admin/photo-upload-status`,
