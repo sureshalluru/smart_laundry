@@ -1859,6 +1859,12 @@ async def photo_upload_status(
             _run_vision_analysis(laundryId, orderId, empId, image_base64, imageType)
         )
 
+    # Fire off weight detection for scale photos (non-blocking)
+    if imageType == "weight":
+        asyncio.create_task(
+            _run_weight_detection(laundryId, orderId, image_base64)
+        )
+
     return {
         "statusCode": 200,
         "body": {
@@ -2067,6 +2073,90 @@ async def employee_update_services(
     except Exception as e:
         logger.exception(f"employee-update-services failed: order={order_id}")
         return {"statusCode": 500, "body": {"message": f"Update failed: {str(e)}"}}
+
+
+async def _run_weight_detection(laundry_id: str, order_id: str, image_base64: str):
+    """
+    Background task: call Claude Vision to detect weight from a scale photo.
+    Stores the detected weight in the order's service weight field.
+    """
+    try:
+        import base64
+        import json
+        import anthropic
+        from app.config import settings
+        from app.services.vision_service import build_weight_detection_prompt, _resize_image
+
+        if not settings.anthropic_api_key:
+            logger.warning(f"[weight-detect] No Anthropic API key, skipping weight detection for {order_id}")
+            return
+
+        # Strip data URL prefix
+        img_data = image_base64
+        if "," in img_data and img_data.startswith("data:"):
+            img_data = img_data.split(",", 1)[1]
+
+        image_bytes = base64.b64decode(img_data)
+        media_type = "image/jpeg"
+        if image_bytes[:8] == b'\x89PNG\r\n\x1a\n':
+            media_type = "image/png"
+
+        # Resize
+        image_bytes = _resize_image(image_bytes, media_type, max_dimension=1024)
+        img_b64 = base64.standard_b64encode(image_bytes).decode("utf-8")
+
+        client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
+        weight_prompt = build_weight_detection_prompt()
+
+        response = client.messages.create(
+            model="claude-sonnet-4-6",
+            max_tokens=256,
+            system=weight_prompt,
+            messages=[{
+                "role": "user",
+                "content": [
+                    {"type": "image", "source": {"type": "base64", "media_type": media_type, "data": img_b64}},
+                    {"type": "text", "text": "Please read the weight displayed on the scale in this photo."},
+                ],
+            }],
+        )
+
+        response_text = response.content[0].text if response.content else ""
+        logger.info(f"[weight-detect] order={order_id} response: {response_text[:200]}")
+
+        # Parse weight from response
+        import re
+        text = response_text.strip()
+        if text.startswith("```"):
+            text = "\n".join(text.split("\n")[1:])
+            if text.endswith("```"):
+                text = text[:-3].strip()
+        if not text.startswith("{"):
+            json_match = re.search(r'\{[^{}]*"weight"[^{}]*\}', text)
+            if json_match:
+                text = json_match.group()
+            else:
+                logger.warning(f"[weight-detect] No JSON in response for {order_id}")
+                return
+
+        result = json.loads(text)
+        weight = result.get("weight")
+        if weight is not None:
+            weight = float(weight)
+            logger.info(f"[weight-detect] Detected weight {weight} for order {order_id}")
+            # Update order service weight
+            with get_db() as conn:
+                cur = get_cursor(conn)
+                cur.execute("""
+                    UPDATE orders.order_services
+                    SET weight_or_count = %s
+                    WHERE order_id = %s AND weight_or_count <= 1
+                """, (weight, order_id))
+                if cur.rowcount > 0:
+                    logger.info(f"[weight-detect] Updated service weight for {order_id} to {weight}")
+
+    except Exception as e:
+        logger.exception(f"[weight-detect] Failed for order {order_id}: {e}")
 
 
 async def _run_vision_analysis(
