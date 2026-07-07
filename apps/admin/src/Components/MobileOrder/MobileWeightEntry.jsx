@@ -216,7 +216,8 @@ const MobileWeightEntry = ({ order, laundryId, employeeId, isOpen, onClose, onSa
 
   const handleCaptureClick = () => {
     if (fileInputRef.current) {
-      fileInputRef.current.value = '';
+      // Note: Don't clear value before click on iOS Safari — it can prevent onChange
+      // from firing when returning from camera. Clear it AFTER the file is processed instead.
       fileInputRef.current.click();
     }
   };
@@ -226,6 +227,10 @@ const MobileWeightEntry = ({ order, laundryId, employeeId, isOpen, onClose, onSa
     const file = event.target.files?.[0];
     if (!file) { console.log('[MobileWeightEntry] No file selected'); return; }
     console.log('[MobileWeightEntry] File selected:', file.name, file.type, file.size);
+
+    // Clear the input value AFTER reading — allows re-selecting the same file
+    // and avoids iOS Safari issue where clearing before click prevents onChange
+    if (fileInputRef.current) fileInputRef.current.value = '';
 
     if (!file.type.startsWith('image/')) {
       toast({
@@ -249,21 +254,76 @@ const MobileWeightEntry = ({ order, laundryId, employeeId, isOpen, onClose, onSa
       return;
     }
 
-    // Read file directly via FileReader — skip canvas compression for reliability
-    // Backend handles resize to 1024px before sending to Claude
+    // Read file and compress before upload — reduces 3-5MB camera photos to ~200KB
+    // which dramatically speeds up upload over cellular
     const reader = new FileReader();
     reader.onload = (e) => {
-      console.log('[MobileWeightEntry] FileReader loaded, dataUrl length:', e.target.result?.length);
-      const newPhoto = {
-        file,
-        preview: e.target.result,
-        detectedWeight: null,
-        detecting: true,
-        uploaded: false,
-        error: null,
+      console.log('[MobileWeightEntry] FileReader loaded, compressing...');
+      const rawDataUrl = e.target.result;
+      
+      // Compress via canvas (max 1024px, JPEG 0.75 quality)
+      const img = new window.Image();
+      img.onload = () => {
+        let { width, height } = img;
+        const maxDim = 1024;
+        if (width > maxDim || height > maxDim) {
+          if (width > height) {
+            height = Math.round((height * maxDim) / width);
+            width = maxDim;
+          } else {
+            width = Math.round((width * maxDim) / height);
+            height = maxDim;
+          }
+        }
+        try {
+          const canvas = document.createElement('canvas');
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, width, height);
+          const compressed = canvas.toDataURL('image/jpeg', 0.75);
+          console.log('[MobileWeightEntry] Compressed:', (rawDataUrl.length / 1024).toFixed(0), 'KB →', (compressed.length / 1024).toFixed(0), 'KB');
+          
+          const newPhoto = {
+            file,
+            preview: compressed,
+            detectedWeight: null,
+            detecting: true,
+            uploaded: false,
+            error: null,
+          };
+          setBagPhotos((prev) => [...prev, newPhoto]);
+          detectWeightFromPhoto(compressed, bagPhotos.length);
+        } catch (canvasErr) {
+          // Canvas compression failed — fall back to raw image
+          console.warn('[MobileWeightEntry] Canvas compression failed, using raw:', canvasErr);
+          const newPhoto = {
+            file,
+            preview: rawDataUrl,
+            detectedWeight: null,
+            detecting: true,
+            uploaded: false,
+            error: null,
+          };
+          setBagPhotos((prev) => [...prev, newPhoto]);
+          detectWeightFromPhoto(rawDataUrl, bagPhotos.length);
+        }
       };
-      setBagPhotos((prev) => [...prev, newPhoto]);
-      detectWeightFromPhoto(e.target.result, bagPhotos.length);
+      img.onerror = () => {
+        // Image load failed — fall back to raw
+        console.warn('[MobileWeightEntry] Image load for compression failed, using raw');
+        const newPhoto = {
+          file,
+          preview: rawDataUrl,
+          detectedWeight: null,
+          detecting: true,
+          uploaded: false,
+          error: null,
+        };
+        setBagPhotos((prev) => [...prev, newPhoto]);
+        detectWeightFromPhoto(rawDataUrl, bagPhotos.length);
+      };
+      img.src = rawDataUrl;
     };
     reader.onerror = () => {
       console.error('[MobileWeightEntry] FileReader error');

@@ -534,7 +534,7 @@ const MobileOrderPage = () => {
                 if (panel) panel.scrollIntoView({ behavior: 'smooth' });
               }}
             >
-              📷 Count Items
+              📷 Received Items
             </Button>
             {/* Row 2 */}
             <Button
@@ -569,19 +569,6 @@ const MobileOrderPage = () => {
               onClick={() => setActiveAction(activeAction === 'fold_complete' ? null : 'fold_complete')}
             >
               👕 Fold Complete
-            </Button>
-            {/* Scale Photo — uses same MobilePhotoAction as received/folded */}
-            <Button
-              leftIcon={<FaCamera />}
-              variant={activeAction === 'scale_weight' ? 'solid' : 'outline'}
-              colorScheme="teal"
-              size="md"
-              minH="44px"
-              fontSize="xs"
-              gridColumn="span 2"
-              onClick={() => setActiveAction(activeAction === 'scale_weight' ? null : 'scale_weight')}
-            >
-              ⚖️ Scale Photo
             </Button>
           </SimpleGrid>
         </Box>
@@ -822,20 +809,6 @@ const MobileOrderPage = () => {
               imageType="fold_complete"
               employeeId={employeeId}
               onComplete={() => handlePhotoComplete('fold_complete')}
-            />
-          </Box>
-        )}
-
-        {/* Scale Weight Photo Action — same pattern as fold/received */}
-        {activeAction === 'scale_weight' && (
-          <Box bg="white" borderRadius="lg" p={4} shadow="sm">
-            <MobilePhotoAction
-              order={order}
-              actionType="scale_weight"
-              targetStatus={order?.orderStatus || 'ReceivedAtFacility'}
-              imageType="weight"
-              employeeId={employeeId}
-              onComplete={() => handlePhotoComplete('scale_weight')}
             />
           </Box>
         )}
