@@ -44,6 +44,8 @@ const MobileScalePhoto = ({ order, onPhotoUploaded }) => {
   const [isUploading, setIsUploading] = useState(false);
   const [uploadedUrl, setUploadedUrl] = useState(null);
   const [cameraError, setCameraError] = useState(false);
+  const [detectedWeight, setDetectedWeight] = useState(null);
+  const [detectingWeight, setDetectingWeight] = useState(false);
 
   const existingPhoto = order?.scalePhoto || order?.scalePhotoUrl;
 
@@ -139,11 +141,54 @@ const MobileScalePhoto = ({ order, onPhotoUploaded }) => {
 
         toast({
           title: 'Photo Uploaded',
-          description: 'Scale photo saved successfully.',
+          description: 'Scale photo saved. Detecting weight...',
           status: 'success',
-          duration: 3000,
+          duration: 2000,
           isClosable: true,
         });
+
+        // Call Claude Vision to detect weight from the scale photo
+        setDetectingWeight(true);
+        try {
+          const detectRes = await axios.post(
+            `${API_URL}/api/item-tracking/detect-weight`,
+            { imageBase64, orderId: order.orderId, laundryId: order.laundryId },
+            { headers: { Authorization: `Bearer ${authToken}` } }
+          );
+          const body = detectRes.data?.body || detectRes.data || {};
+          const weight = body.weight;
+          const confidence = body.confidence || 0;
+
+          if (weight && weight > 0) {
+            setDetectedWeight(weight);
+            toast({
+              title: `Weight Detected: ${weight} lbs`,
+              description: confidence > 80 ? `Confidence: ${confidence}%` : 'Low confidence — please verify',
+              status: confidence > 80 ? 'success' : 'warning',
+              duration: 5000,
+              isClosable: true,
+            });
+          } else {
+            toast({
+              title: 'Could not detect weight',
+              description: 'Please enter weight manually.',
+              status: 'warning',
+              duration: 4000,
+              isClosable: true,
+            });
+          }
+        } catch (detectErr) {
+          console.error('Weight detection error:', detectErr);
+          toast({
+            title: 'Weight detection unavailable',
+            description: 'Photo saved. Please enter weight manually.',
+            status: 'info',
+            duration: 4000,
+            isClosable: true,
+          });
+        } finally {
+          setDetectingWeight(false);
+        }
 
         if (onPhotoUploaded) {
           onPhotoUploaded();
@@ -334,6 +379,24 @@ const MobileScalePhoto = ({ order, onPhotoUploaded }) => {
             <Spinner size="sm" color="blue.500" />
             <Text fontSize="xs" color="gray.500">Uploading photo...</Text>
           </HStack>
+        )}
+
+        {/* Weight detection in progress */}
+        {detectingWeight && (
+          <HStack justify="center" spacing={2} py={2} bg="blue.50" borderRadius="md" p={3}>
+            <Spinner size="sm" color="blue.500" />
+            <Text fontSize="sm" color="blue.700" fontWeight="medium">Detecting weight from scale...</Text>
+          </HStack>
+        )}
+
+        {/* Detected weight display */}
+        {detectedWeight && !detectingWeight && (
+          <Box bg="green.50" border="1px" borderColor="green.200" p={3} borderRadius="md" textAlign="center">
+            <Text fontSize="lg" fontWeight="bold" color="green.700">
+              ⚖️ {detectedWeight} lbs
+            </Text>
+            <Text fontSize="xs" color="green.600">Detected from scale photo</Text>
+          </Box>
         )}
       </VStack>
     </Box>

@@ -58,25 +58,39 @@ function compressImage(file, maxDimension = 1024, quality = 0.75) {
   return new Promise((resolve, reject) => {
     const img = new window.Image();
     img.onload = () => {
-      let { width, height } = img;
-      if (width > maxDimension || height > maxDimension) {
-        if (width > height) {
-          height = Math.round((height * maxDimension) / width);
-          width = maxDimension;
-        } else {
-          width = Math.round((width * maxDimension) / height);
-          height = maxDimension;
+      try {
+        let { width, height } = img;
+        if (width > maxDimension || height > maxDimension) {
+          if (width > height) {
+            height = Math.round((height * maxDimension) / width);
+            width = maxDimension;
+          } else {
+            width = Math.round((width * maxDimension) / height);
+            height = maxDimension;
+          }
         }
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, width, height);
+        const dataUrl = canvas.toDataURL('image/jpeg', quality);
+        // Validate the output — canvas.toDataURL can return empty on some browsers
+        if (!dataUrl || dataUrl.length < 100 || dataUrl === 'data:,') {
+          reject(new Error('Canvas compression produced empty result'));
+        } else {
+          resolve(dataUrl);
+        }
+      } catch (e) {
+        reject(e);
+      } finally {
+        URL.revokeObjectURL(img.src);
       }
-      const canvas = document.createElement('canvas');
-      canvas.width = width;
-      canvas.height = height;
-      const ctx = canvas.getContext('2d');
-      ctx.drawImage(img, 0, 0, width, height);
-      const dataUrl = canvas.toDataURL('image/jpeg', quality);
-      resolve(dataUrl);
     };
-    img.onerror = reject;
+    img.onerror = (e) => {
+      URL.revokeObjectURL(img.src);
+      reject(e || new Error('Image failed to load'));
+    };
     img.src = URL.createObjectURL(file);
   });
 }
@@ -306,8 +320,9 @@ const MobileWeightEntry = ({ order, laundryId, employeeId, isOpen, onClose, onSa
 
       // Trigger auto-detect with compressed image
       detectWeightFromPhoto(compressedDataUrl, bagPhotos.length);
-    }).catch(() => {
-      // Fallback: use uncompressed if canvas fails
+    }).catch((compressErr) => {
+      // Fallback: use FileReader directly if canvas compression fails (Safari/HEIC/desktop)
+      console.warn('[MobileWeightEntry] compressImage failed, using raw FileReader:', compressErr?.message);
       const reader = new FileReader();
       reader.onload = (e) => {
         const newPhoto = {
@@ -344,6 +359,7 @@ const MobileWeightEntry = ({ order, laundryId, employeeId, isOpen, onClose, onSa
 
     // Detect weight (this is what we await for UI feedback)
     try {
+      console.log('[MobileWeightEntry] Calling detect-weight API for order:', order.orderId);
       const response = await axios.post(
         `${API_URL}/api/admin/item-tracking/detect-weight`,
         {
@@ -381,6 +397,14 @@ const MobileWeightEntry = ({ order, laundryId, employeeId, isOpen, onClose, onSa
         });
       }
     } catch (err) {
+      console.error('[MobileWeightEntry] detect-weight API error:', err?.response?.status, err?.response?.data, err?.message);
+      toast({
+        title: 'Weight detection failed',
+        description: `Error: ${err?.response?.status || ''} ${err?.message || 'Unknown error'}. Enter weight manually.`,
+        status: 'warning',
+        duration: 5000,
+        isClosable: true,
+      });
       setBagPhotos((prev) =>
         prev.map((photo, idx) =>
           idx === photoIndex
