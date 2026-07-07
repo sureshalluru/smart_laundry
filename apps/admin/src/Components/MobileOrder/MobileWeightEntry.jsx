@@ -425,6 +425,16 @@ const MobileWeightEntry = ({ order, laundryId, employeeId, isOpen, onClose, onSa
   };
 
   return (
+    <>
+      {/* File input OUTSIDE Drawer so onChange fires on all browsers */}
+      <input
+        type="file"
+        accept="image/*"
+        ref={fileInputRef}
+        onChange={handleFileChange}
+        style={{ display: 'none' }}
+        aria-label="Capture scale photo"
+      />
     <Drawer isOpen={isOpen} placement="bottom" onClose={onClose} size="full">
       <DrawerOverlay />
       <DrawerContent maxH="90vh" borderTopRadius="xl">
@@ -457,16 +467,6 @@ const MobileWeightEntry = ({ order, laundryId, employeeId, isOpen, onClose, onSa
                   </Badge>
                 )}
               </HStack>
-
-              {/* Hidden file input — no capture attr so it works on desktop too */}
-              <input
-                type="file"
-                accept="image/*"
-                ref={fileInputRef}
-                onChange={handleFileChange}
-                style={{ display: 'none' }}
-                aria-label="Capture scale photo"
-              />
 
               {/* Bag Photo Cards */}
               {bagPhotos.length > 0 && (
@@ -701,6 +701,7 @@ const MobileWeightEntry = ({ order, laundryId, employeeId, isOpen, onClose, onSa
         </DrawerFooter>
       </DrawerContent>
     </Drawer>
+    </>
   );
 };
 
