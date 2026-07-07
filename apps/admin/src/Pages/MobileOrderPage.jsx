@@ -85,6 +85,19 @@ const MobileOrderPage = () => {
   const [activePhotoStep, setActivePhotoStep] = useState(null); // 'washing' | 'drying' | null
   const washingFileInputRef = useRef(null);
   const dryingFileInputRef = useRef(null);
+  const photoCaptureActiveRef = useRef(false);
+
+  // Track whether ItemTrackingPanel's MobileInlineUpload is active
+  const [itemTrackingCaptureActive, setItemTrackingCaptureActive] = useState(false);
+
+  // Keep photoCaptureActiveRef in sync with all photo-active states
+  useEffect(() => {
+    photoCaptureActiveRef.current = (
+      activePhotoStep !== null ||
+      activeAction !== null ||
+      itemTrackingCaptureActive
+    );
+  }, [activePhotoStep, activeAction, itemTrackingCaptureActive]);
 
   // Weight/Count entry drawer
   const {
@@ -152,14 +165,14 @@ const MobileOrderPage = () => {
   // Refresh tracking status and order when page regains focus
   useEffect(() => {
     const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible' && laundryId && orderId) {
+      if (document.visibilityState === 'visible' && laundryId && orderId && !photoCaptureActiveRef.current) {
         fetchTrackingRecord();
         fetchOrder();
       }
     };
 
     const handleFocus = () => {
-      if (laundryId && orderId) {
+      if (laundryId && orderId && !photoCaptureActiveRef.current) {
         fetchTrackingRecord();
         fetchOrder();
       }
@@ -577,7 +590,6 @@ const MobileOrderPage = () => {
             <input
               type="file"
               accept="image/*"
-              capture="environment"
               ref={washingFileInputRef}
               onChange={(e) => {
                 const file = e.target.files?.[0];
@@ -686,7 +698,6 @@ const MobileOrderPage = () => {
             <input
               type="file"
               accept="image/*"
-              capture="environment"
               ref={dryingFileInputRef}
               onChange={(e) => {
                 const file = e.target.files?.[0];
@@ -828,6 +839,7 @@ const MobileOrderPage = () => {
             orderStatus={order.orderStatus}
             employeeId={employeeId}
             onOrderRefresh={fetchOrder}
+            onCaptureActiveChange={setItemTrackingCaptureActive}
           />
         </Box>
 

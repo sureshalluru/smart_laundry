@@ -14,7 +14,7 @@ const API_BASE = process.env.REACT_APP_API_URL || '';
  * On desktop: shows QR code for employee to scan with phone.
  * On mobile: shows "Upload Photos" button that opens the upload page directly.
  */
-function ItemTrackingPanel({ orderId, laundryId, orderStatus, employeeId, onSkip, onOrderRefresh }) {
+function ItemTrackingPanel({ orderId, laundryId, orderStatus, employeeId, onSkip, onOrderRefresh, onCaptureActiveChange }) {
   const [trackingRecord, setTrackingRecord] = useState(null);
   const [loading, setLoading] = useState(true);
   const [showQR, setShowQR] = useState(null); // null, 'intake', or 'fold'
@@ -22,6 +22,13 @@ function ItemTrackingPanel({ orderId, laundryId, orderStatus, employeeId, onSkip
 
   // Detect mobile device
   const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+
+  // Notify parent when capture is active/inactive
+  useEffect(() => {
+    if (onCaptureActiveChange) {
+      onCaptureActiveChange(mobileUploadPhase !== null);
+    }
+  }, [mobileUploadPhase, onCaptureActiveChange]);
 
   // Fetch existing tracking record on mount
   useEffect(() => {
