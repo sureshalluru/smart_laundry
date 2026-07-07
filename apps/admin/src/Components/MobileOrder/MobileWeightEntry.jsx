@@ -338,7 +338,6 @@ const MobileWeightEntry = ({ order, laundryId, employeeId, isOpen, onClose, onSa
     };
     reader.readAsDataURL(file);
   };
-  };
 
   // Send photo to Vision AI for weight detection + persist in parallel
   const detectWeightFromPhoto = async (base64Image, photoIndex) => {
