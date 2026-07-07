@@ -155,6 +155,26 @@ const MobileOrderPage = () => {
     }
   }, [laundryId, orderId]);
 
+  /**
+   * Silently refresh order data without showing the full-page loading spinner.
+   * Used after weight entry save and for background refresh on visibility/focus.
+   */
+  const silentFetchOrder = useCallback(async () => {
+    try {
+      const response = await axios.get(`${API_URL}/api/admin/employee-order-info`, {
+        params: { laundryId, orderId },
+        timeout: 15000,
+      });
+      const data = response.data?.body || response.data;
+      if (data && data.message !== 'Order not found' && response.data?.statusCode !== 404) {
+        setOrder(data);
+      }
+    } catch (err) {
+      // Silent refresh — don't show error UI on failure
+      console.error('Silent order refresh failed:', err);
+    }
+  }, [laundryId, orderId]);
+
   useEffect(() => {
     if (laundryId && orderId) {
       fetchOrder();
@@ -163,28 +183,40 @@ const MobileOrderPage = () => {
   }, [laundryId, orderId, fetchOrder, fetchTrackingRecord]);
 
   // Refresh tracking status and order when page regains focus
+  // Uses silentFetchOrder to avoid showing the full-page loading spinner
+  // which would unmount all children and lose photo capture state
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible' && laundryId && orderId && !photoCaptureActiveRef.current) {
         fetchTrackingRecord();
-        fetchOrder();
+        silentFetchOrder();
       }
     };
 
     const handleFocus = () => {
       if (laundryId && orderId && !photoCaptureActiveRef.current) {
         fetchTrackingRecord();
-        fetchOrder();
+        silentFetchOrder();
+      }
+    };
+
+    // iOS Safari fires pageshow when returning from camera — guard it too
+    const handlePageShow = (e) => {
+      if (e.persisted && laundryId && orderId && !photoCaptureActiveRef.current) {
+        fetchTrackingRecord();
+        silentFetchOrder();
       }
     };
 
     document.addEventListener('visibilitychange', handleVisibilityChange);
     window.addEventListener('focus', handleFocus);
+    window.addEventListener('pageshow', handlePageShow);
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('focus', handleFocus);
+      window.removeEventListener('pageshow', handlePageShow);
     };
-  }, [laundryId, orderId, fetchTrackingRecord, fetchOrder]);
+  }, [laundryId, orderId, fetchTrackingRecord, silentFetchOrder]);
 
   /**
    * Called when a photo action completes successfully.
@@ -362,26 +394,6 @@ const MobileOrderPage = () => {
    */
   const handleWeightSaved = () => {
     silentFetchOrder();
-  };
-
-  /**
-   * Silently refresh order data without showing the full-page loading spinner.
-   * Used after weight entry save to avoid jarring UX.
-   */
-  const silentFetchOrder = async () => {
-    try {
-      const response = await axios.get(`${API_URL}/api/admin/employee-order-info`, {
-        params: { laundryId, orderId },
-        timeout: 15000,
-      });
-      const data = response.data?.body || response.data;
-      if (data && data.message !== 'Order not found' && response.data?.statusCode !== 404) {
-        setOrder(data);
-      }
-    } catch (err) {
-      // Silent refresh — don't show error UI on failure
-      console.error('Silent order refresh failed:', err);
-    }
   };
 
   // Loading state
