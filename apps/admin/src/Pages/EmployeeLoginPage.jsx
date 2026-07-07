@@ -1,21 +1,38 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   Box,
-  Button,
   Center,
-  FormControl,
-  FormLabel,
   Heading,
-  Input,
   Text,
   VStack,
+  HStack,
+  IconButton,
+  Spinner,
   useColorModeValue,
   useToast,
-  Icon,
 } from '@chakra-ui/react';
-import { FiUser } from 'react-icons/fi';
+import { FiDelete } from 'react-icons/fi';
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import { useEmployeeAuth } from '../Context/EmployeeAuthContext';
+
+/**
+ * Determine post-login navigation path based on employee role.
+ */
+function getRouteForRole(role, laundryId, returnUrl) {
+  const normalized = (role || '').toLowerCase().replace(/\s+/g, '');
+
+  if (normalized === 'deliverydriver' || normalized === 'driver') {
+    return `/${laundryId}/driver/home`;
+  }
+
+  if (normalized === 'manager' || normalized === 'admin') {
+    return `/${laundryId}/admin/home`;
+  }
+
+  // All other roles (Attendant, FrontDesk, LaundryCare Specialist, Employee)
+  // use the returnUrl (defaults to active-orders / mobile order view)
+  return returnUrl;
+}
 
 export default function EmployeeLoginPage() {
   const { laundryId } = useParams();
@@ -24,143 +41,186 @@ export default function EmployeeLoginPage() {
   const { login } = useEmployeeAuth();
   const toast = useToast();
 
-  const [empId, setEmpId] = useState('');
-  const [passcode, setPasscode] = useState('');
+  const [pin, setPin] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState(null);
 
-  const returnUrl = searchParams.get('returnUrl') || `/${laundryId}/admin/active-orders`;
+  const returnUrl = searchParams.get('returnUrl') || `/${laundryId}/admin/mobile-active-orders`;
 
-  const bgColor = useColorModeValue('gray.50', 'gray.800');
-  const cardBg = useColorModeValue('white', 'gray.700');
-  const borderColor = useColorModeValue('gray.200', 'gray.600');
+  const bgColor = useColorModeValue('gray.50', 'gray.900');
+  const dotFilled = useColorModeValue('blue.500', 'blue.300');
+  const dotEmpty = useColorModeValue('gray.300', 'gray.600');
+  const btnBg = useColorModeValue('white', 'gray.700');
+  const btnHover = useColorModeValue('gray.100', 'gray.600');
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+  const handleDigit = useCallback(async (digit) => {
+    if (isLoading) return;
 
-    if (!empId || !passcode) {
-      toast({
-        title: 'Missing Fields',
-        description: 'Please enter both Employee ID and Passcode.',
-        status: 'warning',
-        duration: 3000,
-        isClosable: true,
-        position: 'top',
-      });
-      return;
+    setError(null);
+    const newPin = pin + digit;
+
+    if (newPin.length > 6) return;
+
+    setPin(newPin);
+
+    // Auto-submit when 4th digit is entered
+    if (newPin.length === 4) {
+      setIsLoading(true);
+      try {
+        const session = await login(laundryId, newPin);
+
+        // Show welcome toast with employee name
+        toast({
+          title: `Welcome, ${session.fullName || session.employeeId}!`,
+          status: 'success',
+          duration: 2500,
+          isClosable: true,
+          position: 'top',
+        });
+
+        // Role-based routing
+        const destination = getRouteForRole(session.role, laundryId, returnUrl);
+        navigate(destination, { replace: true });
+      } catch (err) {
+        setError(err.message || 'Invalid PIN');
+        setPin('');
+      } finally {
+        setIsLoading(false);
+      }
     }
+  }, [pin, isLoading, login, laundryId, navigate, returnUrl, toast]);
 
-    if (passcode.length !== 4 || !/^\d{4}$/.test(passcode)) {
-      toast({
-        title: 'Invalid Passcode',
-        description: 'Passcode must be exactly 4 digits.',
-        status: 'warning',
-        duration: 3000,
-        isClosable: true,
-        position: 'top',
-      });
-      return;
-    }
+  const handleBackspace = useCallback(() => {
+    if (isLoading) return;
+    setError(null);
+    setPin((prev) => prev.slice(0, -1));
+  }, [isLoading]);
 
-    setIsLoading(true);
-    try {
-      await login(laundryId, empId, passcode);
-      toast({
-        title: 'Login Successful',
-        description: 'Welcome back!',
-        status: 'success',
-        duration: 2000,
-        isClosable: true,
-        position: 'top',
-      });
-      navigate(returnUrl, { replace: true });
-    } catch (err) {
-      const message = err.message || 'Invalid credentials. Please try again.';
-      toast({
-        title: 'Login Failed',
-        description: message,
-        status: 'error',
-        duration: 4000,
-        isClosable: true,
-        position: 'top',
-      });
-      // Clear passcode on failure, allow retry
-      setPasscode('');
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  // PIN indicator dots (supports 4–6 digit PINs, show 4 dots by default)
+  const maxDots = 4;
+  const renderDots = () => (
+    <HStack spacing={4} justify="center">
+      {Array.from({ length: maxDots }).map((_, i) => (
+        <Box
+          key={i}
+          w="16px"
+          h="16px"
+          borderRadius="full"
+          bg={i < pin.length ? dotFilled : 'transparent'}
+          borderWidth="2px"
+          borderColor={i < pin.length ? dotFilled : dotEmpty}
+          transition="all 0.15s"
+        />
+      ))}
+    </HStack>
+  );
+
+  // Keypad button component
+  const KeypadButton = ({ digit, onClick, children, ...props }) => (
+    <Box
+      as="button"
+      onClick={onClick}
+      disabled={isLoading}
+      w="72px"
+      h="72px"
+      minH="44px"
+      borderRadius="full"
+      bg={btnBg}
+      boxShadow="sm"
+      display="flex"
+      alignItems="center"
+      justifyContent="center"
+      fontSize="2xl"
+      fontWeight="semibold"
+      _hover={{ bg: btnHover }}
+      _active={{ transform: 'scale(0.95)', bg: btnHover }}
+      _disabled={{ opacity: 0.5, cursor: 'not-allowed' }}
+      transition="all 0.1s"
+      aria-label={digit !== undefined ? `Digit ${digit}` : undefined}
+      {...props}
+    >
+      {children !== undefined ? children : digit}
+    </Box>
+  );
 
   return (
     <Center minH="100vh" bg={bgColor} p={4}>
-      <Box
-        p={8}
-        maxW="sm"
-        w="full"
-        borderWidth={1}
-        borderColor={borderColor}
-        borderRadius="2xl"
-        boxShadow="xl"
-        bg={cardBg}
-      >
-        <form onSubmit={handleSubmit}>
-          <VStack spacing={6} align="stretch" textAlign="center">
-            <Center>
-              <Box bg="blue.50" p={4} borderRadius="full">
-                <Icon as={FiUser} boxSize={8} color="blue.500" />
-              </Box>
-            </Center>
+      <VStack spacing={8} w="full" maxW="320px">
+        {/* Header */}
+        <VStack spacing={2}>
+          <Heading as="h1" size="lg" color="blue.600" textAlign="center">
+            Employee Login
+          </Heading>
+          <Text fontSize="sm" color="gray.500" textAlign="center">
+            Enter your 4-digit PIN to sign in
+          </Text>
+        </VStack>
 
-            <Heading as="h1" size="lg" color="blue.600">
-              Employee Login
-            </Heading>
+        {/* PIN dots or spinner */}
+        <Box h="40px" display="flex" alignItems="center" justifyContent="center">
+          {isLoading ? (
+            <Spinner size="lg" color="blue.500" thickness="3px" />
+          ) : (
+            renderDots()
+          )}
+        </Box>
 
-            <Text fontSize="sm" color="gray.500">
-              Enter your credentials to access order management.
-            </Text>
+        {/* Error message */}
+        {error && (
+          <Text color="red.500" fontSize="sm" textAlign="center" fontWeight="medium">
+            {error}
+          </Text>
+        )}
 
-            <FormControl isRequired>
-              <FormLabel>Employee ID</FormLabel>
-              <Input
-                placeholder="Enter your employee ID"
-                value={empId}
-                onChange={(e) => setEmpId(e.target.value)}
-                size="lg"
-                autoComplete="username"
-              />
-            </FormControl>
+        {/* Numeric keypad */}
+        <VStack spacing={3}>
+          {/* Row 1: 1 2 3 */}
+          <HStack spacing={4}>
+            <KeypadButton digit="1" onClick={() => handleDigit('1')} />
+            <KeypadButton digit="2" onClick={() => handleDigit('2')} />
+            <KeypadButton digit="3" onClick={() => handleDigit('3')} />
+          </HStack>
 
-            <FormControl isRequired>
-              <FormLabel>Passcode</FormLabel>
-              <Input
-                type="password"
-                placeholder="4-digit passcode"
-                value={passcode}
-                onChange={(e) => {
-                  // Only allow digits, max 4
-                  const val = e.target.value.replace(/\D/g, '').slice(0, 4);
-                  setPasscode(val);
-                }}
-                maxLength={4}
-                inputMode="numeric"
-                pattern="\d{4}"
-                size="lg"
-                autoComplete="current-password"
-              />
-            </FormControl>
+          {/* Row 2: 4 5 6 */}
+          <HStack spacing={4}>
+            <KeypadButton digit="4" onClick={() => handleDigit('4')} />
+            <KeypadButton digit="5" onClick={() => handleDigit('5')} />
+            <KeypadButton digit="6" onClick={() => handleDigit('6')} />
+          </HStack>
 
-            <Button
-              type="submit"
-              size="lg"
-              colorScheme="blue"
-              isLoading={isLoading}
-              loadingText="Signing in..."
+          {/* Row 3: 7 8 9 */}
+          <HStack spacing={4}>
+            <KeypadButton digit="7" onClick={() => handleDigit('7')} />
+            <KeypadButton digit="8" onClick={() => handleDigit('8')} />
+            <KeypadButton digit="9" onClick={() => handleDigit('9')} />
+          </HStack>
+
+          {/* Row 4: empty 0 backspace */}
+          <HStack spacing={4}>
+            {/* Empty placeholder */}
+            <Box w="72px" h="72px" />
+
+            <KeypadButton digit="0" onClick={() => handleDigit('0')} />
+
+            {/* Backspace */}
+            <IconButton
+              aria-label="Backspace"
+              icon={<FiDelete size={24} />}
+              onClick={handleBackspace}
+              isDisabled={isLoading || pin.length === 0}
+              w="72px"
+              h="72px"
               minH="44px"
-            >
-              Sign In
-            </Button>
-          </VStack>
-        </form>
-      </Box>
+              borderRadius="full"
+              bg={btnBg}
+              boxShadow="sm"
+              _hover={{ bg: btnHover }}
+              _active={{ transform: 'scale(0.95)', bg: btnHover }}
+              variant="ghost"
+            />
+          </HStack>
+        </VStack>
+      </VStack>
     </Center>
   );
 }

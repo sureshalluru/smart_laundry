@@ -219,6 +219,16 @@ function App() {
                         </EmployeeAuthGuard>
                     </EmployeeAuthProvider>
                 }/>
+                {/* Employee mobile active-orders — PIN-only access */}
+                <Route path="/:laundryId/admin/mobile-active-orders" element={
+                    <EmployeeAuthProvider>
+                        <EmployeeAuthGuard>
+                            <Suspense fallback={<LoadingSpinner/>}>
+                                <WrappedOrderInfoManagement orderOperation="active"/>
+                            </Suspense>
+                        </EmployeeAuthGuard>
+                    </EmployeeAuthProvider>
+                }/>
 
                 {/* ── Admin routes (require admin store-level auth) ─────────── */}
                 <Route path="/:laundryId/admin" element={

@@ -104,15 +104,19 @@ async def validate_pin(
     with get_db() as conn:
         cur = get_cursor(conn)
         cur.execute("""
-            SELECT emp_id, laundry_id, role, first_name, last_name
+            SELECT emp_id, role, passcode, first_name, last_name
             FROM shop.employees
             WHERE passcode = %s AND laundry_id = %s AND is_active = TRUE
         """, (passcode, laundry_id))
-        emp = cur.fetchone()
+        rows = cur.fetchall()
 
-        if not emp:
+        if not rows:
             return {"body": {"isValidated": False, "error": "Invalid PIN"}}
 
+        if len(rows) > 1:
+            return {"body": {"isValidated": False, "error": "Multiple employees share this PIN. Please use Employee ID login instead."}}
+
+        emp = rows[0]
         full_name = f"{emp['first_name']} {emp['last_name']}".strip()
         return {"body": {"isValidated": True, "empId": emp["emp_id"], "role": emp["role"], "fullName": full_name}}
 

@@ -56,8 +56,15 @@ function fileToBase64(file) {
  */
 function compressImage(file, maxDimension = 1024, quality = 0.75) {
   return new Promise((resolve, reject) => {
+    // Timeout: if image doesn't load in 5s, fall back to FileReader
+    const timeout = setTimeout(() => {
+      URL.revokeObjectURL(img.src);
+      reject(new Error('Image load timeout'));
+    }, 5000);
+
     const img = new window.Image();
     img.onload = () => {
+      clearTimeout(timeout);
       try {
         let { width, height } = img;
         if (width > maxDimension || height > maxDimension) {
@@ -88,6 +95,7 @@ function compressImage(file, maxDimension = 1024, quality = 0.75) {
       }
     };
     img.onerror = (e) => {
+      clearTimeout(timeout);
       URL.revokeObjectURL(img.src);
       reject(e || new Error('Image failed to load'));
     };
@@ -281,8 +289,10 @@ const MobileWeightEntry = ({ order, laundryId, employeeId, isOpen, onClose, onSa
   };
 
   const handleFileChange = (event) => {
+    console.log('[MobileWeightEntry] handleFileChange FIRED', event.target.files);
     const file = event.target.files?.[0];
-    if (!file) return;
+    if (!file) { console.log('[MobileWeightEntry] No file selected'); return; }
+    console.log('[MobileWeightEntry] File selected:', file.name, file.type, file.size);
 
     if (!file.type.startsWith('image/')) {
       toast({
@@ -459,11 +469,10 @@ const MobileWeightEntry = ({ order, laundryId, employeeId, isOpen, onClose, onSa
                 )}
               </HStack>
 
-              {/* Hidden file input */}
+              {/* Hidden file input — no capture attr so it works on desktop too */}
               <input
                 type="file"
                 accept="image/*"
-                capture="environment"
                 ref={fileInputRef}
                 onChange={handleFileChange}
                 style={{ display: 'none' }}
