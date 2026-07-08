@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import { useState, useRef } from 'react';
 
 const API_URL = process.env.REACT_APP_AWS_API_URL || '';
 
@@ -15,15 +15,15 @@ function fileToBase64(file) {
 }
 
 /**
- * Compress an image file to max 1024px and JPEG quality 0.75 before uploading.
- * Reduces 3-5MB phone photos to ~200-300KB for faster upload + faster Vision AI processing.
+ * Compress an image file to max 640px and JPEG quality 0.5 before uploading.
+ * Reduces 3-5MB phone photos to ~100-150KB for faster upload + faster Vision AI processing.
  */
 function compressForUpload(file) {
   return new Promise((resolve, reject) => {
     const img = new window.Image();
     img.onload = () => {
       let { width, height } = img;
-      const maxDim = 1024;
+      const maxDim = 640;
       if (width > maxDim || height > maxDim) {
         if (width > height) {
           height = Math.round((height * maxDim) / width);
@@ -38,7 +38,7 @@ function compressForUpload(file) {
       canvas.height = height;
       const ctx = canvas.getContext('2d');
       ctx.drawImage(img, 0, 0, width, height);
-      resolve(canvas.toDataURL('image/jpeg', 0.75));
+      resolve(canvas.toDataURL('image/jpeg', 0.5));
     };
     img.onerror = reject;
     img.src = URL.createObjectURL(file);
@@ -47,13 +47,13 @@ function compressForUpload(file) {
 
 /**
  * Steps in the inline upload flow.
+ * Simplified: CAPTURE → UPLOAD → SUBMITTED (success)
+ * Review/adjust now happens later in ItemTrackingPanel.
  */
 const STEPS = {
   CAPTURE: 'capture',
   UPLOAD: 'upload',
-  RESULTS: 'results',
-  ADJUST: 'adjust',
-  CONFIRM: 'confirm',
+  SUBMITTED: 'submitted',
 };
 
 /**
@@ -252,15 +252,11 @@ const MobileInlineUpload = ({ orderId, laundryId, phase, employeeId, onComplete,
   // Flow state
   const [step, setStep] = useState(STEPS.CAPTURE);
   const [photos, setPhotos] = useState([]); // Array of { file, preview }
-  const [token, setToken] = useState(null);
-  const [visionResults, setVisionResults] = useState(null); // { items, imageUrls, processingTimeMs }
-  const [adjustedItems, setAdjustedItems] = useState([]); // Editable copy of items
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [confirming, setConfirming] = useState(false);
 
   // Step progress tracking
-  const stepOrder = [STEPS.CAPTURE, STEPS.UPLOAD, STEPS.RESULTS, STEPS.ADJUST, STEPS.CONFIRM];
+  const stepOrder = [STEPS.CAPTURE, STEPS.UPLOAD, STEPS.SUBMITTED];
   const currentStepIndex = stepOrder.indexOf(step);
 
   // ── Photo Capture ──────────────────────────────────────────────────────────
@@ -311,11 +307,11 @@ const MobileInlineUpload = ({ orderId, laundryId, phase, employeeId, onComplete,
     setPhotos((prev) => prev.filter((_, i) => i !== index));
   };
 
-  // ── Upload & Vision Analysis ───────────────────────────────────────────────
+  // ── Upload & Async Submission ────────────────────────────────────────────
 
   const handleUpload = async () => {
     if (photos.length < 2) {
-      setError('Front and Top view photos are required. Please capture both before analyzing.');
+      setError('Front and Top view photos are required. Please capture both before submitting.');
       return;
     }
 
@@ -339,9 +335,8 @@ const MobileInlineUpload = ({ orderId, laundryId, phase, employeeId, onComplete,
       }
       const qrData = await qrRes.json();
       const uploadToken = qrData.token;
-      setToken(uploadToken);
 
-      // Step 2: Compress photos and upload (reduces 3-5MB phone photos to ~200KB each)
+      // Step 2: Compress photos and submit for async processing
       const base64Images = [];
       for (const photo of photos) {
         try {
@@ -354,7 +349,7 @@ const MobileInlineUpload = ({ orderId, laundryId, phase, employeeId, onComplete,
         }
       }
 
-      const uploadRes = await fetch(`${API_URL}/api/track/upload`, {
+      const submitRes = await fetch(`${API_URL}/api/track/submit-photos`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -363,125 +358,23 @@ const MobileInlineUpload = ({ orderId, laundryId, phase, employeeId, onComplete,
         }),
       });
 
-      if (!uploadRes.ok) {
-        const errData = await uploadRes.json().catch(() => ({}));
-        throw new Error(errData.detail || 'Upload failed. Please try again.');
+      if (!submitRes.ok) {
+        const errData = await submitRes.json().catch(() => ({}));
+        throw new Error(errData.detail || 'Submission failed. Please try again.');
       }
 
-      const uploadData = await uploadRes.json();
+      // Success — show submitted state
+      setStep(STEPS.SUBMITTED);
 
-      if (uploadData.status === 'success' && uploadData.result) {
-        setVisionResults(uploadData.result);
-        // Initialize adjustable items from vision results
-        const items = (uploadData.result.items || []).map((item) => ({
-          category: item.category,
-          count: item.count,
-          confidence: item.confidence || 100,
-          flagged: item.flagged || false,
-          note: item.note || null,
-        }));
-        setAdjustedItems(items);
-        setStep(STEPS.RESULTS);
-      } else {
-        throw new Error('Analysis returned no results. Please retake photos.');
-      }
-    } catch (err) {
-      setError(err.message || 'Upload failed. Please try again.');
-      setStep(STEPS.CAPTURE); // Go back to capture so user can retry
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // ── Adjustment ─────────────────────────────────────────────────────────────
-
-  const adjustCount = (index, delta) => {
-    setAdjustedItems((prev) =>
-      prev.map((item, i) => {
-        if (i !== index) return item;
-        const newCount = Math.max(0, item.count + delta);
-        return { ...item, count: newCount };
-      })
-    );
-  };
-
-  // ── Confirmation ───────────────────────────────────────────────────────────
-
-  const handleConfirm = async () => {
-    setConfirming(true);
-    setError(null);
-
-    try {
-      const confirmEndpoint =
-        phase === 'intake' ? '/api/track/confirm-intake' : '/api/track/confirm-fold';
-
-      const confirmItems = adjustedItems.map((item) => ({
-        category: item.category,
-        count: item.count,
-      }));
-
-      const photoUrls = visionResults?.imageUrls || [];
-
-      const body = {
-        token: token,
-        items: confirmItems,
-        photoUrls: photoUrls,
-      };
-
-      // For fold, acknowledge all discrepancies automatically since employee
-      // has already reviewed and adjusted counts on the UI
-      if (phase === 'fold') {
-        body.acknowledgements = adjustedItems.map((item) => ({
-          category: item.category,
-          reason: "Employee reviewed and adjusted count"
-        }));
-      }
-
-      let confirmRes = await fetch(`${API_URL}${confirmEndpoint}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-
-      // If fold returns 422 with unresolved discrepancies, retry with full acknowledgements
-      if (!confirmRes.ok && confirmRes.status === 422 && phase === 'fold') {
-        const errData = await confirmRes.json().catch(() => ({}));
-        if (errData.detail?.unresolved) {
-          // Acknowledge ALL unresolved categories and retry
-          const allCategories = [
-            ...adjustedItems.map((item) => item.category),
-            ...(errData.detail.unresolved || []).map((d) => d.category || d),
-          ];
-          body.acknowledgements = [...new Set(allCategories)].map((cat) => ({
-            category: cat,
-            reason: "Employee reviewed and adjusted count"
-          }));
-          confirmRes = await fetch(`${API_URL}${confirmEndpoint}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(body),
-          });
-        }
-      }
-
-      if (!confirmRes.ok) {
-        const errData = await confirmRes.json().catch(() => ({}));
-        const detail = errData.detail;
-        throw new Error(
-          typeof detail === 'string' ? detail : detail?.message || 'Confirmation failed. Please try again.'
-        );
-      }
-
-      setStep(STEPS.CONFIRM);
-
-      // Notify parent after short delay so success UI is visible
+      // Auto-close after 1.5s so user sees the success message
       setTimeout(() => {
         if (onComplete) onComplete();
       }, 1500);
     } catch (err) {
-      setError(err.message || 'Confirmation failed. Please try again.');
+      setError(err.message || 'Submission failed. Please try again.');
+      setStep(STEPS.CAPTURE); // Go back to capture so user can retry
     } finally {
-      setConfirming(false);
+      setLoading(false);
     }
   };
 
@@ -605,9 +498,9 @@ const MobileInlineUpload = ({ orderId, laundryId, phase, employeeId, onComplete,
         <button
           onClick={handleUpload}
           style={{ ...styles.bigButton('green'), marginTop: '8px' }}
-          aria-label="Analyze photos"
+          aria-label="Submit photos"
         >
-          ✨ Analyze Photos
+          ✨ Submit Photos
         </button>
       )}
 
@@ -625,116 +518,22 @@ const MobileInlineUpload = ({ orderId, laundryId, phase, employeeId, onComplete,
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
       <div style={styles.spinner} />
       <p style={{ fontSize: '16px', fontWeight: '500', color: '#2D3748', marginTop: '12px' }}>
-        Analyzing photos...
+        Submitting photos...
       </p>
       <p style={{ fontSize: '13px', color: '#718096', marginTop: '4px' }}>
-        AI is counting and categorizing items
+        Uploading to server for AI processing
       </p>
     </div>
   );
 
-  const renderResultsStep = () => (
-    <div>
-      <p style={styles.sectionTitle}>
-        ✅ Vision AI Results
-      </p>
-
-      {adjustedItems.map((item, idx) => (
-        <div key={idx} style={styles.resultItem(item.flagged)}>
-          <div>
-            <p style={styles.categoryText}>{item.category}</p>
-            {item.flagged && (
-              <span style={styles.flagBadge}>⚠️ Low confidence</span>
-            )}
-            {item.note && (
-              <span style={{ ...styles.flagBadge, color: '#718096' }}>{item.note}</span>
-            )}
-          </div>
-          <div style={styles.countBadge}>
-            <span style={styles.countText}>{item.count}</span>
-          </div>
-        </div>
-      ))}
-
-      <div style={styles.row}>
-        <button
-          onClick={() => setStep(STEPS.ADJUST)}
-          style={styles.outlineButton}
-          aria-label="Adjust counts"
-        >
-          ✏️ Adjust Counts
-        </button>
-        <button
-          onClick={handleConfirm}
-          disabled={confirming}
-          style={styles.bigButton('green')}
-          aria-label="Confirm items"
-        >
-          {confirming ? 'Confirming...' : '✓ Confirm'}
-        </button>
-      </div>
-    </div>
-  );
-
-  const renderAdjustStep = () => (
-    <div>
-      <p style={styles.sectionTitle}>
-        ✏️ Adjust Item Counts
-      </p>
-
-      {adjustedItems.map((item, idx) => (
-        <div key={idx} style={styles.resultItem(item.flagged)}>
-          <div style={{ flex: 1 }}>
-            <p style={styles.categoryText}>{item.category}</p>
-          </div>
-          <div style={styles.countBadge}>
-            <button
-              onClick={() => adjustCount(idx, -1)}
-              style={styles.adjustButton('red')}
-              aria-label={`Decrease ${item.category}`}
-            >
-              −
-            </button>
-            <span style={styles.countText}>{item.count}</span>
-            <button
-              onClick={() => adjustCount(idx, 1)}
-              style={styles.adjustButton('blue')}
-              aria-label={`Increase ${item.category}`}
-            >
-              +
-            </button>
-          </div>
-        </div>
-      ))}
-
-      <div style={styles.row}>
-        <button
-          onClick={() => setStep(STEPS.RESULTS)}
-          style={styles.outlineButton}
-          aria-label="Back to results"
-        >
-          ← Back
-        </button>
-        <button
-          onClick={handleConfirm}
-          disabled={confirming}
-          style={styles.bigButton('green')}
-          aria-label="Confirm adjusted items"
-        >
-          {confirming ? 'Confirming...' : '✓ Confirm'}
-        </button>
-      </div>
-    </div>
-  );
-
-  const renderConfirmStep = () => (
+  const renderSubmittedStep = () => (
     <div style={styles.successBox}>
       <div style={styles.successIcon}>✅</div>
       <p style={{ fontSize: '18px', fontWeight: '600', color: '#2D3748', margin: '8px 0' }}>
-        {phase === 'intake' ? 'Intake' : 'Fold'} Confirmed!
+        Photos submitted! AI is counting items...
       </p>
       <p style={{ fontSize: '14px', color: '#718096' }}>
-        Order status updated automatically.
+        You can continue working. Review results later from the order.
       </p>
     </div>
   );
@@ -759,9 +558,7 @@ const MobileInlineUpload = ({ orderId, laundryId, phase, employeeId, onComplete,
 
       {step === STEPS.CAPTURE && renderCaptureStep()}
       {step === STEPS.UPLOAD && renderUploadStep()}
-      {step === STEPS.RESULTS && renderResultsStep()}
-      {step === STEPS.ADJUST && renderAdjustStep()}
-      {step === STEPS.CONFIRM && renderConfirmStep()}
+      {step === STEPS.SUBMITTED && renderSubmittedStep()}
     </div>
   );
 };

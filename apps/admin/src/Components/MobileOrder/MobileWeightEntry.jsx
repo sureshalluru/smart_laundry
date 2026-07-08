@@ -37,6 +37,38 @@ const API_URL = process.env.REACT_APP_AWS_API_URL || '';
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 
 /**
+ * Compress an image data URL to max 640px and JPEG quality 0.5.
+ * Reduces phone photos for faster upload + faster Vision AI processing.
+ * Returns a Promise that resolves to a compressed base64 data URL.
+ */
+function compressForUpload(dataUrl) {
+  return new Promise((resolve, reject) => {
+    const img = new window.Image();
+    img.onload = () => {
+      let { width, height } = img;
+      const maxDim = 640;
+      if (width > maxDim || height > maxDim) {
+        if (width > height) {
+          height = Math.round((height * maxDim) / width);
+          width = maxDim;
+        } else {
+          width = Math.round((width * maxDim) / height);
+          height = maxDim;
+        }
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, width, height);
+      resolve(canvas.toDataURL('image/jpeg', 0.5));
+    };
+    img.onerror = reject;
+    img.src = dataUrl;
+  });
+}
+
+/**
  * MobileWeightEntry — Drawer for entering weight/count values for order services.
  *
  * Displays all services on the order with appropriate numeric inputs:
@@ -258,9 +290,20 @@ const MobileWeightEntry = ({ order, laundryId, employeeId, isOpen, onClose, onSa
     // works reliably on iOS Safari camera. Backend handles resize before Claude.
     // Canvas compression on iOS Safari after camera return can silently hang.
     const reader = new FileReader();
-    reader.onload = (e) => {
+    reader.onload = async (e) => {
       console.log('[MobileWeightEntry] FileReader loaded, dataUrl length:', (e.target.result?.length / 1024).toFixed(0), 'KB');
-      const dataUrl = e.target.result;
+      const rawDataUrl = e.target.result;
+
+      // Compress to 640px/0.5 quality before sending to API
+      let dataUrl = rawDataUrl;
+      try {
+        dataUrl = await compressForUpload(rawDataUrl);
+        console.log('[MobileWeightEntry] Compressed to:', (dataUrl.length / 1024).toFixed(0), 'KB');
+      } catch (compressErr) {
+        console.warn('[MobileWeightEntry] Compression failed, using original:', compressErr);
+        // Fall back to uncompressed
+      }
+
       const newPhoto = {
         file,
         preview: dataUrl,

@@ -18,6 +18,7 @@ from app.migrations import add_companies
 from app.migrations import add_company_admins
 from app.migrations import add_laundry_company_fk
 from app.migrations import add_company_join_code
+from app.migrations import add_vision_tasks
 
 logger = logging.getLogger(__name__)
 
@@ -40,4 +41,5 @@ def run_all():
     add_company_admins.run()
     add_laundry_company_fk.run()
     add_company_join_code.run()
+    add_vision_tasks.run()
     logger.info("All migrations complete.")

@@ -422,7 +422,14 @@ async def instore_place_order(
                     logger.info(f"Commercial account detected in instore order: customer_id={customer_id}, order_type=InStore, pay_by_invoice=True")
 
         tip_amount = round(float(str(tip_data.get("tipAmount", 0) or 0)), 2)
-        order_id = f"IS-{uuid.uuid4().hex[:8].upper()}"
+
+        # Use IO- prefix for instant/product orders, IS- for regular in-store
+        operation = body.get("operation", "")
+        if operation == "otherInstoreOrders":
+            order_id = f"IO-{uuid.uuid4().hex[:8].upper()}"
+        else:
+            order_id = f"IS-{uuid.uuid4().hex[:8].upper()}"
+
         order_status = "ReceivedAtFacility"
         payment_status = "Unpaid"
         final_payments = []
@@ -1225,6 +1232,8 @@ def get_orders_by_status(cur, laundry_id, operation, page=1, limit=30, order_typ
             c.notif_email, c.notif_sms, c.notif_phone,
             cpp.stripe_customer_id AS customer_payment_id,
             ca.address AS customer_address,
+            vt.vision_status,
+            vt.vision_phase,
             COALESCE(
                 json_agg(DISTINCT jsonb_build_object(
                     'orderId', os.order_id, 'serviceName', os.service_name,
@@ -1251,10 +1260,19 @@ def get_orders_by_status(cur, laundry_id, operation, page=1, limit=30, order_typ
         LEFT JOIN orders.order_services os ON os.order_id = o.order_id
         LEFT JOIN orders.order_payments op ON op.order_id = o.order_id
         LEFT JOIN orders.order_tips ot ON ot.order_id = o.order_id
+        LEFT JOIN LATERAL (
+            SELECT vision_status, phase AS vision_phase
+            FROM tracking.vision_tasks vt
+            WHERE vt.order_id = o.order_id AND vt.laundry_id = o.laundry_id
+              AND vt.vision_status IN ('processing', 'complete', 'failed')
+            ORDER BY vt.created_at DESC
+            LIMIT 1
+        ) vt ON TRUE
         WHERE {where}
         GROUP BY o.order_id, c.customer_id, cpp.stripe_customer_id,
                  ca.address, ot.tip_amount, ot.tip_percentage,
-                 ot.tip_type, ot.tip_method, ot.tip_receiver_id
+                 ot.tip_type, ot.tip_method, ot.tip_receiver_id,
+                 vt.vision_status, vt.vision_phase
         ORDER BY {order_by}
         LIMIT %s OFFSET %s
     """, where_params + [limit, offset])
@@ -1317,6 +1335,8 @@ def get_orders_by_status(cur, laundry_id, operation, page=1, limit=30, order_typ
             "payByInvoice": r.get("pay_by_invoice", False),
             "balanceDue": float(balance_due),
             "paidAmount": float(paid_amount),
+            "visionStatus": r.get("vision_status"),
+            "visionPhase": r.get("vision_phase"),
         })
 
     return {

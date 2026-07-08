@@ -5,11 +5,12 @@ category management, and polling for POS sync.
 import logging
 from datetime import datetime, timezone
 from typing import Optional
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
 
 from app.database import get_db, get_cursor
 from app.services.token_service import generate_token, validate_token, hash_token
+from app.auth import get_current_user
 
 logger = logging.getLogger(__name__)
 
@@ -402,6 +403,156 @@ async def upload_photos(request: Request, body: PhotoUploadRequest):
             "imageUrls": image_urls,
             "processingTimeMs": vision_result.processing_time_ms,
         },
+    )
+
+
+# ── Async Photo Submission (submit-photos) ────────────────────────────────────
+
+class SubmitPhotosRequest(BaseModel):
+    token: str
+    images: list[str]  # Base64 encoded compressed images (640px, JPEG 0.5)
+
+
+class SubmitPhotosResponse(BaseModel):
+    status: str
+    taskId: str
+    imageCount: int
+
+
+@track_router.post("/track/submit-photos", response_model=SubmitPhotosResponse)
+@limiter.limit("10/minute")
+async def submit_photos(request: Request, body: SubmitPhotosRequest, background_tasks: BackgroundTasks):
+    """
+    Accept compressed photos for async Vision AI processing.
+    Uploads to S3, creates a vision_task record, enqueues background processing,
+    and returns immediately with the task ID.
+    Token-based auth (no admin login required).
+    """
+    from app.services.s3_service import get_s3_client, DELIVERY_IMAGES_BUCKET
+    from app.services.vision_service import process_vision_task
+    import asyncio
+    import base64
+    import uuid
+    import json
+
+    # Validate token
+    payload = validate_token(body.token)
+    if not payload:
+        logger.warning(f"[submit-photos] Token validation failed: token_prefix={body.token[:20]}...")
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+
+    logger.info(f"[submit-photos] Submission started: order={payload.order_id} laundry={payload.laundry_id} phase={payload.phase} images={len(body.images)}")
+
+    # Validate image count (2-4 required)
+    if len(body.images) < 2:
+        raise HTTPException(status_code=400, detail="Minimum 2 photos required")
+    if len(body.images) > 4:
+        raise HTTPException(status_code=400, detail="Maximum 4 photos per submission")
+
+    # Upload images to S3 in parallel
+    async def _upload_single_image(i: int, img_base64: str):
+        """Decode, validate, and upload a single image to S3. Returns the S3 URL."""
+        # Strip data URL prefix if present
+        if "," in img_base64 and img_base64.startswith("data:"):
+            img_base64 = img_base64.split(",", 1)[1]
+
+        try:
+            image_bytes = base64.b64decode(img_base64)
+        except Exception:
+            raise HTTPException(status_code=400, detail=f"Invalid base64 data for image {i+1}")
+
+        if len(image_bytes) < 1000:
+            raise HTTPException(status_code=400, detail=f"Image {i+1} appears corrupted or too small. Please retake the photo.")
+
+        # Detect content type
+        content_type = "image/jpeg"
+        ext = "jpg"
+        if image_bytes[:8] == b'\x89PNG\r\n\x1a\n':
+            content_type = "image/png"
+            ext = "png"
+
+        # Upload to S3
+        unique_id = uuid.uuid4().hex[:8]
+        s3_key = f"{payload.laundry_id}/{payload.order_id}/tracking_{payload.phase}_{unique_id}.{ext}"
+
+        try:
+            s3 = get_s3_client()
+            await asyncio.to_thread(
+                s3.put_object,
+                Bucket=DELIVERY_IMAGES_BUCKET,
+                Key=s3_key,
+                Body=image_bytes,
+                ContentType=content_type,
+            )
+            image_url = f"https://{DELIVERY_IMAGES_BUCKET}.s3.amazonaws.com/{s3_key}"
+            return image_url
+        except Exception as e:
+            logger.error(f"[submit-photos] S3 upload failed: order={payload.order_id} image={i+1} error={e}")
+            raise HTTPException(status_code=500, detail=f"Storage upload failed for image {i+1}. Please retry.")
+
+    # Run all uploads in parallel
+    upload_tasks = [_upload_single_image(i, img) for i, img in enumerate(body.images)]
+    upload_results = await asyncio.gather(*upload_tasks, return_exceptions=True)
+
+    # Check for exceptions in results
+    for i, result in enumerate(upload_results):
+        if isinstance(result, Exception):
+            if isinstance(result, HTTPException):
+                raise result
+            logger.error(f"[submit-photos] Parallel upload failed for image {i+1}: {result}")
+            raise HTTPException(status_code=500, detail=f"Storage upload failed for image {i+1}. Please retry.")
+
+    s3_urls = list(upload_results)
+
+    # Create vision_task record with status='pending'
+    token_hash_value = hash_token(body.token)
+    with get_db() as conn:
+        cur = get_cursor(conn)
+        cur.execute(
+            """
+            INSERT INTO tracking.vision_tasks
+                (order_id, laundry_id, employee_id, phase, vision_status, photo_urls, token_hash)
+            VALUES (%s, %s, %s, %s, 'pending', %s::jsonb, %s)
+            ON CONFLICT (order_id, laundry_id, phase) DO UPDATE
+            SET vision_status = 'pending',
+                photo_urls = EXCLUDED.photo_urls,
+                token_hash = EXCLUDED.token_hash,
+                employee_id = EXCLUDED.employee_id,
+                items = NULL,
+                error_message = NULL,
+                processing_time_ms = NULL,
+                updated_at = NOW()
+            RETURNING task_id
+            """,
+            (
+                payload.order_id,
+                payload.laundry_id,
+                payload.employee_id,
+                payload.phase,
+                json.dumps(s3_urls),
+                token_hash_value,
+            ),
+        )
+        row = cur.fetchone()
+        task_id = str(row["task_id"])
+
+    # Enqueue background task for Vision AI processing
+    background_tasks.add_task(
+        process_vision_task,
+        task_id=task_id,
+        s3_urls=s3_urls,
+        laundry_id=payload.laundry_id,
+        order_id=payload.order_id,
+        phase=payload.phase,
+        employee_id=payload.employee_id,
+    )
+
+    logger.info(f"[submit-photos] Task created: task_id={task_id} order={payload.order_id} laundry={payload.laundry_id} phase={payload.phase} images={len(s3_urls)}")
+
+    return SubmitPhotosResponse(
+        status="submitted",
+        taskId=task_id,
+        imageCount=len(s3_urls),
     )
 
 
@@ -824,6 +975,43 @@ class TrackingRecordResponse(BaseModel):
     foldRecord: Optional[dict] = None
     discrepancies: list[dict] = []
     acknowledgements: list[dict] = []
+    visionStatus: Optional[str] = None
+    visionPhase: Optional[str] = None
+    visionItems: Optional[list[dict]] = None
+    visionPhotoUrls: Optional[list[str]] = None
+    visionToken: Optional[str] = None
+
+
+@router.get("/item-tracking/vision-status-poll")
+async def vision_status_poll(
+    laundryId: str = Query(...),
+    current_user: dict = Depends(get_current_user),
+):
+    """
+    Lightweight endpoint for polling vision task statuses.
+    Returns only orders that have active vision tasks (processing/complete/failed).
+    Used by the orders list to silently update AI status badges without full page reload.
+    """
+    with get_db() as conn:
+        cur = get_cursor(conn)
+        cur.execute(
+            """
+            SELECT order_id, vision_status, phase
+            FROM tracking.vision_tasks
+            WHERE laundry_id = %s AND vision_status IN ('processing', 'complete', 'failed')
+            ORDER BY updated_at DESC
+            """,
+            (laundryId,),
+        )
+        rows = cur.fetchall()
+
+    return {
+        "statusCode": 200,
+        "body": [
+            {"orderId": r["order_id"], "visionStatus": r["vision_status"], "visionPhase": r["phase"]}
+            for r in rows
+        ],
+    }
 
 
 @router.get("/item-tracking/record", response_model=TrackingRecordResponse)
@@ -835,6 +1023,7 @@ async def get_tracking_record(
     Retrieve the full tracking record for an order (intake + fold + discrepancies).
     Used in the order detail view on POS for audit purposes.
     Returns pre-signed URLs for photos so they're accessible in the browser.
+    Also includes vision task data when AI processing is complete but not yet confirmed.
     """
     from app.services.s3_service import get_presigned_urls
 
@@ -864,6 +1053,19 @@ async def get_tracking_record(
         )
         fold_row = cur.fetchone()
 
+        # Fetch vision task data (latest for this order/laundry)
+        cur.execute(
+            """
+            SELECT task_id, vision_status, phase, items, photo_urls
+            FROM tracking.vision_tasks
+            WHERE order_id = %s AND laundry_id = %s
+            ORDER BY created_at DESC
+            LIMIT 1
+            """,
+            (orderId, laundryId),
+        )
+        vision_row = cur.fetchone()
+
     intake_record = None
     if intake_row:
         intake_record = {
@@ -888,11 +1090,40 @@ async def get_tracking_record(
         discrepancies = fold_row["discrepancies"] or []
         acknowledgements = fold_row["acknowledgements"] or []
 
+    # Include vision task data when status='complete' and no confirmed record exists for that phase
+    vision_status = None
+    vision_phase = None
+    vision_items = None
+    vision_photo_urls = None
+    vision_token = None
+
+    if vision_row and vision_row["vision_status"] == "complete":
+        phase = vision_row["phase"]
+        # Only include vision data if no confirmed record exists for this phase
+        has_confirmed = (phase == "intake" and intake_row is not None) or (phase == "fold" and fold_row is not None)
+        if not has_confirmed:
+            vision_status = vision_row["vision_status"]
+            vision_phase = phase
+            vision_items = vision_row["items"]
+            vision_photo_urls = get_presigned_urls(vision_row["photo_urls"] or [])
+            # Generate a fresh token for the confirm call
+            vision_token = generate_token(
+                order_id=orderId,
+                laundry_id=laundryId,
+                phase=phase,
+                employee_id="review",  # Generic employee ID for review flow
+            )
+
     return TrackingRecordResponse(
         intakeRecord=intake_record,
         foldRecord=fold_record,
         discrepancies=discrepancies,
         acknowledgements=acknowledgements,
+        visionStatus=vision_status,
+        visionPhase=vision_phase,
+        visionItems=vision_items,
+        visionPhotoUrls=vision_photo_urls,
+        visionToken=vision_token,
     )
 
 
@@ -1232,9 +1463,9 @@ async def detect_weight(request: DetectWeightRequest):
         # Build the weight detection prompt
         weight_prompt = build_weight_detection_prompt()
 
-        # Call Claude Vision — use Sonnet for reliable scale reading
+        # Call Claude Vision — use Haiku for fast weight detection (~1-2s)
         response = client.messages.create(
-            model="claude-sonnet-4-6",
+            model="claude-3-haiku-20240307",
             max_tokens=256,
             system=weight_prompt,
             messages=[

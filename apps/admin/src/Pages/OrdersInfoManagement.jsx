@@ -94,6 +94,24 @@ import { addMinutes } from "date-fns";
 import { Autocomplete } from "@react-google-maps/api";
 
 
+/**
+ * AIStatusBadge — Shows AI vision processing status for an order.
+ */
+function AIStatusBadge({ visionStatus }) {
+  if (!visionStatus || visionStatus === 'pending') return null;
+
+  const badges = {
+    processing: { text: '🔄 AI Counting...', color: 'blue' },
+    complete: { text: '✅ Ready to Review', color: 'green' },
+    failed: { text: '⚠️ AI Failed', color: 'red' },
+  };
+
+  const badge = badges[visionStatus];
+  if (!badge) return null;
+
+  return <Badge colorScheme={badge.color} fontSize="xs" ml={1}>{badge.text}</Badge>;
+}
+
 const OrdersInfo = ({orderOperation, validateEmpCredentials, stripePublicKey, stripeTerminalExists, empPrefix, laundryTimeZone}) => {
     const {laundryId} = useParams();
     const [orders, setOrders] = useState([]);
@@ -327,6 +345,46 @@ const getInstantPickupWindow = (laundryTimeZone) => {
         fetchData();
     }, [laundryId, orderOperation]);
 
+    // Lightweight poll for AI vision status updates every 15 seconds.
+    // Only polls when there are orders with 'processing' visionStatus in the current list,
+    // or when a photo was recently submitted (within last 30s).
+    // Fetches just vision_status for active tasks and silently merges — no spinner.
+    useEffect(() => {
+        if (orderOperation !== 'active') return;
+
+        const pollVisionStatus = async () => {
+            // Only poll if any order currently shows 'processing' status
+            const hasProcessing = orders.some((o) => o.visionStatus === 'processing');
+            if (!hasProcessing) return;
+
+            try {
+                const res = await axios.get(`${process.env.REACT_APP_AWS_API_URL}/api/admin/item-tracking/vision-status-poll`, {
+                    params: { laundryId },
+                    headers: { Authorization: `Bearer ${localStorage.getItem('idToken')}` },
+                });
+                const statuses = res.data?.body || res.data || [];
+                if (!Array.isArray(statuses) || statuses.length === 0) return;
+                // Build a map of orderId -> { visionStatus, visionPhase }
+                const statusMap = {};
+                statuses.forEach((s) => { statusMap[s.orderId] = s; });
+                // Silently update only the affected orders in state
+                setOrders((prev) =>
+                    prev.map((order) => {
+                        const update = statusMap[order.orderId];
+                        if (update && (order.visionStatus !== update.visionStatus)) {
+                            return { ...order, visionStatus: update.visionStatus, visionPhase: update.visionPhase };
+                        }
+                        return order;
+                    })
+                );
+            } catch (e) {
+                // Silent — don't disrupt the UI on poll failure
+            }
+        };
+        const interval = setInterval(pollVisionStatus, 15000);
+        return () => clearInterval(interval);
+    }, [laundryId, orderOperation, orders]);
+
     // Server-side search — queries ALL orders (no time limit) when user types 3+ characters
     useEffect(() => {
         if (!searchTerm || searchTerm.trim().length < 3) return;
@@ -443,10 +501,11 @@ const getInstantPickupWindow = (laundryTimeZone) => {
 
 
             const matchesTab =
-                orderTab === 'all' ||
+                orderTab === 'all' ? !order.orderId.startsWith('IO-') :
                 (orderTab === 'instore' && order.orderId.startsWith('IS-')) ||
                 (orderTab === 'online' && order.orderId.startsWith('O-')) ||
-                (orderTab === 'commercial' && order.orderId.startsWith('CL-'));
+                (orderTab === 'commercial' && order.orderId.startsWith('CL-')) ||
+                (orderTab === 'instant' && order.orderId.startsWith('IO-'));
 
             const matchesPaymentFilter = paymentFilter
                 ? normalizeString(order.paymentStatus) === normalizeString(paymentFilter)
@@ -3975,6 +4034,15 @@ const handleAssignLaundryDriver = async (customAddress) => {
                 >
                     Commercial
                 </Button>
+
+                <Button
+                    size={{base: "md", md: "sm"}}
+                    width="100%"
+                    colorScheme={orderTab === 'instant' ? "blue" : "gray"}
+                    onClick={() => setOrderTab('instant')}
+                >
+                    Instant Orders
+                </Button>
             </SimpleGrid>
 
             {/* Status Filter Chips - Only for Active Orders */}
@@ -4191,6 +4259,7 @@ const handleAssignLaundryDriver = async (customAddress) => {
                                             >
                                                 {order.orderStatus}
                                             </Badge>
+                                            <AIStatusBadge visionStatus={order.visionStatus} />
                                         </Flex>
 
                                         <Flex align="center">

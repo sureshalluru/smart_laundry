@@ -238,6 +238,7 @@ async def analyze_photos(
     categories: list[str],
     phase: str = "intake",
     image_data: list[tuple[bytes, str]] | None = None,
+    model: str = "claude-sonnet-4-6",
 ) -> VisionResult:
     """
     Send images to Claude Vision API for item identification and counting.
@@ -248,6 +249,8 @@ async def analyze_photos(
         phase: "intake" for dirty laundry, "fold" for folded stacks
         image_data: Optional pre-loaded image data as [(bytes, content_type), ...].
                     When provided, skips HTTP re-download from S3.
+        model: The Anthropic model to use. Defaults to claude-sonnet-4-6 for item counting.
+               Use claude-3-haiku-20240307 for weight detection.
 
     Returns:
         VisionResult with identified items, counts, and confidence scores
@@ -331,9 +334,9 @@ async def analyze_photos(
         })
 
         # Call Claude Vision
-        logger.info(f"[VISION] Calling Claude with {len(content) - 1} images, phase={phase}, categories: {categories}")
+        logger.info(f"[VISION] Calling Claude with {len(content) - 1} images, phase={phase}, model={model}, categories: {categories}")
         response = client.messages.create(
-            model="claude-sonnet-4-6",
+            model=model,
             max_tokens=1024,
             system=build_vision_prompt(categories, phase=phase),
             messages=[
@@ -506,3 +509,111 @@ class VisionServiceError(Exception):
         self.code = code
         self.message = message
         super().__init__(message)
+
+
+async def process_vision_task(
+    task_id: str,
+    s3_urls: list,
+    laundry_id: str,
+    order_id: str,
+    phase: str,
+    employee_id: str,
+):
+    """
+    Background processor that runs Vision AI on submitted photos.
+
+    1. Updates vision_task status from 'pending' to 'processing'
+    2. Fetches active categories for the laundry
+    3. Calls analyze_photos with S3 URLs (URL-fetching path)
+    4. On success: stores flagged items, sets status to 'complete', records processing_time_ms
+    5. On failure: sets status to 'failed', stores error_message, logs error
+    """
+    import time
+    from app.database import get_db, get_cursor
+
+    start_time = time.time()
+
+    try:
+        # 1. Update status to 'processing'
+        with get_db() as conn:
+            cur = get_cursor(conn)
+            cur.execute(
+                """
+                UPDATE tracking.vision_tasks
+                SET vision_status = 'processing', updated_at = NOW()
+                WHERE task_id = %s::uuid
+                """,
+                (task_id,),
+            )
+
+        # 2. Fetch active categories for the laundry
+        with get_db() as conn:
+            cur = get_cursor(conn)
+            cur.execute(
+                """
+                SELECT name FROM tracking.item_categories
+                WHERE laundry_id = %s AND is_active = TRUE
+                ORDER BY display_order
+                """,
+                (laundry_id,),
+            )
+            category_rows = cur.fetchall()
+
+        categories = [row["name"] for row in category_rows]
+        if not categories:
+            from app.migrations.add_item_tracking import DEFAULT_CATEGORIES
+            categories = DEFAULT_CATEGORIES
+
+        # 3. Call analyze_photos with S3 URLs (URL-fetching fallback path)
+        vision_result = await analyze_photos(s3_urls, categories, phase=phase)
+
+        # 4. On success: store results
+        processing_time_ms = int((time.time() - start_time) * 1000)
+        flagged_items = flag_low_confidence(vision_result.items)
+
+        import json
+        with get_db() as conn:
+            cur = get_cursor(conn)
+            cur.execute(
+                """
+                UPDATE tracking.vision_tasks
+                SET vision_status = 'complete',
+                    items = %s::jsonb,
+                    processing_time_ms = %s,
+                    updated_at = NOW()
+                WHERE task_id = %s::uuid
+                """,
+                (json.dumps(flagged_items), processing_time_ms, task_id),
+            )
+
+        logger.info(
+            f"[vision-bg] Task {task_id} completed: order={order_id} laundry={laundry_id} "
+            f"phase={phase} items={len(flagged_items)} time={processing_time_ms}ms"
+        )
+
+    except Exception as e:
+        # 5. On failure: set status to 'failed', store error_message
+        processing_time_ms = int((time.time() - start_time) * 1000)
+        error_message = f"{type(e).__name__}: {str(e)}"
+
+        logger.error(
+            f"[vision-bg] Task {task_id} failed: order={order_id} laundry={laundry_id} "
+            f"phase={phase} error={error_message}"
+        )
+
+        try:
+            with get_db() as conn:
+                cur = get_cursor(conn)
+                cur.execute(
+                    """
+                    UPDATE tracking.vision_tasks
+                    SET vision_status = 'failed',
+                        error_message = %s,
+                        processing_time_ms = %s,
+                        updated_at = NOW()
+                    WHERE task_id = %s::uuid
+                    """,
+                    (error_message, processing_time_ms, task_id),
+                )
+        except Exception as db_err:
+            logger.error(f"[vision-bg] Failed to update task {task_id} status to failed: {db_err}")
