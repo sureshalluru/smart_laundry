@@ -102,7 +102,7 @@ function AIStatusBadge({ visionStatus }) {
 
   const badges = {
     processing: { text: '🔄 AI Counting...', color: 'blue' },
-    complete: { text: '✅ Ready to Review', color: 'green' },
+    complete: { text: '✅ AI Count Ready', color: 'green' },
     failed: { text: '⚠️ AI Failed', color: 'red' },
   };
 

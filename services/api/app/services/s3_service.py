@@ -189,6 +189,9 @@ def get_presigned_urls(photo_urls: list[str], expires_in: int = 3600) -> list[st
                 parts = url.split(".s3.amazonaws.com/", 1)
                 bucket = parts[0].replace("https://", "")
                 key = parts[1]
+                # Strip any existing query parameters (from previously presigned URLs)
+                if "?" in key:
+                    key = key.split("?", 1)[0]
                 presigned.append(generate_presigned_url(bucket, key, expires_in))
             else:
                 presigned.append(url)
