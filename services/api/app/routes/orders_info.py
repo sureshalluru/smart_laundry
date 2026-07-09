@@ -597,6 +597,20 @@ async def instore_place_order(
                     VALUES (%s,%s,%s,%s)
                 """, (order_id, p.get("paymentIntentId"), p["amount"], p.get("paymentMethod")))
 
+        # Audit log for order creation with payment
+        try:
+            from app.services.audit_service import log_action
+            log_action(laundry_id, "order_created", "order", order_id, {
+                "grand_total": grand_total,
+                "payment_status": payment_status,
+                "payment_method": final_payments[0].get("paymentMethod") if final_payments else "none",
+                "payment_intent": final_payments[0].get("paymentIntentId") if final_payments else None,
+                "pay_by_invoice": pay_by_invoice,
+                "order_type": order_type,
+            }, performed_by=empId or "admin")
+        except Exception:
+            pass
+
         return {"status": "success", "orderId": order_id, "grandTotal": grand_total, "taxAmount": tax_amount}
 
     except Exception as e:
@@ -917,6 +931,16 @@ async def update_order_endpoint(
 
                     if not invoice_emails:
                         logger.warning(f"Cannot auto-invoice {orderId}: no customer email resolved (both account_email and billing_email empty)")
+                        # Audit log for skipped auto-invoice (no email)
+                        try:
+                            from app.services.audit_service import log_action
+                            log_action(laundryId, "invoice_auto_skipped", "order", orderId, {
+                                "reason": "no_customer_email",
+                                "trigger": "ProcessingCompleted",
+                                "grand_total": grand_total,
+                            }, performed_by="system")
+                        except Exception:
+                            pass
                     else:
                         # First email in list is the primary Stripe invoice recipient
                         # (billing_email if set, otherwise account_email)
@@ -963,6 +987,18 @@ async def update_order_endpoint(
                                     (invoice.id, orderId))
                         logger.info(f"Auto-invoice sent for order {orderId} to {primary_email}")
 
+                        # Audit log for successful auto-invoice
+                        try:
+                            from app.services.audit_service import log_action
+                            log_action(laundryId, "invoice_sent_auto", "order", orderId, {
+                                "invoice_id": invoice.id,
+                                "recipient": primary_email,
+                                "amount": grand_total,
+                                "trigger": "ProcessingCompleted",
+                            }, performed_by="system")
+                        except Exception:
+                            pass
+
                         # Send informational notification to second email (if exists)
                         # This notifies the account_email holder about the invoice when
                         # billing_email is the primary recipient, or vice versa.
@@ -991,6 +1027,17 @@ async def update_order_endpoint(
                                 logger.warning(f"Failed to send invoice notification to {secondary_email} for {orderId}: {notif_err}")
                 except Exception as inv_err:
                     logger.warning(f"Auto-invoice error for {orderId}: {inv_err}")
+                    # Audit log for FAILED auto-invoice — critical for diagnosing missed invoices
+                    try:
+                        from app.services.audit_service import log_action
+                        log_action(laundryId, "invoice_auto_failed", "order", orderId, {
+                            "error": str(inv_err),
+                            "trigger": "ProcessingCompleted",
+                            "pay_by_invoice": True,
+                            "grand_total": grand_total,
+                        }, performed_by="system")
+                    except Exception:
+                        pass
 
             # Auto-notify for review when order is picked up / delivered
             if order_status in ("OrderPickedUp", "Delivered"):

@@ -109,7 +109,7 @@ async def get_stops(
             LEFT JOIN shop.customer_addresses ca ON ca.address_id = o.address_id
             WHERE o.laundry_id = %s
               AND (
-                (o.order_type IN ('Online', 'Commercial') AND o.order_status = 'OrderSubmitted' AND o.pickup_date = %s)
+                (o.order_type IN ('Online', 'Commercial') AND o.order_status IN ('OrderSubmitted', 'ReadyForIntake') AND o.pickup_date = %s)
                 OR
                 (o.order_status IN ('EnRouteToDelivery', 'ProcessingCompleted', 'ReadyForDelivery')
                  AND o.dropoff_date = %s

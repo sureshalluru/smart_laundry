@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, Query, Body, Request
 from typing import Optional
 from app.database import get_db, get_cursor
 from app.auth import get_current_user
+from app.services.audit_service import log_action
 from app.utils import serialize
 from app.utils.invoice_helpers import resolve_invoice_emails
 from decimal import Decimal, ROUND_HALF_UP
@@ -118,6 +119,12 @@ async def instore_payment(
                             logger.info(f"Card payment charged for order {orderId}: {intent_id}, amount: ${amt}")
                         except Exception as card_err:
                             logger.exception(f"Card payment failed for order {orderId}")
+                            # Audit log for failed card payment
+                            log_action(laundryId, "payment_card_failed", "order", orderId, {
+                                "error": str(card_err),
+                                "amount": amt,
+                                "payment_method_id": p.get("paymentIntentId"),
+                            }, performed_by=empId or "admin")
                             return {"statusCode": 200, "body": {"status": "error", "message": f"Card payment failed: {str(card_err)}"}}
 
                     cur.execute("""
@@ -151,6 +158,14 @@ async def instore_payment(
             from app.routes.orders_info import get_single_order
             result = get_single_order(cur, laundryId, orderId)
             updated_order = result.get("body", {})
+
+            # Audit log for payment collection
+            log_action(laundryId, "payment_collected", "order", orderId, {
+                "payments": [{"amount": float(p.get("amount", 0)), "method": p.get("paymentMethod")} for p in payment_updates],
+                "total_paid": total_paid,
+                "grand_total": grand_total,
+                "payment_status": "Paid" if total_paid >= grand_total or payment_updates else order["payment_status"],
+            }, performed_by=empId or "admin")
 
             return {"statusCode": 200, "body": {
                 "status": "success",
@@ -360,6 +375,16 @@ async def create_invoice(
 
         logger.info(f"Manual invoice sent for order {order_id} to {invoice_email}")
 
+        # Audit log for manual invoice creation
+        log_action(laundry_id, "invoice_sent_manual", "order", order_id, {
+            "invoice_id": invoice.id,
+            "recipient": invoice_email,
+            "secondary_recipient": secondary_email,
+            "amount": finalized.amount_due / 100,
+            "due_days": due_days,
+            "stripe_customer_id": stripe_customer.id,
+        }, performed_by="admin")
+
         # Send informational notification to secondary email (if exists)
         # This notifies the account_email holder when billing_email is primary, or vice versa.
         if secondary_email:
@@ -397,6 +422,14 @@ async def create_invoice(
 
     except Exception as e:
         logger.exception("create_invoice error")
+        # Audit log for failed manual invoice creation
+        log_action(
+            body.get("laundryId", "unknown"), "invoice_send_failed", "order",
+            body.get("orderId", "unknown"), {
+                "error": str(e),
+                "trigger": "manual",
+            }, performed_by="admin"
+        )
         return {"status": "error", "message": str(e)}
 
 
@@ -437,5 +470,27 @@ async def stripe_webhook(request: Request):
                     ON CONFLICT DO NOTHING
                 """, (order_id, invoice.payment_intent or invoice.id, float(invoice.amount_paid or 0) / 100))
             logger.info(f"Invoice paid for order {order_id} (${invoice.amount_paid/100})")
+
+            # Audit log for invoice payment received
+            log_action(laundry_id or "unknown", "invoice_paid_webhook", "order", order_id, {
+                "invoice_id": invoice.id,
+                "amount_paid": float(invoice.amount_paid or 0) / 100,
+                "payment_intent": invoice.payment_intent or invoice.id,
+                "customer_email": invoice.customer_email,
+                "stripe_event_id": event.id,
+            }, performed_by="stripe_webhook")
+
+    elif event.type in ("invoice.payment_failed", "invoice.voided", "invoice.marked_uncollectible"):
+        invoice = event.data.object
+        order_id = invoice.metadata.get("order_id")
+        laundry_id = invoice.metadata.get("laundry_id")
+        if order_id:
+            log_action(laundry_id or "unknown", f"invoice_{event.type.split('.')[1]}", "order", order_id, {
+                "invoice_id": invoice.id,
+                "amount_due": float(invoice.amount_due or 0) / 100,
+                "customer_email": invoice.customer_email,
+                "stripe_event_id": event.id,
+            }, performed_by="stripe_webhook")
+            logger.warning(f"Stripe invoice event {event.type} for order {order_id}, invoice {invoice.id}")
 
     return {"status": "success"}

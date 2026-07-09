@@ -245,6 +245,15 @@ async def process_frequencies():
                                 WHERE order_id = %s
                             """, (order_id,))
                         logger.info(f"Auto-charge subscription order {order_id} marked for auto-charge on completion")
+                        # Audit: auto-charge setup success
+                        try:
+                            from app.services.audit_service import log_action
+                            log_action(laundry_id, "frequency_auto_charge_setup", "order", order_id, {
+                                "customer_payment_id": customer_payment_id,
+                                "frequency": frequency,
+                            }, performed_by="system")
+                        except Exception:
+                            pass
                     except Exception as charge_err:
                         logger.warning(f"Auto-charge setup failed for order {order_id}: {charge_err}")
                         # Still create order but mark payment as pending
@@ -254,6 +263,16 @@ async def process_frequencies():
                                 UPDATE orders.orders SET payment_status = 'PaymentFailed'
                                 WHERE order_id = %s
                             """, (order_id,))
+                        # Audit: auto-charge setup FAILED
+                        try:
+                            from app.services.audit_service import log_action
+                            log_action(laundry_id, "frequency_auto_charge_failed", "order", order_id, {
+                                "error": str(charge_err),
+                                "customer_payment_id": customer_payment_id,
+                                "frequency": frequency,
+                            }, performed_by="system")
+                        except Exception:
+                            pass
                 elif customer_payment_id:
                     try:
                         from app.services.payment_service import create_hold

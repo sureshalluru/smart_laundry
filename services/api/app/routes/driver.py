@@ -98,7 +98,7 @@ async def driver_orders(
                 LEFT JOIN shop.customer_addresses ca ON ca.address_id = o.address_id
                 WHERE o.laundry_id = %s
                   AND (
-                    (o.order_type = 'Online' AND o.order_status IN ('OrderSubmitted','ReadyForIntake') AND o.pickup_date BETWEEN %s AND %s)
+                    (o.order_type IN ('Online', 'Commercial') AND o.order_status IN ('OrderSubmitted','ReadyForIntake') AND o.pickup_date BETWEEN %s AND %s)
                     OR
                     (o.order_status IN ('EnRouteToDelivery', 'ProcessingCompleted', 'ReadyForDelivery')
                      AND o.dropoff_date BETWEEN %s AND %s

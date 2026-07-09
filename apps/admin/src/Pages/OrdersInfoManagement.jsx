@@ -122,6 +122,7 @@ const OrdersInfo = ({orderOperation, validateEmpCredentials, stripePublicKey, st
     const [selectedOrderDetails, setSelectedOrderDetails] = useState(null);
     const {isOpen, onOpen, onClose} = useDisclosure();
     const [isEditMode, setIsEditMode] = useState(false);
+    const [sendingInvoice, setSendingInvoice] = useState(false);
     const [empId, setEmpId] = useState('');
     const [passcode, setPasscode] = useState('');
     const [statusFilter, setStatusFilter] = useState('');
@@ -2022,6 +2023,37 @@ const { open: openCancelUber, ModalUI: CancelUberModal } = useCancelUberHandoff(
                                             )}
                                         {selectedOrderDetails?.payByInvoice && (
                                             <Badge colorScheme="purple" fontSize="xs" px={2} py={1} borderRadius="md">Pay by Invoice</Badge>
+                                        )}
+                                        {selectedOrderDetails?.payByInvoice && selectedOrderDetails?.paymentStatus === "Unpaid" && (
+                                            <Button
+                                                size="xs"
+                                                colorScheme="purple"
+                                                variant="outline"
+                                                isLoading={sendingInvoice}
+                                                onClick={async () => {
+                                                    setSendingInvoice(true);
+                                                    try {
+                                                        const res = await axios.post(
+                                                            `${process.env.REACT_APP_AWS_API_URL}/api/payment/create-invoice`,
+                                                            { orderId: selectedOrderDetails.orderId, laundryId },
+                                                            { headers: { Authorization: `Bearer ${localStorage.getItem('idToken')}` } }
+                                                        );
+                                                        if (res.data?.status === "success") {
+                                                            toast({ title: "Invoice Sent", description: res.data.message, status: "success", duration: 4000 });
+                                                            const od = await fetchSingleOrder(laundryId, selectedOrderDetails.orderId);
+                                                            if (od) setSelectedOrderDetails(od);
+                                                        } else {
+                                                            toast({ title: "Invoice Error", description: res.data?.message || "Failed to send invoice", status: "error", duration: 5000 });
+                                                        }
+                                                    } catch (err) {
+                                                        toast({ title: "Invoice Error", description: err.response?.data?.message || err.message, status: "error", duration: 5000 });
+                                                    } finally {
+                                                        setSendingInvoice(false);
+                                                    }
+                                                }}
+                                            >
+                                                📧 Send Invoice
+                                            </Button>
                                         )}
                                     </Flex>
 
