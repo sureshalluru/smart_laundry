@@ -18,6 +18,7 @@ import {
     Button,
     IconButton,
     Input,
+    Switch,
     Modal,
     ModalOverlay,
     ModalContent,
@@ -1756,6 +1757,13 @@ const LaundryInfoManagement = ({ validateEmpCredentials, type, empPrefix }) => {
 
         </Flex>
 
+            {/* Homepage Promo Settings */}
+            {type === "logoAndDomain" && (
+                <Box mt={6} p={4} bg="orange.50" borderRadius="lg" border="1px solid" borderColor="orange.200">
+                    <HomepagePromoSection laundryId={laundryId} />
+                </Box>
+            )}
+
             {/* Delivery Schedule */}
             {type === "deliverySchedule" && (
                 <DeliveryScheduleSection laundryId={laundryId} />
@@ -2395,5 +2403,96 @@ const LaundryInfoManagement = ({ validateEmpCredentials, type, empPrefix }) => {
     );
 
 };
+
+// Homepage Promo Settings Component
+function HomepagePromoSection({ laundryId }) {
+    const [promoCode, setPromoCode] = React.useState("");
+    const [promoDiscount, setPromoDiscount] = React.useState("20");
+    const [promoEnabled, setPromoEnabled] = React.useState(true);
+    const [loading, setLoading] = React.useState(true);
+    const [saving, setSaving] = React.useState(false);
+    const toast = useToast();
+
+    React.useEffect(() => {
+        axios.get(`${process.env.REACT_APP_AWS_API_URL}/api/admin/homepage-promo`, {
+            params: { laundryId },
+            headers: { Authorization: `Bearer ${localStorage.getItem('idToken')}` }
+        }).then(res => {
+            setPromoCode(res.data.promoCode || "");
+            setPromoDiscount(res.data.promoDiscount || "20");
+            setPromoEnabled(res.data.promoEnabled !== false);
+        }).catch(() => {}).finally(() => setLoading(false));
+    }, [laundryId]);
+
+    const handleSave = async () => {
+        setSaving(true);
+        try {
+            await axios.put(`${process.env.REACT_APP_AWS_API_URL}/api/admin/homepage-promo`, {
+                promoCode: promoCode.trim().toUpperCase(),
+                promoDiscount,
+                promoEnabled,
+            }, {
+                params: { laundryId },
+                headers: { Authorization: `Bearer ${localStorage.getItem('idToken')}` }
+            });
+            toast({ title: "Promo settings saved", status: "success", duration: 2000 });
+        } catch (err) {
+            toast({ title: "Error saving promo", status: "error", duration: 3000 });
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    if (loading) return <Spinner size="sm" />;
+
+    return (
+        <Box>
+            <Flex align="center" justify="space-between" mb={3}>
+                <Box>
+                    <Text fontWeight="bold" fontSize="md" color="orange.700">🎉 Homepage Promo Banner</Text>
+                    <Text fontSize="xs" color="gray.600">Displayed on landing page to attract first-time customers</Text>
+                </Box>
+                <Switch
+                    isChecked={promoEnabled}
+                    onChange={(e) => setPromoEnabled(e.target.checked)}
+                    colorScheme="orange"
+                />
+            </Flex>
+            {promoEnabled && (
+                <Flex gap={3} flexWrap="wrap" align="flex-end">
+                    <Box flex="1" minW="140px">
+                        <Text fontSize="xs" fontWeight="bold" mb={1}>Promo Code</Text>
+                        <Input
+                            size="sm"
+                            value={promoCode}
+                            onChange={(e) => setPromoCode(e.target.value)}
+                            placeholder="e.g. WELCOME20"
+                            textTransform="uppercase"
+                            fontFamily="mono"
+                        />
+                    </Box>
+                    <Box minW="80px">
+                        <Text fontSize="xs" fontWeight="bold" mb={1}>Discount %</Text>
+                        <Input
+                            size="sm"
+                            type="number"
+                            value={promoDiscount}
+                            onChange={(e) => setPromoDiscount(e.target.value)}
+                            w="80px"
+                        />
+                    </Box>
+                    <Button size="sm" colorScheme="orange" onClick={handleSave} isLoading={saving}>
+                        Save
+                    </Button>
+                </Flex>
+            )}
+            {promoEnabled && promoCode && (
+                <Text fontSize="xs" color="gray.500" mt={2}>
+                    Make sure promo code "{promoCode.toUpperCase()}" exists in Promotions with {promoDiscount}% discount.
+                </Text>
+            )}
+        </Box>
+    );
+}
 
 export default LaundryInfoManagement;

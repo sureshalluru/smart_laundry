@@ -78,6 +78,32 @@ export default function SiteHero({ config }) {
                         {sc.subheadline || 'Schedule a free pickup and we handle the rest. Wash, dry, fold — delivered back to your door. It really is that simple.'}
                     </Text>
 
+                    {/* First-time customer promo — inline with CTA for above-the-fold visibility */}
+                    {(sc.promoEnabled !== false) && (
+                        <HStack
+                            spacing={3}
+                            bg={videoLoaded ? 'whiteAlpha.200' : 'orange.50'}
+                            backdropFilter={videoLoaded ? 'blur(8px)' : 'none'}
+                            border="1px solid"
+                            borderColor={videoLoaded ? 'orange.300' : 'orange.200'}
+                            borderRadius="full"
+                            px={{ base: 4, md: 6 }}
+                            py={2}
+                            flexWrap="wrap"
+                            justify="center"
+                        >
+                            <Text fontSize={{ base: 'sm', md: 'md' }} fontWeight="700" color={videoLoaded ? 'orange.200' : 'orange.500'}>
+                                🎉 {sc.promoDiscount || '20'}% OFF First Order — Use code
+                            </Text>
+                            <Badge colorScheme="orange" fontSize="sm" px={2} py={0.5} borderRadius="md" fontFamily="mono">
+                                {sc.promoCode || 'FIRST20'}
+                            </Badge>
+                            <Button as="a" href={`/${laundryId}`} size="xs" colorScheme="orange" borderRadius="full" variant="solid">
+                                Claim
+                            </Button>
+                        </HStack>
+                    )}
+
                     <HStack spacing={4} pt={2} flexWrap="wrap" justify="center">
                         <Button as="a" href={`/${laundryId}`} size="lg" colorScheme={themeColor} borderRadius="full" px={8}
                             boxShadow="lg" _hover={{ transform: 'translateY(-2px)', boxShadow: 'xl' }}>
@@ -101,6 +127,7 @@ export default function SiteHero({ config }) {
                             </HStack>
                         ))}
                     </Flex>
+
 
                     {/* Address bar */}
                     <Box mt={6} bg={videoLoaded ? 'whiteAlpha.200' : 'white'} backdropFilter={videoLoaded ? 'blur(10px)' : 'none'}

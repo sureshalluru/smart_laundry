@@ -1373,6 +1373,51 @@ async def save_service_catalog_config(
     return {"statusCode": 200, "body": {"message": "Service configuration saved successfully"}}
 
 
+# ── Homepage Promo Settings ───────────────────────────────────────────────────
+
+@router.get("/homepage-promo")
+async def get_homepage_promo(
+    laundryId: str = Query(...),
+    current_user: dict = Depends(get_current_user),
+):
+    """Get homepage promo settings from site_content."""
+    with get_db() as conn:
+        cur = get_cursor(conn)
+        cur.execute("SELECT site_content FROM shop.laundry_shops WHERE laundry_id = %s", (laundryId,))
+        row = cur.fetchone()
+    sc = row["site_content"] if row and row.get("site_content") else {}
+    return {
+        "promoCode": sc.get("promoCode", ""),
+        "promoDiscount": sc.get("promoDiscount", "20"),
+        "promoEnabled": sc.get("promoEnabled", True),
+    }
+
+
+@router.put("/homepage-promo")
+async def update_homepage_promo(
+    laundryId: str = Query(...),
+    body: dict = Body({}),
+    current_user: dict = Depends(get_current_user),
+):
+    """Update homepage promo settings in site_content."""
+    promo_code = body.get("promoCode", "")
+    promo_discount = body.get("promoDiscount", "20")
+    promo_enabled = body.get("promoEnabled", True)
+
+    with get_db() as conn:
+        cur = get_cursor(conn)
+        import json
+        # Update the promo fields in site_content JSONB
+        cur.execute("""
+            UPDATE shop.laundry_shops
+            SET site_content = COALESCE(site_content, '{}'::jsonb)
+                || jsonb_build_object('promoCode', %s::text, 'promoDiscount', %s::text, 'promoEnabled', %s::boolean)
+            WHERE laundry_id = %s
+        """, (promo_code, str(promo_discount), promo_enabled, laundryId))
+
+    return {"status": "success", "message": "Homepage promo settings updated"}
+
+
 # ── Financial Reports (added directly to admin_extra to avoid routing issues) ──
 
 @router.get("/financial-reports/sales-tax")
