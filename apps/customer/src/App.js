@@ -43,6 +43,18 @@ function DomainRedirect() {
     return <Navigate to={`/${laundryId}/site`} replace />;
 }
 
+// SEO page redirect — for custom domains accessing /pickup-delivery/city or /faq without laundryId
+function DomainSEORedirect({ page }) {
+    const host = window.location.hostname.toLowerCase();
+    let laundryId = '1'; // default
+    if (host.includes('spinandshine')) laundryId = '2';
+    else if (host.includes('roundrock')) laundryId = '1';
+    else if (host.includes('clean-rite') || host.includes('cleanrite') || host.includes('clean-ritehays')) laundryId = '11';
+    // Get the rest of the path after the page prefix
+    const path = window.location.pathname;
+    return <Navigate to={`/${laundryId}${path}`} replace />;
+}
+
 // Set page title immediately based on domain (before API loads)
 // For tenants on smartlaundrybasket.ai/{laundryId}/site, the LaundryContext
 // will set the correct title from the database once data loads.
@@ -79,6 +91,11 @@ function App() {
                         <Route path="/:laundryId/saree-rolling" element={<SareeRollingPage />} />
                         <Route path="/track/:token" element={<ItemTrackingUpload />} />
                         <Route path="/order-tracking/:orderId" element={<OrderTrackingPhotos />} />
+
+                        {/* SEO pages without laundryId prefix — for custom domains */}
+                        <Route path="/pickup-delivery/:citySlug" element={<DomainSEORedirect page="pickup-delivery" />} />
+                        <Route path="/faq" element={<DomainSEORedirect page="faq" />} />
+                        <Route path="/faq/:slug" element={<DomainSEORedirect page="faq" />} />
 
                         <Route path="/:laundryId/*" element={
                             <LaundryProvider>
