@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useContext } from 'react';
 import { useParams, Link as RouterLink } from 'react-router-dom';
 import {
-    Box, Container, Heading, Text, VStack, HStack, Link, Button,
+    Box, Container, Heading, Text, HStack, Link, Button,
     Skeleton, SkeletonText, Alert, AlertIcon
 } from '@chakra-ui/react';
 import { ArrowBackIcon } from '@chakra-ui/icons';
@@ -157,22 +157,37 @@ const FAQDetailPage = () => {
                 </HStack>
             )}
 
-            {/* CTA to tenant site */}
-            <Box mt={8} pt={6} borderTop="1px solid" borderColor="gray.200">
-                <VStack spacing={3} align="center">
-                    <Text fontSize="sm" color="gray.500">
-                        Have more questions?
-                    </Text>
-                    <Button
-                        as={RouterLink}
-                        to={`/${laundryId}/site`}
-                        colorScheme="blue"
-                        size="md"
-                        borderRadius="full"
-                    >
-                        Visit {tenantName || 'Our Site'}
-                    </Button>
-                </VStack>
+            {/* CTA Section */}
+            <Box mt={8} py={6} bg="blue.50" borderRadius="xl" textAlign="center">
+                <Text fontSize="md" fontWeight="bold" color="blue.700" mb={2}>
+                    Ready to get started with {tenantName}?
+                </Text>
+                <Text fontSize="sm" color="gray.600" mb={4}>
+                    Free pickup and delivery — we handle the laundry so you don't have to.
+                </Text>
+                <Button
+                    as={RouterLink}
+                    to={`/${laundryId}/site`}
+                    colorScheme="blue"
+                    size="lg"
+                    borderRadius="full"
+                    px={8}
+                >
+                    Schedule Free Pickup
+                </Button>
+            </Box>
+
+            {/* Internal cross-links for SEO */}
+            <Box mt={6}>
+                <HStack spacing={4} flexWrap="wrap" justify="center">
+                    <Link as={RouterLink} to={`/${laundryId}/faq`} color="blue.600" fontSize="sm">
+                        All FAQs
+                    </Link>
+                    <Text color="gray.300">|</Text>
+                    <Link as={RouterLink} to={`/${laundryId}/site`} color="blue.600" fontSize="sm">
+                        Home
+                    </Link>
+                </HStack>
             </Box>
         </Container>
         </>

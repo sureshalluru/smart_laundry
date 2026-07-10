@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useContext } from 'react';
 import { useParams, Link as RouterLink } from 'react-router-dom';
 import {
-    Box, Container, Heading, Text, VStack, Link,
+    Box, Container, Heading, Text, VStack, Link, Button,
     Skeleton, SkeletonText, Alert, AlertIcon
 } from '@chakra-ui/react';
 import axios from 'axios';
@@ -130,6 +130,41 @@ const FAQIndexPage = () => {
                     </Box>
                 ))}
             </VStack>
+
+            {/* CTA Section */}
+            <Box textAlign="center" mt={10} py={8} bg="blue.50" borderRadius="xl">
+                <Text fontSize="lg" fontWeight="bold" color="blue.700" mb={2}>
+                    Ready to try {tenantName}?
+                </Text>
+                <Text fontSize="sm" color="gray.600" mb={4}>
+                    Free pickup and delivery — clean laundry without leaving home.
+                </Text>
+                <Button
+                    as={RouterLink}
+                    to={`/${laundryId}/site`}
+                    colorScheme="blue"
+                    size="lg"
+                    borderRadius="full"
+                    px={8}
+                >
+                    Schedule Free Pickup
+                </Button>
+            </Box>
+
+            {/* Internal cross-links for SEO */}
+            <Box mt={8} pt={6} borderTop="1px solid" borderColor="gray.200">
+                <Text fontSize="sm" fontWeight="bold" color="gray.600" mb={2}>
+                    Explore More
+                </Text>
+                <VStack align="stretch" spacing={1}>
+                    <Link as={RouterLink} to={`/${laundryId}/site`} color="blue.600" fontSize="sm">
+                        → {tenantName} Home
+                    </Link>
+                    <Link as={RouterLink} to={`/${laundryId}/pickup-delivery/austin`} color="blue.600" fontSize="sm">
+                        → Pickup & Delivery Service Areas
+                    </Link>
+                </VStack>
+            </Box>
         </Container>
         </>
     );

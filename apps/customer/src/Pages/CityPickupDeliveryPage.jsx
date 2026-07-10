@@ -1,19 +1,17 @@
-import React, { useState, useEffect, useContext } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams, Link as RouterLink } from 'react-router-dom';
 import {
-    Box, Container, Heading, Text, VStack, HStack, Link, Button,
+    Box, Container, Heading, Text, HStack, Link, Button,
     Skeleton, SkeletonText, Alert, AlertIcon, Badge, SimpleGrid,
     List, ListItem, ListIcon, Divider
 } from '@chakra-ui/react';
 import { CheckCircleIcon, ArrowBackIcon } from '@chakra-ui/icons';
 import axios from 'axios';
-import { LaundryContext } from '../Components/Contexts/LaundryContext';
 import FAQHead from '../Components/FAQ/FAQHead';
 import TenantHeader from '../Components/FAQ/TenantHeader';
 
 const CityPickupDeliveryPage = () => {
     const { laundryId, citySlug } = useParams();
-    const { laundryData } = useContext(LaundryContext);
     const [pageData, setPageData] = useState(null);
     const [loading, setLoading] = useState(true);
     const [notFound, setNotFound] = useState(false);
@@ -85,44 +83,101 @@ const CityPickupDeliveryPage = () => {
                 jsonLd={pageData.jsonLd}
             />
 
-            {/* Hero Section */}
-            <Box mb={8}>
-                <Heading as="h1" size="xl" mb={3} color="blue.700">
-                    {pageData.heroHeadline}
+            {/* Hero Section — inspired by SpinZone style */}
+            <Box mb={8} textAlign="center">
+                <Heading as="h1" size="xl" mb={4} color="blue.700" lineHeight="shorter">
+                    Pick Up & Delivery Laundry Service in {pageData.city}, {pageData.state}
                 </Heading>
-                <Text fontSize="lg" color="gray.600" lineHeight="tall">
-                    {pageData.heroSubtext}
+                <Text fontSize="xl" color="gray.600" fontWeight="medium" mb={6}>
+                    Remove the chore of laundry from your life!
                 </Text>
-            </Box>
-
-            {/* CTA Button */}
-            <Box mb={8}>
                 <Button
                     as={RouterLink}
                     to={`/${laundryId}/site`}
                     colorScheme="blue"
                     size="lg"
                     borderRadius="full"
-                    px={8}
+                    px={10}
+                    fontSize="lg"
+                    boxShadow="md"
                 >
-                    Schedule Free Pickup in {pageData.city}
+                    Schedule A Free Pickup
                 </Button>
             </Box>
 
-            {/* Main Content */}
-            <Box mb={8}>
-                <Text fontSize="md" color="gray.700" lineHeight="tall" whiteSpace="pre-wrap">
-                    {pageData.bodyContent}
+            {/* Narrative How It Works — conversational tone like SpinZone */}
+            <Box mb={10} bg="gray.50" p={{ base: 5, md: 8 }} borderRadius="xl">
+                <Heading as="h2" size="md" mb={4} color="gray.800">
+                    How It Works
+                </Heading>
+                <Text fontSize="md" color="gray.700" lineHeight="tall" mb={4}>
+                    Clean clothes are now just a "Click" away with {pageData.laundryName}'s Wash & Fold 
+                    Pick Up & Delivery Service in {pageData.city}! Don't have enough time to wash, dry, 
+                    and fold that mountain of dirty laundry? We can make it disappear and reappear as 
+                    fresh, clean, folded laundry.
+                </Text>
+                <Text fontSize="md" color="gray.700" lineHeight="tall" mb={4}>
+                    To schedule a free laundry pick up, just click "Schedule A Pickup" above. Choose a 
+                    pick up time that's convenient for you. Once scheduled, you'll receive a text letting 
+                    you know when our driver is on the way. Have your laundry on the front porch or at 
+                    the side-door ready for pick up.
+                </Text>
+                <Text fontSize="md" color="gray.700" lineHeight="tall">
+                    Our attendants then work their cleaning magic with your laundry. Upon completion, 
+                    your laundry will be fresh, clean, and neatly folded. The final step: we place your 
+                    clean laundry back on the van for delivery right to your door. You'll be notified 
+                    when the driver is en route. Getting your clothes clean has never been easier!
                 </Text>
             </Box>
 
-            {/* Pricing & Service Area Grid */}
-            <SimpleGrid columns={{ base: 1, md: 2 }} spacing={6} mb={8}>
+            {/* Key Details — bullet style like SpinZone */}
+            <Box mb={10}>
+                <Heading as="h2" size="md" mb={4} color="gray.800">
+                    Pickup & Delivery Details
+                </Heading>
+                <List spacing={3} fontSize="md">
+                    <ListItem>
+                        <ListIcon as={CheckCircleIcon} color="green.500" />
+                        <strong>Free pickup and delivery</strong> — No service charge or added delivery fee. It really is FREE.
+                    </ListItem>
+                    {pageData.washFoldPrice && (
+                        <ListItem>
+                            <ListIcon as={CheckCircleIcon} color="green.500" />
+                            <strong>Pricing:</strong> {pageData.washFoldPrice} per pound. Some larger items like comforters have separate pricing.
+                        </ListItem>
+                    )}
+                    {pageData.deliveryHours && (
+                        <ListItem>
+                            <ListIcon as={CheckCircleIcon} color="green.500" />
+                            <strong>Pickup & delivery hours:</strong> {pageData.deliveryHours}
+                        </ListItem>
+                    )}
+                    <ListItem>
+                        <ListIcon as={CheckCircleIcon} color="green.500" />
+                        You <strong>don't need to be home</strong> during pickups and drop-offs — just tell us where to leave your laundry.
+                    </ListItem>
+                    <ListItem>
+                        <ListIcon as={CheckCircleIcon} color="green.500" />
+                        Payments are processed through our <strong>safe, secure website</strong>.
+                    </ListItem>
+                    <ListItem>
+                        <ListIcon as={CheckCircleIcon} color="green.500" />
+                        <strong>24-hour turnaround</strong> available.
+                    </ListItem>
+                    <ListItem>
+                        <ListIcon as={CheckCircleIcon} color="green.500" />
+                        Have special care instructions? Use the <strong>special instructions</strong> field when scheduling to customize your service.
+                    </ListItem>
+                </List>
+            </Box>
+
+            {/* Service Area + Pricing Grid */}
+            <SimpleGrid columns={{ base: 1, md: 2 }} spacing={6} mb={10}>
                 {/* Pricing */}
                 {pageData.pricing && pageData.pricing.length > 0 && (
                     <Box bg="blue.50" p={5} borderRadius="lg">
-                        <Heading as="h2" size="sm" mb={3} color="blue.700">
-                            Our Services & Pricing
+                        <Heading as="h3" size="sm" mb={3} color="blue.700">
+                            Services & Pricing
                         </Heading>
                         <List spacing={2}>
                             {pageData.pricing.map((item, idx) => (
@@ -137,9 +192,12 @@ const CityPickupDeliveryPage = () => {
 
                 {/* Service Area */}
                 <Box bg="gray.50" p={5} borderRadius="lg">
-                    <Heading as="h2" size="sm" mb={3} color="gray.700">
-                        Zip Codes We Serve in {pageData.city}
+                    <Heading as="h3" size="sm" mb={3} color="gray.700">
+                        Now Servicing {pageData.city} & Surrounding Areas
                     </Heading>
+                    <Text fontSize="sm" color="gray.600" mb={3}>
+                        We serve the following zip codes in {pageData.city}, {pageData.state}:
+                    </Text>
                     <HStack flexWrap="wrap" spacing={2}>
                         {pageData.zipCodes.map(zip => (
                             <Badge key={zip} colorScheme="blue" fontSize="sm" px={2} py={1} borderRadius="md">
@@ -149,34 +207,27 @@ const CityPickupDeliveryPage = () => {
                     </HStack>
                     {pageData.phone && (
                         <Text mt={3} fontSize="sm" color="gray.600">
-                            Call us: <Link href={`tel:${pageData.phone}`} color="blue.600" fontWeight="bold">{pageData.phone}</Link>
+                            Questions? Call us: <Link href={`tel:${pageData.phone}`} color="blue.600" fontWeight="bold">{pageData.phone}</Link>
                         </Text>
                     )}
                 </Box>
             </SimpleGrid>
 
-            {/* How It Works */}
-            <Box mb={8}>
-                <Heading as="h2" size="md" mb={4} color="gray.800">
-                    How Pickup & Delivery Works in {pageData.city}
-                </Heading>
-                <SimpleGrid columns={{ base: 1, md: 3 }} spacing={4}>
-                    <Box textAlign="center" p={4}>
-                        <Text fontSize="2xl" mb={2}>📅</Text>
-                        <Text fontWeight="bold" fontSize="sm">1. Schedule Pickup</Text>
-                        <Text fontSize="xs" color="gray.600">Choose a time that works for you</Text>
-                    </Box>
-                    <Box textAlign="center" p={4}>
-                        <Text fontSize="2xl" mb={2}>👕</Text>
-                        <Text fontWeight="bold" fontSize="sm">2. We Pick Up & Wash</Text>
-                        <Text fontSize="xs" color="gray.600">Leave your bag out, we handle the rest</Text>
-                    </Box>
-                    <Box textAlign="center" p={4}>
-                        <Text fontSize="2xl" mb={2}>✨</Text>
-                        <Text fontWeight="bold" fontSize="sm">3. Fresh Delivery</Text>
-                        <Text fontSize="xs" color="gray.600">Clean, folded laundry at your door</Text>
-                    </Box>
-                </SimpleGrid>
+            {/* Bottom CTA */}
+            <Box textAlign="center" mb={8} py={6} bg="blue.50" borderRadius="xl">
+                <Text fontSize="lg" fontWeight="bold" color="blue.700" mb={3}>
+                    Ready to get started?
+                </Text>
+                <Button
+                    as={RouterLink}
+                    to={`/${laundryId}/site`}
+                    colorScheme="blue"
+                    size="lg"
+                    borderRadius="full"
+                    px={8}
+                >
+                    Schedule Free Pickup in {pageData.city}
+                </Button>
             </Box>
 
             <Divider mb={6} />
