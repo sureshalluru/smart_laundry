@@ -1,3 +1,16 @@
 # https://www.robotstxt.org/robotstxt.html
 User-agent: *
-Disallow:
+Disallow: /user/
+Disallow: /login
+Disallow: /platform-admin
+Disallow: /onboard
+
+# Allow all SEO pages
+Allow: /*/faq
+Allow: /*/faq/
+Allow: /*/pickup-delivery/
+Allow: /*/site
+
+# Sitemap (dynamic per tenant — served by API)
+# For custom domains: Sitemap: https://yourdomain.com/api/sitemap.xml
+# For shared domain: Sitemap: https://www.smartlaundrybasket.ai/api/sitemap.xml

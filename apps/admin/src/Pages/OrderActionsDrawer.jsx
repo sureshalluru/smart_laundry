@@ -197,105 +197,108 @@ const OrderActionsDrawer = ({ isOpen, onClose, order, handleOrderHistory, handle
                     justifyContent="flex-start"
                 >
                     {order && (
-                        <VStack align="center" >
-                            {/* New Invoice Button for Commercial Orders */}
-                            {order?.orderId?.startsWith("CL-") && (
-                                <Tooltip label="Generate Invoice" aria-label="Generate Invoice">
+                        <VStack align="center" spacing={2}>
+                            {/* Action Buttons - 2 per row to save vertical space */}
+                            <HStack spacing={2} wrap="wrap" justify="center">
+                                {/* Invoice Button for Commercial Orders */}
+                                {order?.orderId?.startsWith("CL-") && (
+                                    <Tooltip label="Generate Invoice" aria-label="Generate Invoice">
+                                        <IconButton
+                                            icon={<FaFileInvoice />}
+                                            colorScheme="purple"
+                                            size="md"
+                                            onClick={() => {
+                                                setSelectedOrder(order);
+                                                setInvoiceModalOpen(true);
+                                                setPaymentInstructions(order.paymentInstructions || "");
+                                                setSendEmail(true);
+                                            }}
+                                            aria-label="Generate Invoice"
+                                        />
+                                    </Tooltip>
+                                )}
+
+                                <Tooltip label="Internal Print" aria-label="Internal Print Tooltip">
                                     <IconButton
-                                        icon={<FaFileInvoice />}
-                                        colorScheme="purple"
-                                        size="lg"
-                                        onClick={() => {
-                                            setSelectedOrder(order);
-                                            setInvoiceModalOpen(true);
-                                            setPaymentInstructions(order.paymentInstructions || "");
-                                            setSendEmail(true);
-                                        }}
-                                        aria-label="Generate Invoice"
+                                        icon={<FaTicketAlt />}
+                                        colorScheme="blue"
+                                        size="md"
+                                        onClick={() => handlePrintTicket(order, 'internal')}
+                                        aria-label="Internal Print"
                                     />
                                 </Tooltip>
-                            )}
 
-                            <Tooltip label="Internal Print" aria-label="Internal Print Tooltip">
-                                <IconButton
-                                    icon={<FaTicketAlt />}
-                                    colorScheme="blue"
-                                    size="lg"
-                                    onClick={() => handlePrintTicket(order, 'internal')}
-                                    aria-label="Internal Print"
-                                />
-                            </Tooltip>
-
-                            <Tooltip label="Customer Print" aria-label="Customer Print Tooltip">
-                                <IconButton
-                                    icon={<FaUserTag />}
-                                    colorScheme="green"
-                                    size="lg"
-                                    onClick={() => handlePrintTicket(order, 'customer')}
-                                    aria-label="Customer Print"
-                                />
-                            </Tooltip>
-
-                            <Tooltip label="Print Receipt" aria-label="Print Receipt Tooltip">
-                                <IconButton
-                                    icon={<FaReceipt />}
-                                    colorScheme="blue"
-                                    size="lg"
-                                    onClick={() => handlePrintReceipt(order)}
-                                    aria-label="Print Receipt"
-                                />
-                            </Tooltip>
-
-                            <Tooltip label="Print Tag" aria-label="Print Tag Tooltip">
-                                <IconButton
-                                    icon={<FaTag />}
-                                    colorScheme="purple"
-                                    size="lg"
-                                    onClick={printTag}
-                                    aria-label="Print Tag"
-                                />
-                            </Tooltip>
-
-                            <Tooltip label="View Order History" aria-label="View Order History Tooltip">
-                                <IconButton
-                                    icon={<FaHistory />}
-                                    colorScheme="teal"
-                                    size="lg"
-                                    onClick={() => handleOrderHistory(order.orderId)}
-                                    aria-label="View Order History"
-                                />
-                            </Tooltip>
-
-                            {order.orderId.startsWith("IS-") && <NotificationButton order={order} />}
-
-                            {/* Send Invoice button - only for pay-by-invoice orders */}
-                            {order.payByInvoice && order.paymentStatus !== "Paid" && order.paymentStatus !== "Invoice Sent" && (
-                                <Tooltip label="Send Invoice (Net 30)" placement="top">
+                                <Tooltip label="Customer Print" aria-label="Customer Print Tooltip">
                                     <IconButton
-                                        icon={<FaFileInvoice />}
+                                        icon={<FaUserTag />}
+                                        colorScheme="green"
+                                        size="md"
+                                        onClick={() => handlePrintTicket(order, 'customer')}
+                                        aria-label="Customer Print"
+                                    />
+                                </Tooltip>
+
+                                <Tooltip label="Print Receipt" aria-label="Print Receipt Tooltip">
+                                    <IconButton
+                                        icon={<FaReceipt />}
+                                        colorScheme="blue"
+                                        size="md"
+                                        onClick={() => handlePrintReceipt(order)}
+                                        aria-label="Print Receipt"
+                                    />
+                                </Tooltip>
+
+                                <Tooltip label="Print Tag" aria-label="Print Tag Tooltip">
+                                    <IconButton
+                                        icon={<FaTag />}
                                         colorScheme="purple"
-                                        size="lg"
-                                        isRound
-                                        onClick={async () => {
-                                            try {
-                                                const res = await axios.post(
-                                                    `${process.env.REACT_APP_AWS_API_URL}/api/payment/create-invoice`,
-                                                    { orderId: order.orderId, laundryId: laundryId, customerEmail: order.customerEmail, customerName: order.customerName },
-                                                    { headers: { Authorization: `Bearer ${localStorage.getItem('idToken')}` } }
-                                                );
-                                                if (res.data.status === 'success') {
-                                                    alert(`Invoice sent to ${order.customerEmail}\nAmount: ${res.data.amountDue}\nPayment link: ${res.data.invoiceUrl}`);
-                                                } else {
-                                                    alert(`${res.data.message}`);
+                                        size="md"
+                                        onClick={printTag}
+                                        aria-label="Print Tag"
+                                    />
+                                </Tooltip>
+
+                                <Tooltip label="View Order History" aria-label="View Order History Tooltip">
+                                    <IconButton
+                                        icon={<FaHistory />}
+                                        colorScheme="teal"
+                                        size="md"
+                                        onClick={() => handleOrderHistory(order.orderId)}
+                                        aria-label="View Order History"
+                                    />
+                                </Tooltip>
+
+                                <NotificationButton order={order} />
+
+                                {/* Send Invoice button - only for pay-by-invoice orders */}
+                                {order.payByInvoice && order.paymentStatus !== "Paid" && order.paymentStatus !== "Invoice Sent" && (
+                                    <Tooltip label="Send Invoice (Net 30)" placement="top">
+                                        <IconButton
+                                            icon={<FaFileInvoice />}
+                                            colorScheme="purple"
+                                            size="md"
+                                            isRound
+                                            onClick={async () => {
+                                                try {
+                                                    const res = await axios.post(
+                                                        `${process.env.REACT_APP_AWS_API_URL}/api/payment/create-invoice`,
+                                                        { orderId: order.orderId, laundryId: laundryId, customerEmail: order.customerEmail, customerName: order.customerName },
+                                                        { headers: { Authorization: `Bearer ${localStorage.getItem('idToken')}` } }
+                                                    );
+                                                    if (res.data.status === 'success') {
+                                                        alert(`Invoice sent to ${order.customerEmail}\nAmount: ${res.data.amountDue}\nPayment link: ${res.data.invoiceUrl}`);
+                                                    } else {
+                                                        alert(`${res.data.message}`);
+                                                    }
+                                                } catch (err) {
+                                                    alert(`Error: ${err.response?.data?.message || err.message}`);
                                                 }
-                                            } catch (err) {
-                                                alert(`Error: ${err.response?.data?.message || err.message}`);
-                                            }
-                                        }}
-                                        aria-label="Send Invoice"
-                                    />
-                                </Tooltip>
-                            )}
+                                            }}
+                                            aria-label="Send Invoice"
+                                        />
+                                    </Tooltip>
+                                )}
+                            </HStack>
 
                             {/* QR Code - scan to open order on phone */}
                             <Tooltip label="Scan to open on phone" placement="top">
