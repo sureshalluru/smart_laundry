@@ -8,6 +8,7 @@ import { ArrowBackIcon } from '@chakra-ui/icons';
 import axios from 'axios';
 import { LaundryContext } from '../Components/Contexts/LaundryContext';
 import FAQHead from '../Components/FAQ/FAQHead';
+import TenantHeader from '../Components/FAQ/TenantHeader';
 import {
     buildFAQPageTitle,
     buildMetaDescription,
@@ -87,6 +88,8 @@ const FAQDetailPage = () => {
     const jsonLd = buildSingleFAQJsonLd(faq.question, faq.answer);
 
     return (
+        <>
+        <TenantHeader />
         <Container maxW="800px" py={10}>
             <FAQHead
                 title={pageTitle}
@@ -172,6 +175,7 @@ const FAQDetailPage = () => {
                 </VStack>
             </Box>
         </Container>
+        </>
     );
 };
 

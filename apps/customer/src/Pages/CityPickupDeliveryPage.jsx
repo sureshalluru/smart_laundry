@@ -9,6 +9,7 @@ import { CheckCircleIcon, ArrowBackIcon } from '@chakra-ui/icons';
 import axios from 'axios';
 import { LaundryContext } from '../Components/Contexts/LaundryContext';
 import FAQHead from '../Components/FAQ/FAQHead';
+import TenantHeader from '../Components/FAQ/TenantHeader';
 
 const CityPickupDeliveryPage = () => {
     const { laundryId, citySlug } = useParams();
@@ -74,6 +75,8 @@ const CityPickupDeliveryPage = () => {
     }
 
     return (
+        <>
+        <TenantHeader />
         <Container maxW="900px" py={10}>
             <FAQHead
                 title={pageData.pageTitle}
@@ -210,6 +213,7 @@ const CityPickupDeliveryPage = () => {
                 <ArrowBackIcon mr={1} /> Back to {pageData.laundryName}
             </Link>
         </Container>
+        </>
     );
 };
 

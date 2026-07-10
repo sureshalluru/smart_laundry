@@ -7,6 +7,7 @@ import {
 import axios from 'axios';
 import { LaundryContext } from '../Components/Contexts/LaundryContext';
 import FAQHead from '../Components/FAQ/FAQHead';
+import TenantHeader from '../Components/FAQ/TenantHeader';
 import { buildIndexFAQJsonLd } from '../utils/faqUtils';
 
 const FAQIndexPage = () => {
@@ -74,6 +75,8 @@ const FAQIndexPage = () => {
     }
 
     return (
+        <>
+        <TenantHeader />
         <Container maxW="800px" py={10}>
             <FAQHead
                 title={`Frequently Asked Questions | ${tenantName}`}
@@ -128,6 +131,7 @@ const FAQIndexPage = () => {
                 ))}
             </VStack>
         </Container>
+        </>
     );
 };
 
