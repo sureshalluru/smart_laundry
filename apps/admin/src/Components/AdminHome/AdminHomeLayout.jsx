@@ -739,6 +739,15 @@ const SidebarContent = ({
         >
             FAQ
         </Button>
+        <Button as="a" href={`/${laundryId}/admin/faq-management`}
+                leftIcon={<FaClipboardList />}
+                variant="ghost"
+                colorScheme="teal"
+                justifyContent="flex-start"
+                onClick={() => navigate(`/${laundryId}/admin/faq-management`)}
+        >
+            FAQ Pages
+        </Button>
         </>
         )}
 

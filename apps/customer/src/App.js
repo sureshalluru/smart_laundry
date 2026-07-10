@@ -1,6 +1,7 @@
 import React from 'react';
 import './App.css';
 import { ChakraProvider } from '@chakra-ui/react';
+import { HelmetProvider } from 'react-helmet-async';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import Address from "./Pages/Address";
 import NoPage from "./Pages/NoPage";
@@ -23,6 +24,9 @@ import SareeRollingPage from './Pages/SareeRollingPage';
 import ItemTrackingUpload from './Pages/ItemTrackingUpload';
 import OrderTrackingPhotos from './Pages/OrderTrackingPhotos';
 import TrackingPage from './Pages/TrackingPage';
+import FAQIndexPage from './Pages/FAQIndexPage';
+import FAQDetailPage from './Pages/FAQDetailPage';
+import CityPickupDeliveryPage from './Pages/CityPickupDeliveryPage';
 import { Navigate } from 'react-router-dom';
 import theme from './theme';
 
@@ -60,6 +64,7 @@ function DomainRedirect() {
 function App() {
     return (
         <ChakraProvider theme={theme}>
+            <HelmetProvider>
             <GoogleMapsProvider>
             <CustomerAuthProvider>
                 <BrowserRouter>
@@ -81,6 +86,9 @@ function App() {
                                     <Route index element={<Address />} />
                                     <Route path="site" element={<LaundryLandingWrapper />} />
                                     <Route path="login" element={<AuthenticationPage />} />
+                                    <Route path="faq" element={<FAQIndexPage />} />
+                                    <Route path="faq/:slug" element={<FAQDetailPage />} />
+                                    <Route path="pickup-delivery/:citySlug" element={<CityPickupDeliveryPage />} />
                                     <Route path="user/track/:orderId" element={
                                         <TrackingPage />
                                     } />
@@ -104,6 +112,7 @@ function App() {
                 </BrowserRouter>
             </CustomerAuthProvider>
             </GoogleMapsProvider>
+            </HelmetProvider>
         </ChakraProvider>
     );
 }

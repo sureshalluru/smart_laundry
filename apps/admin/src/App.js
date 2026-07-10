@@ -30,6 +30,7 @@ const ChatPage = lazy(() => import('./Pages/ChatPage'));
 const ZipInterestPage = lazy(() => import('./Pages/ZipInterestPage'));
 const DashboardPage = lazy(() => import('./Pages/DashboardPage'));
 const FAQPage = lazy(() => import('./Pages/FAQPage'));
+const FAQManagementPage = lazy(() => import('./Pages/FAQManagementPage'));
 const EngagementPage = lazy(() => import('./Pages/EngagementPage'));
 const QuickPOSPage = lazy(() => import('./Pages/QuickPOSPage'));
 const SupportChatPage = lazy(() => import('./Pages/SupportChatPage'));
@@ -370,6 +371,11 @@ function App() {
                             <WrappedFAQPage/>
                         </Suspense>
                     }/>
+                    <Route path="faq-management" element={
+                        <Suspense fallback={<LoadingSpinner/>}>
+                            <WrappedFAQManagementPage/>
+                        </Suspense>
+                    }/>
                     <Route path="engagement" element={
                         <Suspense fallback={<LoadingSpinner/>}>
                             <WrappedEngagementPage/>
@@ -525,6 +531,7 @@ const WrappedChatPage = withLaundryValidation(ChatPage);
 const WrappedZipInterestPage = withLaundryValidation(ZipInterestPage);
 const WrappedDashboardPage = withLaundryValidation(DashboardPage);
 const WrappedFAQPage = withLaundryValidation(FAQPage);
+const WrappedFAQManagementPage = withLaundryValidation(FAQManagementPage);
 const WrappedEngagementPage = withLaundryValidation(EngagementPage);
 const WrappedQuickPOSPage = withLaundryValidation(QuickPOSPage);
 const WrappedSupportChatPage = withLaundryValidation(SupportChatPage);

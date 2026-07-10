@@ -19,6 +19,8 @@ from app.migrations import add_company_admins
 from app.migrations import add_laundry_company_fk
 from app.migrations import add_company_join_code
 from app.migrations import add_vision_tasks
+from app.migrations import add_faq_tables
+from app.migrations import seed_faq_templates
 
 logger = logging.getLogger(__name__)
 
@@ -42,4 +44,6 @@ def run_all():
     add_laundry_company_fk.run()
     add_company_join_code.run()
     add_vision_tasks.run()
+    add_faq_tables.run()
+    seed_faq_templates.run()
     logger.info("All migrations complete.")

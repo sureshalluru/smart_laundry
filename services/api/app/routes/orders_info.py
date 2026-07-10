@@ -1342,6 +1342,18 @@ def get_orders_by_status(cur, laundry_id, operation, page=1, limit=30, order_typ
         paid_amount = sum(Decimal(str(p.get("amount", 0))).quantize(Decimal('0.01')) for p in payments)
         balance_due = max(Decimal('0.00'), grand_total - paid_amount)
 
+        # Flag: payment_status=Paid but no actual payment record (no transaction ID, no cash record)
+        payment_unverified = False
+        if r["payment_status"] == "Paid" and float(grand_total) > 0:
+            has_valid_payment = any(
+                (p.get("paymentIntentId") and p.get("paymentMethod") != "hold")
+                or p.get("paymentMethod") == "Cash"
+                or p.get("paymentMethod") == "Invoice"
+                for p in payments
+            )
+            if not has_valid_payment:
+                payment_unverified = True
+
         detailed_orders.append({
             "orderId": r["order_id"],
             "customerName": f"{r['first_name']} {r['last_name']}".strip(),
@@ -1382,6 +1394,7 @@ def get_orders_by_status(cur, laundry_id, operation, page=1, limit=30, order_typ
             "payByInvoice": r.get("pay_by_invoice", False),
             "balanceDue": float(balance_due),
             "paidAmount": float(paid_amount),
+            "paymentUnverified": payment_unverified,
             "visionStatus": r.get("vision_status"),
             "visionPhase": r.get("vision_phase"),
         })
@@ -1630,6 +1643,16 @@ def get_single_order(cur, laundry_id, order_id):
             "customerNotification": customer_notification,
             "customerPaymentId": customer_payment_id,
             "balanceDue": balance_due,
+            "paidAmount": total_paid,
+            "paymentUnverified": (
+                order["payment_status"] == "Paid" and grand_total > 0
+                and not any(
+                    (p.get("payment_intent_id") and p.get("payment_method") != "hold")
+                    or p.get("payment_method") == "Cash"
+                    or p.get("payment_method") == "Invoice"
+                    for p in payments
+                )
+            ),
             "cancelReason": order["cancel_reason"],
         }
         return {"statusCode": 200, "body": result}

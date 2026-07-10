@@ -1978,7 +1978,8 @@ const { open: openCancelUber, ModalUI: CancelUberModal } = useCancelUberHandoff(
                                         )}
                                         <Badge
                                             colorScheme={
-                                                selectedOrderDetails.paymentStatus === "Paid" ? "green"
+                                                selectedOrderDetails.paymentUnverified ? "red"
+                                                : selectedOrderDetails.paymentStatus === "Paid" ? "green"
                                                 : selectedOrderDetails.paymentStatus === "Invoice Sent" ? "purple"
                                                 : selectedOrderDetails.payByInvoice ? "purple"
                                                 : "red"
@@ -1987,7 +1988,7 @@ const { open: openCancelUber, ModalUI: CancelUberModal } = useCancelUberHandoff(
                                             px={3}
                                             py={1}
                                         >
-                                            Payment: {selectedOrderDetails.payByInvoice && selectedOrderDetails.paymentStatus === "Unpaid" ? "Pay by Invoice" : selectedOrderDetails.paymentStatus}
+                                            Payment: {selectedOrderDetails.paymentUnverified ? "⚠️ Unverified Paid" : selectedOrderDetails.payByInvoice && selectedOrderDetails.paymentStatus === "Unpaid" ? "Pay by Invoice" : selectedOrderDetails.paymentStatus}
                                         </Badge>
 
                                         {/* Payment Button - Placed next to Order Status (disabled for Commercial - pay by invoice) */}
@@ -4298,7 +4299,8 @@ const handleAssignLaundryDriver = async (customAddress) => {
                                             <Text fontWeight="bold" fontSize="sm" mr={2}>Payment:</Text>
                                             <Badge
                                                 colorScheme={
-                                                    order.paymentStatus === "Paid" ? "green"
+                                                    order.paymentUnverified ? "red"
+                                                    : order.paymentStatus === "Paid" ? "green"
                                                     : order.paymentStatus === "Invoice Sent" ? "purple"
                                                     : order.payByInvoice ? "purple"
                                                     : "red"
@@ -4308,7 +4310,7 @@ const handleAssignLaundryDriver = async (customAddress) => {
                                                 py={1}
                                                 borderRadius="md"
                                             >
-                                                {(order.orderType === "Commercial" || order.payByInvoice) && order.paymentStatus === "Unpaid" ? "Pay by Invoice" : order.paymentStatus}
+                                                {order.paymentUnverified ? "⚠️ Unverified Paid" : (order.orderType === "Commercial" || order.payByInvoice) && order.paymentStatus === "Unpaid" ? "Pay by Invoice" : order.paymentStatus}
                                             </Badge>
 
                                         </Flex>

@@ -82,6 +82,9 @@ from app.routes import (
     tracking,
     company,
     company_join,
+    faq,
+    faq_admin,
+    city_pages,
 )
 
 app = FastAPI(
@@ -146,6 +149,9 @@ app.include_router(reports.router, prefix="/api/admin/reports", tags=["Financial
 app.include_router(tracking.router, prefix="/api/tracking", tags=["Driver Tracking"])
 app.include_router(tracking.public_router, prefix="/api/tracking", tags=["Driver Tracking Public"])
 app.include_router(company.router, prefix="/api/company", tags=["Company Management"])
+app.include_router(faq.router, prefix="/api/faq", tags=["FAQ Public"])
+app.include_router(faq_admin.router, prefix="/api/admin/faq", tags=["FAQ Admin"])
+app.include_router(city_pages.router, prefix="/api/city-pages", tags=["City SEO Pages"])
 
 
 # Block bot scanners probing for PHP/WordPress/exploit files
