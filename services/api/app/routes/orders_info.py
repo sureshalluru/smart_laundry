@@ -607,7 +607,53 @@ async def instore_place_order(
                 "payment_intent": final_payments[0].get("paymentIntentId") if final_payments else None,
                 "pay_by_invoice": pay_by_invoice,
                 "order_type": order_type,
-            }, performed_by=empId or "admin")
+            }, performed_by=body.get("empId") or "admin")
+        except Exception:
+            pass
+
+        # Write to orders.order_history for the UI history view
+        try:
+            with get_db() as conn_hist:
+                cur_hist = get_cursor(conn_hist)
+                # Look up employee name
+                emp_name = "System"
+                emp_id_val = body.get("empId") or ""
+                if emp_id_val:
+                    cur_hist.execute(
+                        "SELECT first_name, last_name FROM shop.employees WHERE emp_id = %s AND laundry_id = %s",
+                        (emp_id_val, laundry_id))
+                    emp_row = cur_hist.fetchone()
+                    if emp_row:
+                        emp_name = f"{emp_row['first_name']} {emp_row['last_name']}".strip()
+
+                # Order created record
+                cur_hist.execute("""
+                    INSERT INTO orders.order_history
+                        (order_id, laundry_id, emp_id, emp_name, action, field_changed, old_value, new_value, change_summary, changed_at)
+                    VALUES (%s, %s, %s, %s, 'order_created', 'order_status', NULL, %s, %s, NOW())
+                """, (order_id, laundry_id, emp_id_val, emp_name, order_status,
+                      f"Order created — type: {order_type}, status: {order_status}"))
+
+                # Service records
+                for svc in services:
+                    svc_name = svc.get("serviceName") or svc.get("service") or svc.get("name", "")
+                    woc = float(str(svc.get("weightOrCount") or svc.get("weight", 0)))
+                    price = float(str(svc.get("servicePrice") or svc.get("price", 0)))
+                    cur_hist.execute("""
+                        INSERT INTO orders.order_history
+                            (order_id, laundry_id, emp_id, emp_name, action, field_changed, old_value, new_value, change_summary, changed_at)
+                        VALUES (%s, %s, %s, %s, 'service_added', 'services', NULL, %s, %s, NOW())
+                    """, (order_id, laundry_id, emp_id_val, emp_name, svc_name,
+                          f'Service "{svc_name}" added — {woc:.2f} lbs/units @ ${price:.2f} each'))
+
+                # Payment record
+                for p in final_payments:
+                    cur_hist.execute("""
+                        INSERT INTO orders.order_history
+                            (order_id, laundry_id, emp_id, emp_name, action, field_changed, old_value, new_value, change_summary, changed_at)
+                        VALUES (%s, %s, %s, %s, 'payment_captured', 'payment_status', 'Unpaid', 'Paid', %s, NOW())
+                    """, (order_id, laundry_id, emp_id_val, emp_name,
+                          f'Payment of ${float(p["amount"]):.2f} captured via {p.get("paymentMethod", "Unknown")}'))
         except Exception:
             pass
 
