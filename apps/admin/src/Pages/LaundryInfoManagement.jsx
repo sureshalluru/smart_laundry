@@ -1764,6 +1764,13 @@ const LaundryInfoManagement = ({ validateEmpCredentials, type, empPrefix }) => {
                 </Box>
             )}
 
+            {/* Store Hours Settings */}
+            {type === "logoAndDomain" && (
+                <Box mt={4} p={4} bg="blue.50" borderRadius="lg" border="1px solid" borderColor="blue.200">
+                    <StoreHoursSection laundryId={laundryId} />
+                </Box>
+            )}
+
             {/* Delivery Schedule */}
             {type === "deliverySchedule" && (
                 <DeliveryScheduleSection laundryId={laundryId} />
@@ -2491,6 +2498,72 @@ function HomepagePromoSection({ laundryId }) {
                     Make sure promo code "{promoCode.toUpperCase()}" exists in Promotions with {promoDiscount}% discount.
                 </Text>
             )}
+        </Box>
+    );
+}
+
+// Store Hours Section Component
+function StoreHoursSection({ laundryId }) {
+    const [hours, setHours] = React.useState([]);
+    const [loading, setLoading] = React.useState(true);
+    const [saving, setSaving] = React.useState(false);
+    const toast = useToast();
+
+    React.useEffect(() => {
+        axios.get(`${process.env.REACT_APP_AWS_API_URL}/api/admin/store-hours`, {
+            params: { laundryId },
+            headers: { Authorization: `Bearer ${localStorage.getItem('idToken')}` }
+        }).then(res => {
+            const h = res.data.hours || [];
+            setHours(h.length > 0 ? h : [{ day: "", time: "" }]);
+        }).catch(() => {
+            setHours([{ day: "", time: "" }]);
+        }).finally(() => setLoading(false));
+    }, [laundryId]);
+
+    const handleChange = (index, field, value) => {
+        setHours(prev => prev.map((h, i) => i === index ? { ...h, [field]: value } : h));
+    };
+
+    const addRow = () => setHours(prev => [...prev, { day: "", time: "" }]);
+    const removeRow = (index) => setHours(prev => prev.filter((_, i) => i !== index));
+
+    const handleSave = async () => {
+        setSaving(true);
+        try {
+            await axios.put(`${process.env.REACT_APP_AWS_API_URL}/api/admin/store-hours`, {
+                hours: hours.filter(h => h.day && h.time),
+            }, {
+                params: { laundryId },
+                headers: { Authorization: `Bearer ${localStorage.getItem('idToken')}` }
+            });
+            toast({ title: "Store hours saved", status: "success", duration: 2000 });
+        } catch (err) {
+            toast({ title: "Error saving hours", status: "error", duration: 3000 });
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    if (loading) return <Spinner size="sm" />;
+
+    return (
+        <Box>
+            <Text fontWeight="bold" fontSize="md" color="blue.700" mb={2}>🕐 Store Operating Hours</Text>
+            <Text fontSize="xs" color="gray.600" mb={3}>These hours show on your landing page, FAQ pages, and SEO pages</Text>
+            {hours.map((h, i) => (
+                <Flex key={i} gap={2} mb={2} align="center">
+                    <Input size="sm" placeholder="e.g. Mon-Fri" value={h.day} onChange={e => handleChange(i, 'day', e.target.value)} w="130px" />
+                    <Input size="sm" placeholder="e.g. 7AM - 10:30PM" value={h.time} onChange={e => handleChange(i, 'time', e.target.value)} w="160px" />
+                    {hours.length > 1 && (
+                        <Button size="xs" colorScheme="red" variant="ghost" onClick={() => removeRow(i)}>✕</Button>
+                    )}
+                </Flex>
+            ))}
+            <Flex gap={2} mt={2}>
+                <Button size="xs" variant="outline" onClick={addRow}>+ Add Row</Button>
+                <Button size="xs" colorScheme="blue" onClick={handleSave} isLoading={saving}>Save Hours</Button>
+            </Flex>
         </Box>
     );
 }

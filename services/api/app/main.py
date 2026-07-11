@@ -100,8 +100,12 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 # Start background scheduler and run migrations on app startup
 @app.on_event("startup")
 def startup_event():
-    from app.migrations import run_all as run_migrations
-    run_migrations()
+    import os
+    if os.environ.get("SKIP_MIGRATIONS") != "1":
+        from app.migrations import run_all as run_migrations
+        run_migrations()
+    else:
+        logger.info("Skipping migrations (SKIP_MIGRATIONS=1)")
     from app.scheduler import start_scheduler
     start_scheduler()
 

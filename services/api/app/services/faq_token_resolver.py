@@ -128,19 +128,33 @@ def get_tenant_data(laundry_id, conn) -> dict:
         elif "comforter" in name:
             data["price_comforter"] = price_str
 
-    # --- Hours (derived from delivery time slots) ---
-    cur.execute("""
-        SELECT day_of_week, start_time, end_time
-        FROM shop.delivery_time_slots
-        WHERE laundry_id = %s
-        ORDER BY id
-    """, (laundry_id,))
-    slots = cur.fetchall()
+    # --- Hours (from site_content.hours if set, else instore_pickup_time_slots) ---
+    # site_content.hours is what the tenant configures as their store operating hours
+    # Format: [{"day": "Mon-Fri", "time": "7AM - 10PM"}, ...]
+    cur.execute("SELECT site_content FROM shop.laundry_shops WHERE laundry_id = %s", (laundry_id,))
+    sc_row = cur.fetchone()
+    sc = sc_row["site_content"] if sc_row and sc_row.get("site_content") else {}
+    
+    if sc.get("hours") and isinstance(sc["hours"], list) and len(sc["hours"]) > 0:
+        # Use configured store hours from site_content
+        hours_parts = [f"{h.get('day', '')}: {h.get('time', '')}" for h in sc["hours"] if h.get("day") and h.get("time")]
+        if hours_parts:
+            data["hours"] = ", ".join(hours_parts)
+    
+    if "hours" not in data:
+        # Fallback to instore_pickup_time_slots
+        cur.execute("""
+            SELECT day_of_week, start_time, end_time
+            FROM shop.instore_pickup_time_slots
+            WHERE laundry_id = %s
+            ORDER BY id
+        """, (laundry_id,))
+        slots = cur.fetchall()
 
-    if slots:
-        hours_summary = _summarize_hours(slots)
-        if hours_summary:
-            data["hours"] = hours_summary
+        if slots:
+            hours_summary = _summarize_hours(slots)
+            if hours_summary:
+                data["hours"] = hours_summary
 
     return data
 

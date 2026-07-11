@@ -1418,6 +1418,45 @@ async def update_homepage_promo(
     return {"status": "success", "message": "Homepage promo settings updated"}
 
 
+# ── Store Hours Settings ──────────────────────────────────────────────────────
+
+@router.get("/store-hours")
+async def get_store_hours(
+    laundryId: str = Query(...),
+    current_user: dict = Depends(get_current_user),
+):
+    """Get store operating hours from site_content.hours."""
+    with get_db() as conn:
+        cur = get_cursor(conn)
+        cur.execute("SELECT site_content FROM shop.laundry_shops WHERE laundry_id = %s", (laundryId,))
+        row = cur.fetchone()
+    sc = row["site_content"] if row and row.get("site_content") else {}
+    return {"hours": sc.get("hours", [])}
+
+
+@router.put("/store-hours")
+async def update_store_hours(
+    laundryId: str = Query(...),
+    body: dict = Body({}),
+    current_user: dict = Depends(get_current_user),
+):
+    """Update store operating hours in site_content.hours."""
+    hours = body.get("hours", [])
+    # Validate format: [{day: "...", time: "..."}, ...]
+    cleaned = [{"day": h.get("day", "").strip(), "time": h.get("time", "").strip()} for h in hours if h.get("day") and h.get("time")]
+
+    with get_db() as conn:
+        cur = get_cursor(conn)
+        import json
+        cur.execute("""
+            UPDATE shop.laundry_shops
+            SET site_content = COALESCE(site_content, '{}'::jsonb) || jsonb_build_object('hours', %s::jsonb)
+            WHERE laundry_id = %s
+        """, (json.dumps(cleaned), laundryId))
+
+    return {"status": "success", "message": "Store hours updated", "hours": cleaned}
+
+
 # ── Financial Reports (added directly to admin_extra to avoid routing issues) ──
 
 @router.get("/financial-reports/sales-tax")
