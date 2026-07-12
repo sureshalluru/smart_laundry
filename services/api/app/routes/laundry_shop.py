@@ -174,17 +174,18 @@ async def update_delivery_schedule(
                 UPDATE shop.laundry_shops SET subscription_discount = %s WHERE laundry_id = %s
             """, (float(subscription_discount), laundry_id))
 
-        # Replace all delivery time slots
-        cur.execute("DELETE FROM shop.delivery_time_slots WHERE laundry_id = %s", (laundry_id,))
-        for slot in slots:
-            day = slot.get("day")
-            start_time = slot.get("startTime")
-            end_time = slot.get("endTime")
-            if day and start_time and end_time:
-                cur.execute("""
-                    INSERT INTO shop.delivery_time_slots (laundry_id, day_of_week, start_time, end_time)
-                    VALUES (%s, %s, %s, %s)
-                """, (laundry_id, day, start_time, end_time))
+        # Replace all delivery time slots (only if explicitly provided)
+        if slots is not None and "deliveryTimeSlots" in body:
+            cur.execute("DELETE FROM shop.delivery_time_slots WHERE laundry_id = %s", (laundry_id,))
+            for slot in slots:
+                day = slot.get("day")
+                start_time = slot.get("startTime")
+                end_time = slot.get("endTime")
+                if day and start_time and end_time:
+                    cur.execute("""
+                        INSERT INTO shop.delivery_time_slots (laundry_id, day_of_week, start_time, end_time)
+                        VALUES (%s, %s, %s, %s)
+                    """, (laundry_id, day, start_time, end_time))
 
         # Update frequency intervals if provided
         if frequency_intervals is not None:
@@ -228,7 +229,9 @@ async def get_delivery_schedule(
 
         # Fetch frequency intervals
         cur.execute("SELECT interval FROM shop.frequency_intervals WHERE laundry_id = %s", (laundryId,))
-        frequency_intervals = [r["interval"] for r in cur.fetchall()]
+        # Map DB enum values to frontend-friendly display names
+        enum_to_display = {"Weekly": "Weekly", "BiWeekly": "Bi-weekly", "Monthly": "Monthly"}
+        frequency_intervals = [enum_to_display.get(r["interval"], r["interval"]) for r in cur.fetchall()]
 
     return {
         "statusCode": 200,
