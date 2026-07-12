@@ -21,6 +21,7 @@ from app.migrations import add_company_join_code
 from app.migrations import add_vision_tasks
 from app.migrations import add_faq_tables
 from app.migrations import seed_faq_templates
+from app.migrations import add_sms_settings
 
 logger = logging.getLogger(__name__)
 
@@ -46,4 +47,5 @@ def run_all():
     add_vision_tasks.run()
     add_faq_tables.run()
     seed_faq_templates.run()
+    add_sms_settings.run()
     logger.info("All migrations complete.")

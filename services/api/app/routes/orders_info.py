@@ -900,7 +900,7 @@ async def update_order_endpoint(
             # Auto-notify customer when status changes to ProcessingCompleted
             if order_status == "ProcessingCompleted":
                 try:
-                    from app.services.notification_service import send_email, send_sms
+                    from app.services.notification_service import send_email, send_sms_for_tenant
                     customer_id_for_notif = current_order["customer_id"]
                     cur.execute("""
                         SELECT first_name, email, phone_number, notif_email, notif_phone
@@ -953,7 +953,7 @@ async def update_order_endpoint(
                             if not is_paid:
                                 sms += f" Pay here: {base_url}/{laundryId}/user/my-orders/?order_id={orderId}&is_open=true"
                             sms += f" - {laundry_name}"
-                            send_sms(cust["phone_number"], sms)
+                            send_sms_for_tenant(cust["phone_number"], sms, laundryId)
 
                         logger.info(f"Auto-notification sent for {orderId} (ProcessingCompleted, paid={is_paid})")
                 except Exception as notif_err:
@@ -1088,7 +1088,7 @@ async def update_order_endpoint(
             # Auto-notify for review when order is picked up / delivered
             if order_status in ("OrderPickedUp", "Delivered"):
                 try:
-                    from app.services.notification_service import send_email, send_sms
+                    from app.services.notification_service import send_email, send_sms_for_tenant
                     customer_id_for_review = current_order["customer_id"]
                     cur.execute("""
                         SELECT first_name, email, phone_number, notif_email, notif_phone
@@ -1145,7 +1145,7 @@ async def update_order_endpoint(
                             if processor_name:
                                 sms += f" Handled by {processor_name}."
                             sms += f" We'd love a review: {review_url} - {laundry_name}"
-                            send_sms(cust["phone_number"], sms)
+                            send_sms_for_tenant(cust["phone_number"], sms, laundryId)
 
                         logger.info(f"Review notification sent for {orderId} (processed by: {processor_name})")
                 except Exception as review_err:
@@ -1395,6 +1395,7 @@ def get_orders_by_status(cur, laundry_id, operation, page=1, limit=30, order_typ
                 (p.get("paymentIntentId") and p.get("paymentMethod") != "hold")
                 or p.get("paymentMethod") == "Cash"
                 or p.get("paymentMethod") == "Invoice"
+                or p.get("paymentMethod") == "Terminal"
                 for p in payments
             )
             if not has_valid_payment:
@@ -1693,9 +1694,10 @@ def get_single_order(cur, laundry_id, order_id):
             "paymentUnverified": (
                 order["payment_status"] == "Paid" and grand_total > 0
                 and not any(
-                    (p.get("payment_intent_id") and p.get("payment_method") != "hold")
-                    or p.get("payment_method") == "Cash"
-                    or p.get("payment_method") == "Invoice"
+                    (p.get("paymentIntentId") and p.get("paymentMethod") != "hold")
+                    or p.get("paymentMethod") == "Cash"
+                    or p.get("paymentMethod") == "Invoice"
+                    or p.get("paymentMethod") == "Terminal"
                     for p in payments
                 )
             ),

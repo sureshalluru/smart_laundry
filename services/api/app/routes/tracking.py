@@ -278,9 +278,9 @@ async def start_route(
         )
 
         try:
-            from app.services.notification_service import send_sms
+            from app.services.notification_service import send_sms_for_tenant
             if customer_phone:
-                send_sms(customer_phone, sms_message)
+                send_sms_for_tenant(customer_phone, sms_message, laundry_id)
                 logger.info(f"Delivery tracking SMS sent to {customer_phone} for order {order_id}")
         except Exception as e:
             logger.warning(f"Failed to send tracking SMS for order {order_id}: {e}")
@@ -372,9 +372,9 @@ async def notify_next_customer(
         )
 
         try:
-            from app.services.notification_service import send_sms
+            from app.services.notification_service import send_sms_for_tenant
             if customer_phone:
-                send_sms(customer_phone, sms_message)
+                send_sms_for_tenant(customer_phone, sms_message, laundry_id)
                 logger.info(f"Delivery tracking SMS sent to {customer_phone} for order {next_order_id}")
         except Exception as e:
             logger.warning(f"Failed to send tracking SMS for order {next_order_id}: {e}")

@@ -16,7 +16,7 @@ router = APIRouter()
 def _send_frequency_notification(customer_id, laundry_id, order_id, pickup_date, pickup_time):
     """Send email and SMS notification for auto-generated recurring order."""
     try:
-        from app.services.notification_service import send_email, send_sms
+        from app.services.notification_service import send_email, send_sms_for_tenant
 
         with get_db() as conn:
             cur = get_cursor(conn)
@@ -56,7 +56,7 @@ def _send_frequency_notification(customer_id, laundry_id, order_id, pickup_date,
         # SMS
         if customer.get("notif_phone", True) and phone:
             sms_body = f"Hi {first_name}! Your recurring laundry pickup is scheduled for {pickup_date} ({pickup_time}). Order: {order_id}. - {laundry_name}"
-            send_sms(phone, sms_body)
+            send_sms_for_tenant(phone, sms_body, laundry_id)
 
     except Exception as e:
         logger.warning(f"Failed to send frequency notification for {order_id}: {e}")

@@ -100,7 +100,7 @@ def _count_reminders_sent(cur, customer_id, laundry_id, reminder_type):
 
 def _send_reminder(cur, customer_id, laundry_id, reminder_type, stage, message, promo_code, phone, email):
     """Send reminder via SMS/email and log it."""
-    from app.services.notification_service import send_sms, send_email
+    from app.services.notification_service import send_sms_for_tenant, send_email
 
     # Get laundry branding for tenant-branded emails
     laundry_name = None
@@ -116,7 +116,7 @@ def _send_reminder(cur, customer_id, laundry_id, reminder_type, stage, message, 
 
     sent = False
     if phone:
-        sent = send_sms(phone, message)
+        sent = send_sms_for_tenant(phone, message, laundry_id)
     if email:
         send_email(email, "We miss you! 🧺", f"<p>{message}</p>",
                    sender_name=laundry_name, reply_to=contact_email)

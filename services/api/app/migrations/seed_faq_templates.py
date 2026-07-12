@@ -1,7 +1,7 @@
 """
 Migration/Seed: Insert initial FAQ templates into shop.faq_templates.
-Populates the global FAQ template library with 17 researched templates
-across 5 categories. Uses supported tokens from faq_token_resolver.py.
+Populates the global FAQ template library with 23 researched templates
+across 6 categories. Uses supported tokens from faq_token_resolver.py.
 
 Safe to run multiple times (idempotent) — skips insert if slug already exists.
 """
@@ -235,6 +235,87 @@ FAQ_TEMPLATES = [
         "slug": "how-do-you-handle-delicate-items",
         "category": "General Clothing Care",
         "display_order": 1,
+    },
+    # -----------------------------------------------------------------------
+    # Category: Commercial Laundry Services (display_order 0-5)
+    # -----------------------------------------------------------------------
+    {
+        "question": "Do you offer commercial laundry services for businesses?",
+        "answer_template": (
+            "Yes! {{shop_name}} provides professional commercial laundry services for "
+            "businesses of all sizes — including hotels, Airbnbs, restaurants, spas, salons, "
+            "gyms, and medical offices. We handle linens, towels, uniforms, tablecloths, and "
+            "more with consistent quality and fast turnaround. Contact us at {{phone}} to "
+            "set up a commercial account."
+        ),
+        "slug": "do-you-offer-commercial-laundry-services-for-businesses",
+        "category": "Commercial Laundry Services",
+        "display_order": 0,
+    },
+    {
+        "question": "How does commercial laundry pricing work?",
+        "answer_template": (
+            "{{shop_name}} offers competitive per-pound pricing for commercial accounts, "
+            "with volume discounts for regular pickups. Businesses on a recurring schedule "
+            "receive priority turnaround and invoiced billing (Net 30). Our commercial wash "
+            "and fold starts at {{price_wash_fold}}. Contact us at {{phone}} for a custom "
+            "quote based on your volume and frequency."
+        ),
+        "slug": "how-does-commercial-laundry-pricing-work",
+        "category": "Commercial Laundry Services",
+        "display_order": 1,
+    },
+    {
+        "question": "Do you provide laundry service for Airbnb and vacation rentals?",
+        "answer_template": (
+            "Absolutely! {{shop_name}} is the go-to laundry partner for Airbnb hosts and "
+            "vacation rental managers. We wash, dry, and fold sheets, towels, and linens "
+            "between guest turnovers — often with same-day or next-day service. Schedule "
+            "recurring pickups or request on-demand service. We serve {{delivery_areas}} "
+            "and surrounding areas. Call {{phone}} to get started."
+        ),
+        "slug": "do-you-provide-laundry-service-for-airbnb-and-vacation-rentals",
+        "category": "Commercial Laundry Services",
+        "display_order": 2,
+    },
+    {
+        "question": "Can you handle hotel and restaurant linens?",
+        "answer_template": (
+            "Yes! {{shop_name}} handles large-volume linen service for hotels, restaurants, "
+            "and catering businesses. We process sheets, duvet covers, tablecloths, napkins, "
+            "kitchen towels, and uniforms. Our commercial-grade machines handle heavy loads "
+            "efficiently, and we offer scheduled pickup and delivery to keep your business "
+            "running smoothly. Visit us at {{address}} or call {{phone}}."
+        ),
+        "slug": "can-you-handle-hotel-and-restaurant-linens",
+        "category": "Commercial Laundry Services",
+        "display_order": 3,
+    },
+    {
+        "question": "Do you offer recurring pickup schedules for businesses?",
+        "answer_template": (
+            "Yes! {{shop_name}} offers flexible recurring pickup schedules — daily, weekly, "
+            "or bi-weekly — tailored to your business needs. Our commercial accounts get "
+            "priority processing, invoiced billing, and a dedicated service coordinator. "
+            "Whether you're a spa needing daily towel service or a restaurant with weekly "
+            "tablecloth pickups, we've got you covered. Call {{phone}} to set up your schedule."
+        ),
+        "slug": "do-you-offer-recurring-pickup-schedules-for-businesses",
+        "category": "Commercial Laundry Services",
+        "display_order": 4,
+    },
+    {
+        "question": "What types of businesses use your commercial laundry service?",
+        "answer_template": (
+            "{{shop_name}} proudly serves a wide range of businesses including: Airbnb & "
+            "vacation rental hosts, hotels and motels, restaurants and cafes, spas and salons, "
+            "gyms and fitness studios, medical and dental offices, daycare centers, and "
+            "corporate offices. Any business that needs clean linens, towels, or uniforms "
+            "on a reliable schedule — we can help. Contact {{phone}} for a free consultation."
+        ),
+        "slug": "what-types-of-businesses-use-your-commercial-laundry-service",
+        "category": "Commercial Laundry Services",
+        "display_order": 5,
     },
 ]
 

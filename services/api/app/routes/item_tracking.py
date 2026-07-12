@@ -576,7 +576,7 @@ async def confirm_intake(request: ConfirmIntakeRequest):
     Confirm the intake record for an order.
     Saves the intake record, updates the tracking session, and sends SMS to customer.
     """
-    from app.services.notification_service import send_sms
+    from app.services.notification_service import send_sms_for_tenant
     from app.services.sms_formatter import format_intake_sms
 
     # Validate token
@@ -676,7 +676,7 @@ async def confirm_intake(request: ConfirmIntakeRequest):
                 base_url=base_url,
                 laundry_id=payload.laundry_id,
             )
-            sms_sent = send_sms(order_info["customer_phone"], sms_message)
+            sms_sent = send_sms_for_tenant(order_info["customer_phone"], sms_message, payload.laundry_id)
     except Exception as e:
         logger.error(f"Failed to send intake SMS for order {payload.order_id}: {e}")
 
@@ -717,7 +717,7 @@ async def confirm_fold(request: ConfirmFoldRequest):
     Confirm the fold record for an order.
     Runs reconciliation, validates acknowledgements, saves record, and sends SMS.
     """
-    from app.services.notification_service import send_sms
+    from app.services.notification_service import send_sms_for_tenant
     from app.services.sms_formatter import format_completion_sms
     from app.services.reconciliation_service import compute_discrepancies
 
@@ -894,7 +894,7 @@ async def confirm_fold(request: ConfirmFoldRequest):
                 order_id=payload.order_id,
                 laundry_id=payload.laundry_id,
             )
-            sms_sent = send_sms(order_info["customer_phone"], sms_message)
+            sms_sent = send_sms_for_tenant(order_info["customer_phone"], sms_message, payload.laundry_id)
     except Exception as e:
         logger.error(f"Failed to send completion SMS for order {payload.order_id}: {e}")
 

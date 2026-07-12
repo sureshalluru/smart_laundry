@@ -243,6 +243,50 @@ async def get_delivery_schedule(
     }
 
 
+@router.get("/sms-settings")
+async def get_sms_settings(
+    laundryId: str = Query(...),
+    current_user: dict = Depends(get_current_user),
+):
+    """Get SMS settings for a laundry (sms_enabled flag and usage count)."""
+    with get_db() as conn:
+        cur = get_cursor(conn)
+        cur.execute("""
+            SELECT sms_enabled, sms_count FROM shop.laundry_shops WHERE laundry_id = %s
+        """, (laundryId,))
+        row = cur.fetchone()
+        if not row:
+            return {"statusCode": 404, "body": {"status": "error", "message": "Laundry not found"}}
+        return {
+            "statusCode": 200,
+            "body": {
+                "smsEnabled": bool(row.get("sms_enabled", False)),
+                "smsCount": row.get("sms_count") or 0,
+            }
+        }
+
+
+@router.put("/sms-settings")
+async def update_sms_settings(
+    body: dict = Body(...),
+    current_user: dict = Depends(get_current_user),
+):
+    """Toggle SMS notifications for a tenant."""
+    laundry_id = body.get("laundryId")
+    sms_enabled = body.get("smsEnabled")
+
+    if not laundry_id or sms_enabled is None:
+        return {"statusCode": 400, "body": {"status": "error", "message": "Missing laundryId or smsEnabled"}}
+
+    with get_db() as conn:
+        cur = get_cursor(conn)
+        cur.execute("""
+            UPDATE shop.laundry_shops SET sms_enabled = %s WHERE laundry_id = %s
+        """, (bool(sms_enabled), laundry_id))
+
+    return {"statusCode": 200, "body": {"status": "success", "message": "SMS settings updated"}}
+
+
 @router.put("/payment-settings")
 async def update_payment_settings(
     body: dict = Body(...),

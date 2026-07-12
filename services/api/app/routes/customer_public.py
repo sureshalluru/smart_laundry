@@ -482,7 +482,7 @@ async def customer_place_order(
 
         # Send order confirmation email via Brevo
         try:
-            from app.services.notification_service import send_email, send_sms
+            from app.services.notification_service import send_email, send_sms_for_tenant
 
             with get_db() as conn_notif:
                 cur_notif = get_cursor(conn_notif)
@@ -527,7 +527,7 @@ async def customer_place_order(
 
                 if cust.get("notif_phone", True) and cust["phone_number"]:
                     sms_msg = f"Hi {first_name}! Order {order_id} confirmed. Pickup: {pickup_date} ({pickup_time_interval}). - {laundry_name}"
-                    send_sms(cust["phone_number"], sms_msg)
+                    send_sms_for_tenant(cust["phone_number"], sms_msg, laundry_id)
 
         except Exception as notif_err:
             logger.warning(f"Failed to send order confirmation for {order_id}: {notif_err}")
@@ -830,7 +830,7 @@ async def cancel_customer_order(
 def _send_cancel_notification(order_id, laundry_id, customer_id, cancel_reason, cancelled_by="customer"):
     """Send email/SMS notification when an order is canceled."""
     try:
-        from app.services.notification_service import send_email, send_sms
+        from app.services.notification_service import send_email, send_sms_for_tenant
 
         with get_db() as conn:
             cur = get_cursor(conn)
@@ -877,7 +877,7 @@ def _send_cancel_notification(order_id, laundry_id, customer_id, cancel_reason, 
             send_email(row["email"], subject, html_body,
                        sender_name=laundry_name, reply_to=laundry_reply_email)
         if row.get("notif_phone", True) and row["phone_number"]:
-            send_sms(row["phone_number"], sms_msg)
+            send_sms_for_tenant(row["phone_number"], sms_msg, laundry_id)
 
     except Exception as e:
         logger.warning(f"Failed to send cancel notification for {order_id}: {e}")

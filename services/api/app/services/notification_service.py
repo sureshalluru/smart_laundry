@@ -65,7 +65,7 @@ def send_email(to_email: str, subject: str, html_body: str, sender: str = None,
 
 
 def send_sms(to_phone: str, message: str):
-    """Send SMS via Twilio."""
+    """Send SMS via Twilio. Used for system/auth messages (always sent)."""
     if not settings.twilio_account_sid or not settings.twilio_auth_token:
         logger.warning("Twilio not configured. Skipping SMS.")
         return False
@@ -85,12 +85,56 @@ def send_sms(to_phone: str, message: str):
         return False
 
 
+def send_sms_for_tenant(to_phone: str, message: str, laundry_id: str):
+    """
+    Send SMS only if tenant has opted into SMS notifications.
+    Checks shop.laundry_shops.sms_enabled flag.
+    Falls back to NOT sending if flag is missing or False.
+    Tracks SMS count for billing.
+    """
+    try:
+        from app.database import get_db, get_cursor
+        with get_db() as conn:
+            cur = get_cursor(conn)
+            cur.execute("SELECT sms_enabled FROM shop.laundry_shops WHERE laundry_id = %s", (laundry_id,))
+            row = cur.fetchone()
+            if not row or not row.get("sms_enabled"):
+                logger.info(f"SMS disabled for tenant {laundry_id}. Skipping SMS to {to_phone}.")
+                return False
+    except Exception as e:
+        # If column doesn't exist yet (migration not run), skip SMS
+        logger.warning(f"SMS check failed for tenant {laundry_id}: {e}. Skipping SMS.")
+        return False
+
+    # Tenant has SMS enabled — send it
+    result = send_sms(to_phone, message)
+
+    # Track SMS usage for billing
+    if result:
+        try:
+            from app.database import get_db, get_cursor
+            with get_db() as conn:
+                cur = get_cursor(conn)
+                cur.execute("""
+                    UPDATE shop.laundry_shops
+                    SET sms_count = COALESCE(sms_count, 0) + 1
+                    WHERE laundry_id = %s
+                """, (laundry_id,))
+        except Exception:
+            pass
+
+    return result
+
+
 def send_notification(notification_preference: dict, email_body: str, sms_body: str,
                       customer_email: str, customer_phone: str, shop_email: str = None,
-                      sender_name: str = None):
-    """Send notification based on customer preferences."""
+                      sender_name: str = None, laundry_id: str = None):
+    """Send notification based on customer preferences. SMS requires tenant opt-in."""
     if notification_preference.get('email', False) and customer_email:
         send_email(customer_email, "Your Laundry Order Update", email_body,
                    sender_name=sender_name, reply_to=shop_email)
     if notification_preference.get('phone', False) and customer_phone:
-        send_sms(customer_phone, sms_body)
+        if laundry_id:
+            send_sms_for_tenant(customer_phone, sms_body, laundry_id)
+        else:
+            send_sms(customer_phone, sms_body)

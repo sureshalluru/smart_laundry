@@ -511,8 +511,11 @@ const SystemSettingsSection = ({ laundryId }) => {
     const toast = useToast();
     const [taxRate, setTaxRate] = useState(0);
     const [subscriptionDiscount, setSubscriptionDiscount] = useState(0);
+    const [smsEnabled, setSmsEnabled] = useState(false);
+    const [smsCount, setSmsCount] = useState(0);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
+    const [savingSms, setSavingSms] = useState(false);
     const authToken = localStorage.getItem('idToken');
 
     useEffect(() => {
@@ -526,7 +529,19 @@ const SystemSettingsSection = ({ laundryId }) => {
                 if (data.taxRate !== undefined) setTaxRate(data.taxRate);
                 if (data.subscriptionDiscount !== undefined) setSubscriptionDiscount(data.subscriptionDiscount);
             } catch (err) { console.error(err); }
-            finally { setLoading(false); }
+
+            // Fetch SMS settings
+            try {
+                const smsRes = await axios.get(`${process.env.REACT_APP_AWS_API_URL}/api/laundry/sms-settings`, {
+                    params: { laundryId },
+                    headers: { Authorization: `Bearer ${authToken}` }
+                });
+                const smsData = smsRes.data?.body || smsRes.data;
+                if (smsData.smsEnabled !== undefined) setSmsEnabled(smsData.smsEnabled);
+                if (smsData.smsCount !== undefined) setSmsCount(smsData.smsCount);
+            } catch (err) { console.error("Error fetching SMS settings:", err); }
+
+            setLoading(false);
         };
         if (laundryId) fetchSettings();
     }, [laundryId]);
@@ -541,6 +556,19 @@ const SystemSettingsSection = ({ laundryId }) => {
         } catch (err) {
             toast({ title: 'Error saving', status: 'error', duration: 3000 });
         } finally { setSaving(false); }
+    };
+
+    const handleSmsToggle = async (enabled) => {
+        setSavingSms(true);
+        try {
+            await axios.put(`${process.env.REACT_APP_AWS_API_URL}/api/laundry/sms-settings`, {
+                laundryId, smsEnabled: enabled,
+            }, { headers: { Authorization: `Bearer ${authToken}` } });
+            setSmsEnabled(enabled);
+            toast({ title: enabled ? 'SMS notifications enabled' : 'SMS notifications disabled', status: 'success', duration: 3000 });
+        } catch (err) {
+            toast({ title: 'Error updating SMS settings', status: 'error', duration: 3000 });
+        } finally { setSavingSms(false); }
     };
 
     if (loading) return <Flex justify="center" p={8}><Spinner size="lg" /></Flex>;
@@ -583,6 +611,28 @@ const SystemSettingsSection = ({ laundryId }) => {
                         ? `Customers who subscribe to weekly per-bag service get ${subscriptionDiscount}% off each order.`
                         : 'Set to 0 to disable. Customers choosing weekly subscription on per-bag orders get this % discount.'}
                 </Text>
+            </Box>
+
+            <Box mb={6} maxW="400px" p={4} bg="orange.50" borderRadius="md" border="1px solid" borderColor="orange.200">
+                <Flex justify="space-between" align="center" mb={2}>
+                    <Text fontWeight="semibold">📱 SMS Notifications</Text>
+                    <Switch
+                        colorScheme="orange"
+                        isChecked={smsEnabled}
+                        isDisabled={savingSms}
+                        onChange={(e) => handleSmsToggle(e.target.checked)}
+                    />
+                </Flex>
+                <Text fontSize="xs" color="gray.600" mb={2}>
+                    {smsEnabled
+                        ? "SMS is ON — customers will receive text notifications for order updates, delivery tracking, and reminders. You will be billed per message."
+                        : "SMS is OFF — only login OTP texts will be sent. Enable to send order updates via SMS (billed per message)."}
+                </Text>
+                {smsCount > 0 && (
+                    <Text fontSize="xs" color="orange.700" fontWeight="500">
+                        📊 Total SMS sent: {smsCount}
+                    </Text>
+                )}
             </Box>
 
             <Button colorScheme="blue" onClick={handleSave} isLoading={saving}>Save Settings</Button>
