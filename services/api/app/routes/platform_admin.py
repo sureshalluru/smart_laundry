@@ -431,6 +431,9 @@ async def self_service_onboard(body: dict = Body(...)):
     # Serviceable zip codes
     serviceable_zip_codes = body.get("serviceableZipCodes", [])
 
+    # SMS Add-On
+    sms_enabled = body.get("smsEnabled", False)
+
     # Verification fields
     email_verification_token = body.get("emailVerificationToken", "")
 
@@ -560,8 +563,8 @@ async def self_service_onboard(body: dict = Body(...)):
                     stripe_public_key, stripe_private_key,
                     delivery_time_interval, emp_prefix,
                     serviceable_zip_codes, user_domain, site_content,
-                    referred_by_name, referred_by_email
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    referred_by_name, referred_by_email, sms_enabled
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """, (
                 next_id, laundry_name, timezone,
                 street, city, state, zip_code, country,
@@ -574,6 +577,7 @@ async def self_service_onboard(body: dict = Body(...)):
                 json_mod.dumps(site_content),
                 referred_by_name or None,
                 referred_by_email or None,
+                bool(sms_enabled),
             ))
 
             # Upload logo if provided

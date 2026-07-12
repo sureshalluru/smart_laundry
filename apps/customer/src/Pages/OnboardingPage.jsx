@@ -34,6 +34,7 @@ const steps = [
     { title: 'Services', description: 'What you offer' },
     { title: 'Schedule', description: 'Operating hours' },
     { title: 'Payments', description: 'Stripe setup' },
+    { title: 'Add-Ons', description: 'SMS & extras' },
     { title: 'Agreement', description: 'Service terms' },
     { title: 'Review', description: 'Confirm & launch' },
 ];
@@ -103,6 +104,9 @@ const OnboardingPage = () => {
     // Step 4: Payments
     const [stripePublicKey, setStripePublicKey] = useState('');
     const [stripePrivateKey, setStripePrivateKey] = useState('');
+
+    // Step 5: Add-Ons
+    const [smsEnabled, setSmsEnabled] = useState(false);
 
     // Step 5: Agreement
     const [agreementSigned, setAgreementSigned] = useState(false);
@@ -247,6 +251,7 @@ const OnboardingPage = () => {
                 stripePrivateKey,
                 serviceableZipCodes: businessInfo.zipCode ? [businessInfo.zipCode] : [],
                 emailVerificationToken,
+                smsEnabled,
                 multiLocation: multiLocationOption,
                 companyName: multiLocationOption === 'create' ? companyName : undefined,
                 companyEmail: multiLocationOption === 'create' ? companyEmail : undefined,
@@ -266,7 +271,7 @@ const OnboardingPage = () => {
 
             if (response.data.status === 'success') {
                 setResult(response.data);
-                setActiveStep(7); // Move past the last step to show results
+                setActiveStep(8); // Move past the last step to show results
                 toast({ title: 'Laundry created successfully!', status: 'success', duration: 5000 });
             } else {
                 toast({ title: 'Error', description: response.data.message, status: 'error', duration: 5000 });
@@ -310,7 +315,8 @@ const OnboardingPage = () => {
             case 2: return services.some(s => s.serviceName.trim());
             case 3: return schedule.some(s => s.enabled);
             case 4: return true; // Stripe optional at onboarding
-            case 5: return agreementSigned && signatureName.trim().length > 2;
+            case 5: return true; // Add-Ons optional
+            case 6: return agreementSigned && signatureName.trim().length > 2;
             default: return true;
         }
     };
@@ -823,8 +829,79 @@ const OnboardingPage = () => {
                     </VStack>
                 )}
 
-                {/* Step 6: Agreement */}
+                {/* Step 6: Add-Ons */}
                 {activeStep === 5 && (
+                    <VStack spacing={4} align="stretch">
+                        <Heading size="md">📱 SMS Messaging Add-On</Heading>
+                        <Text fontSize="sm" color="gray.600">
+                            Keep your customers informed with automated text notifications for order updates, delivery tracking, and reminders.
+                            Pay only for what you use — simple, tiered pricing based on your message volume.
+                        </Text>
+
+                        <Card variant="outline" bg="green.50" borderColor="green.200">
+                            <CardBody>
+                                <VStack spacing={2} align="stretch">
+                                    <Heading size="sm" color="green.700">✅ Included Free (Always Active)</Heading>
+                                    <Text fontSize="sm">• <strong>Login OTP via SMS</strong> — Customers always receive a one-time passcode text to verify their phone number</Text>
+                                    <Text fontSize="sm">• <strong>Email Notifications</strong> — All order status changes, payment confirmations, delivery updates, and receipts are sent via email at no extra cost</Text>
+                                </VStack>
+                            </CardBody>
+                        </Card>
+
+                        <Card variant="outline" bg="orange.50" borderColor="orange.200">
+                            <CardBody>
+                                <VStack spacing={3} align="stretch">
+                                    <Heading size="sm" color="orange.700">📲 Optional: SMS Order Notifications</Heading>
+                                    <Text fontSize="sm" color="gray.700">
+                                        Want to also send text messages when orders are ready, out for delivery, or when reminders go out?
+                                        Enable SMS notifications below. This is in addition to the emails that always go out.
+                                    </Text>
+                                    <Table size="sm" variant="simple">
+                                        <Thead>
+                                            <Tr>
+                                                <Th>Messages / Month</Th>
+                                                <Th>Cost</Th>
+                                            </Tr>
+                                        </Thead>
+                                        <Tbody>
+                                            <Tr><Td>Up to 500</Td><Td fontWeight="bold">$20/month</Td></Tr>
+                                            <Tr><Td>501 – 1,000</Td><Td fontWeight="bold">$40/month</Td></Tr>
+                                            <Tr><Td>1,001 – 2,000</Td><Td fontWeight="bold">$75/month</Td></Tr>
+                                            <Tr><Td>Over 2,000</Td><Td fontWeight="bold">+$30 per 1,000 messages</Td></Tr>
+                                        </Tbody>
+                                    </Table>
+                                    <Text fontSize="xs" color="gray.600">
+                                        Invoiced monthly based on actual usage. No commitment — cancel anytime from your admin panel.
+                                    </Text>
+                                </VStack>
+                            </CardBody>
+                        </Card>
+
+                        <Card variant="outline" p={4} borderColor={smsEnabled ? 'green.300' : 'gray.200'} bg={smsEnabled ? 'green.50' : 'white'}>
+                            <HStack justify="space-between">
+                                <VStack align="start" spacing={0}>
+                                    <Text fontWeight="bold">{smsEnabled ? '✅ SMS Notifications Enabled' : 'Enable SMS Order Notifications'}</Text>
+                                    <Text fontSize="xs" color="gray.500">
+                                        {smsEnabled ? 'Customers will receive text messages for order updates, delivery tracking, and reminders (in addition to emails).' : 'Emails always go out. Turn this on to also send texts for order ready, delivery, and reminder notifications.'}
+                                    </Text>
+                                </VStack>
+                                <Checkbox
+                                    size="lg"
+                                    colorScheme="green"
+                                    isChecked={smsEnabled}
+                                    onChange={e => setSmsEnabled(e.target.checked)}
+                                />
+                            </HStack>
+                        </Card>
+
+                        <Text fontSize="xs" color="gray.500">
+                            You can change this setting at any time from your admin panel under System Settings.
+                        </Text>
+                    </VStack>
+                )}
+
+                {/* Step 6: Agreement */}
+                {activeStep === 6 && (
                     <VStack spacing={4} align="stretch">
                         <Heading size="md">Service Agreement</Heading>
                         <Text fontSize="sm" color="gray.600">
@@ -905,7 +982,7 @@ const OnboardingPage = () => {
                 )}
 
                 {/* Step 7: Review */}
-                {activeStep === 6 && (
+                {activeStep === 7 && (
                     <VStack spacing={4} align="stretch">
                         <Heading size="md">Review & Launch</Heading>
 
@@ -924,6 +1001,7 @@ const OnboardingPage = () => {
                                     <Text fontWeight="bold">Services:</Text><Text>{services.filter(s => s.serviceName).length} configured</Text>
                                     <Text fontWeight="bold">Schedule:</Text><Text>{schedule.filter(s => s.enabled).length} days/week</Text>
                                     <Text fontWeight="bold">Stripe:</Text><Text>{stripePublicKey ? '✅ Connected' : '⏳ Skip for now'}</Text>
+                                    <Text fontWeight="bold">SMS:</Text><Text>{smsEnabled ? '✅ Enabled' : '❌ Not enabled'}</Text>
                                     <Text fontWeight="bold">Agreement:</Text><Text>{agreementSigned ? '✅ Signed' : '❌ Not signed'}</Text>
                                 </SimpleGrid>
                             </CardBody>
@@ -936,7 +1014,7 @@ const OnboardingPage = () => {
                 )}
 
                 {/* Navigation */}
-                {activeStep < 7 && (
+                {activeStep < 8 && (
                     <VStack spacing={2} pt={4}>
                         {!canProceed() && activeStep === 0 && (
                             <Alert status="info" borderRadius="md" size="sm">
@@ -950,7 +1028,7 @@ const OnboardingPage = () => {
                             <Button variant="ghost" onClick={() => setActiveStep(Math.max(0, activeStep - 1))} isDisabled={activeStep === 0}>
                                 Back
                             </Button>
-                            {activeStep < 6 && (
+                            {activeStep < 7 && (
                                 <Button colorScheme="blue" onClick={() => setActiveStep(activeStep + 1)} isDisabled={!canProceed()}>
                                     Next
                                 </Button>
