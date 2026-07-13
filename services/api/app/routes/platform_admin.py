@@ -95,6 +95,7 @@ async def delete_laundry(laundry_id: str, x_platform_key: str = Header(None)):
     """
     Delete a laundry and ALL its associated data.
     This is destructive and irreversible. Used for cleaning up test tenants.
+    Deletes from all known tables that reference laundry_id in a single transaction.
     """
     verify_platform_admin(x_platform_key)
 
@@ -109,73 +110,101 @@ async def delete_laundry(laundry_id: str, x_platform_key: str = Header(None)):
 
         laundry_name = row["laundry_name"]
 
-        # Dynamically find and delete ALL rows referencing this laundry_id across all tables.
-        # Query pg_catalog for every FK that references laundry_shops, then delete from those tables first.
-        cur.execute("""
-            SELECT
-                tc.table_schema || '.' || tc.table_name AS child_table,
-                kcu.column_name AS child_column
-            FROM information_schema.table_constraints tc
-            JOIN information_schema.key_column_usage kcu
-                ON tc.constraint_name = kcu.constraint_name AND tc.table_schema = kcu.table_schema
-            JOIN information_schema.constraint_column_usage ccu
-                ON tc.constraint_name = ccu.constraint_name AND tc.table_schema = ccu.table_schema
-            WHERE tc.constraint_type = 'FOREIGN KEY'
-              AND ccu.table_schema = 'shop'
-              AND ccu.table_name = 'laundry_shops'
-              AND ccu.column_name = 'laundry_id'
-        """)
-        fk_refs = cur.fetchall()
-
-        # Delete from all referencing tables first
-        for ref in fk_refs:
-            table = ref["child_table"]
-            column = ref["child_column"]
-            try:
-                cur.execute(f'DELETE FROM {table} WHERE "{column}" = %s', (laundry_id,))
-            except Exception as e:
-                print(f"[DELETE] FK cleanup skipped {table}: {e}")
-                logger.warning(f"FK cleanup skipped {table}.{column}: {e}")
-                conn.rollback()
-                cur = get_cursor(conn)
-
-        # Now delete order-related child tables (FKs reference orders.orders, not laundry_shops directly)
+        # --- Order child tables (FK to orders.orders, not directly to laundry_shops) ---
         order_child_tables = [
             "orders.order_tips",
             "orders.order_payments",
             "orders.order_services",
             "orders.order_products",
+            "orders.order_history",
         ]
         for table in order_child_tables:
             try:
                 cur.execute(f"DELETE FROM {table} WHERE order_id IN (SELECT order_id FROM orders.orders WHERE laundry_id = %s)", (laundry_id,))
             except Exception as e:
-                print(f"[DELETE] Order child cleanup skipped {table}: {e}")
-                conn.rollback()
-                cur = get_cursor(conn)
+                logger.warning(f"[DELETE] Order child cleanup skipped {table}: {e}")
 
-        # Delete orders themselves
+        # --- Orders ---
         try:
             cur.execute("DELETE FROM orders.orders WHERE laundry_id = %s", (laundry_id,))
         except Exception as e:
-            print(f"[DELETE] Orders delete failed: {e}")
-            conn.rollback()
-            cur = get_cursor(conn)
+            logger.warning(f"[DELETE] orders.orders failed: {e}")
 
-        # Delete tracking tables (reference laundry_id directly)
-        for table in ["tracking.fold_records", "tracking.intake_records", "tracking.tracking_sessions"]:
+        # --- Frequency subscriptions ---
+        try:
+            cur.execute("DELETE FROM orders.laundry_frequency WHERE laundry_id = %s", (laundry_id,))
+        except Exception as e:
+            logger.warning(f"[DELETE] laundry_frequency failed: {e}")
+
+        # --- Tracking tables ---
+        for table in ["tracking.fold_records", "tracking.intake_records", "tracking.tracking_sessions", "tracking.vision_tasks", "tracking.item_categories"]:
             try:
                 cur.execute(f"DELETE FROM {table} WHERE laundry_id = %s", (laundry_id,))
             except Exception as e:
-                conn.rollback()
-                cur = get_cursor(conn)
+                logger.warning(f"[DELETE] {table} failed: {e}")
 
-        # Finally delete the laundry shop itself
+        # --- Routes ---
+        for table in ["routes.route_assignments", "routes.driver_locations"]:
+            try:
+                cur.execute(f"DELETE FROM {table} WHERE laundry_id = %s", (laundry_id,))
+            except Exception as e:
+                logger.warning(f"[DELETE] {table} failed: {e}")
+
+        # --- Shop-level tables referencing laundry_id (no FK or soft FK) ---
+        shop_tables = [
+            "shop.service_categories",
+            "shop.laundry_services",
+            "shop.laundry_products",
+            "shop.delivery_time_slots",
+            "shop.instore_pickup_time_slots",
+            "shop.frequency_intervals",
+            "shop.employees",
+            "shop.promotions",
+            "shop.customer_payment_profiles",
+            "shop.customer_laundry_stats",
+            "shop.customer_reminders",
+            "shop.engagement_config",
+            "shop.tenant_faqs",
+            "shop.audit_log",
+        ]
+        for table in shop_tables:
+            try:
+                cur.execute(f"DELETE FROM {table} WHERE laundry_id = %s", (laundry_id,))
+            except Exception as e:
+                logger.warning(f"[DELETE] {table} failed: {e}")
+
+        # --- Dynamic FK cleanup (catch any tables we missed above) ---
+        try:
+            cur.execute("""
+                SELECT
+                    tc.table_schema || '.' || tc.table_name AS child_table,
+                    kcu.column_name AS child_column
+                FROM information_schema.table_constraints tc
+                JOIN information_schema.key_column_usage kcu
+                    ON tc.constraint_name = kcu.constraint_name AND tc.table_schema = kcu.table_schema
+                JOIN information_schema.constraint_column_usage ccu
+                    ON tc.constraint_name = ccu.constraint_name AND tc.table_schema = ccu.table_schema
+                WHERE tc.constraint_type = 'FOREIGN KEY'
+                  AND ccu.table_schema = 'shop'
+                  AND ccu.table_name = 'laundry_shops'
+                  AND ccu.column_name = 'laundry_id'
+            """)
+            fk_refs = cur.fetchall()
+            for ref in fk_refs:
+                table = ref["child_table"]
+                column = ref["child_column"]
+                try:
+                    cur.execute(f'DELETE FROM {table} WHERE "{column}" = %s', (laundry_id,))
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+        # --- Finally delete the laundry shop itself ---
         try:
             cur.execute("DELETE FROM shop.laundry_shops WHERE laundry_id = %s", (laundry_id,))
         except Exception as e:
             logger.error(f"FAILED to delete laundry_shops row for {laundry_id}: {e}")
-            conn.rollback()
             return {"status": "error", "message": f"Failed to delete laundry: {e}"}
 
     logger.info(f"Deleted laundry: {laundry_name} (ID: {laundry_id})")
@@ -617,7 +646,9 @@ async def self_service_onboard(body: dict = Body(...)):
             for cat in default_categories:
                 cur.execute("""
                     INSERT INTO shop.service_categories (laundry_id, category_name, display_order)
-                    VALUES (%s, %s, %s) RETURNING category_id
+                    VALUES (%s, %s, %s)
+                    ON CONFLICT (laundry_id, category_name) DO UPDATE SET display_order = EXCLUDED.display_order
+                    RETURNING category_id
                 """, (next_id, cat["name"], cat["order"]))
                 category_ids[cat["name"]] = cur.fetchone()["category_id"]
 
@@ -764,7 +795,7 @@ async def self_service_onboard(body: dict = Body(...)):
                 from app.services.notification_service import send_email
                 admin_url = f"https://smartlaundrybasket.ai/{next_id}/admin"
                 customer_url = f"https://smartlaundrybasket.ai/{next_id}/site"
-                schedule_pickup_url = f"https://smartlaundrybasket.ai/{next_id}/site"
+                schedule_pickup_url = f"https://www.smartlaundrybasket.ai/{next_id}"
                 booking_url = "https://calendar.google.com/calendar/u/0/appointments/schedules/AcZssZ0VrdVjQuZ3xf_TFkqNK-C4oHkD0hgROG7ARrpInHo8ZB4q5X2lM5KTAfel88aCzzzpWbxtu1lR"
                 welcome_html = f"""
                 <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
@@ -799,7 +830,8 @@ async def self_service_onboard(body: dict = Body(...)):
                             <tr>
                                 <td style="padding: 12px 16px; background: #EBF8FF; border: 1px solid #BEE3F8; border-radius: 4px; vertical-align: top;">
                                     <strong>Option A: Point Your Domain</strong><br/>
-                                    <span style="font-size: 13px; color: #4A5568;">Point your website's DNS (e.g. yourbusiness.com) to our platform to get a fully branded customer portal with scheduling, payments, and order tracking.</span>
+                                    <span style="font-size: 13px; color: #4A5568;">Point your website's DNS (e.g. yourbusiness.com) to our platform to get a fully branded customer portal with scheduling, payments, and order tracking.<br/>
+                                    Your landing page: <a href="{customer_url}" style="color: #2B6CB0; word-break: break-all;">{customer_url}</a></span>
                                 </td>
                             </tr>
                             <tr><td style="padding: 6px; text-align: center; font-size: 12px; color: #999;">— OR —</td></tr>
@@ -831,7 +863,7 @@ async def self_service_onboard(body: dict = Body(...)):
                         <a href="{booking_url}" style="display: inline-block; padding: 12px 32px; background: #2B6CB0; color: white; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 15px;">Schedule a Setup Call</a>
                     </div>
 
-                    <h3 style="color: #2D3748; border-bottom: 1px solid #E2E8F0; padding-bottom: 8px;">📱 How to Log In</h3>
+                    <h3 style="color: #2D3748; border-bottom: 1px solid #E2E8F0; padding-bottom: 8px;">📱 How to Login to Admin</h3>
                     <ol style="line-height: 2;">
                         <li>Go to <a href="{admin_url}" style="color: #2B6CB0;">{admin_url}</a></li>
                         <li>Enter your Employee ID and Passcode</li>
