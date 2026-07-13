@@ -764,6 +764,8 @@ async def self_service_onboard(body: dict = Body(...)):
                 from app.services.notification_service import send_email
                 admin_url = f"https://smartlaundrybasket.ai/{next_id}/admin"
                 customer_url = f"https://smartlaundrybasket.ai/{next_id}/site"
+                schedule_pickup_url = f"https://smartlaundrybasket.ai/{next_id}/site"
+                booking_url = "https://calendar.google.com/calendar/u/0/appointments/schedules/AcZssZ0VrdVjQuZ3xf_TFkqNK-C4oHkD0hgROG7ARrpInHo8ZB4q5X2lM5KTAfel88aCzzzpWbxtu1lR"
                 welcome_html = f"""
                 <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
                     <h2 style="color: #2B6CB0;">🎉 Welcome to Smart Laundry Basket!</h2>
@@ -784,19 +786,50 @@ async def self_service_onboard(body: dict = Body(...)):
                     <table style="border-collapse: collapse; width: 100%; margin: 12px 0;">
                         <tr><td style="padding: 10px 16px; font-weight: bold; background: #F7FAFC; border: 1px solid #E2E8F0;">Admin Dashboard</td>
                             <td style="padding: 10px 16px; border: 1px solid #E2E8F0;"><a href="{admin_url}" style="color: #2B6CB0;">{admin_url}</a></td></tr>
-                        <tr><td style="padding: 10px 16px; font-weight: bold; background: #F7FAFC; border: 1px solid #E2E8F0;">Customer Website</td>
+                        <tr><td style="padding: 10px 16px; font-weight: bold; background: #F7FAFC; border: 1px solid #E2E8F0;">Customer Portal</td>
                             <td style="padding: 10px 16px; border: 1px solid #E2E8F0;"><a href="{customer_url}" style="color: #2B6CB0;">{customer_url}</a></td></tr>
+                        <tr><td style="padding: 10px 16px; font-weight: bold; background: #F7FAFC; border: 1px solid #E2E8F0;">Schedule Pickup Page</td>
+                            <td style="padding: 10px 16px; border: 1px solid #E2E8F0;"><a href="{schedule_pickup_url}" style="color: #2B6CB0;">{schedule_pickup_url}</a></td></tr>
                     </table>
 
+                    <h3 style="color: #E53E3E; border-bottom: 1px solid #FED7D7; padding-bottom: 8px;">🚨 Required: Connect Your Website</h3>
+                    <div style="padding: 16px; background: #FFF5F5; border-radius: 8px; border: 1px solid #FED7D7; margin: 12px 0;">
+                        <p style="margin: 0 0 12px 0; font-weight: bold;">To start receiving online orders from your customers, you need to do ONE of the following:</p>
+                        <table style="border-collapse: collapse; width: 100%; margin: 8px 0;">
+                            <tr>
+                                <td style="padding: 12px 16px; background: #EBF8FF; border: 1px solid #BEE3F8; border-radius: 4px; vertical-align: top;">
+                                    <strong>Option A: Point Your Domain</strong><br/>
+                                    <span style="font-size: 13px; color: #4A5568;">Point your website's DNS (e.g. yourbusiness.com) to our platform to get a fully branded customer portal with scheduling, payments, and order tracking.</span>
+                                </td>
+                            </tr>
+                            <tr><td style="padding: 6px; text-align: center; font-size: 12px; color: #999;">— OR —</td></tr>
+                            <tr>
+                                <td style="padding: 12px 16px; background: #F0FFF4; border: 1px solid #C6F6D5; border-radius: 4px; vertical-align: top;">
+                                    <strong>Option B: Add a Schedule Pickup Link</strong><br/>
+                                    <span style="font-size: 13px; color: #4A5568;">Add a "Schedule Pickup" button on your existing website that links to:<br/>
+                                    <a href="{schedule_pickup_url}" style="color: #2B6CB0; word-break: break-all;">{schedule_pickup_url}</a></span>
+                                </td>
+                            </tr>
+                        </table>
+                        <p style="margin: 12px 0 0 0; font-size: 13px; color: #4A5568;">Either option lets your customers schedule pickups, make payments, and track orders online.</p>
+                    </div>
+
                     <h3 style="color: #2D3748; border-bottom: 1px solid #E2E8F0; padding-bottom: 8px;">✅ Complete Your Setup</h3>
-                    <p>To start receiving orders, please complete these steps in your Admin Dashboard:</p>
+                    <p>To start receiving orders, complete these steps in your Admin Dashboard:</p>
                     <ol style="line-height: 2;">
-                        <li><strong>Add Stripe Payment</strong> — Connect your Stripe account to accept online payments</li>
+                        <li><strong>Connect Stripe</strong> — Accept online card payments</li>
                         <li><strong>Set Delivery Schedule</strong> — Configure your pickup/dropoff time slots</li>
                         <li><strong>Add Services & Pricing</strong> — Set up your service menu with prices</li>
                         <li><strong>Set Serviceable Area</strong> — Add zip codes you serve</li>
+                        <li><strong>Connect Your Website</strong> — Point your domain or add a Schedule Pickup link (see above)</li>
                         <li><strong>Add Team Members</strong> — Create employee accounts for your staff</li>
                     </ol>
+
+                    <div style="margin: 24px 0; padding: 20px; background: #EBF8FF; border-radius: 12px; border: 2px solid #2B6CB0; text-align: center;">
+                        <p style="margin: 0 0 8px 0; font-size: 16px; font-weight: bold; color: #2B6CB0;">📞 Need Help Getting Set Up?</p>
+                        <p style="margin: 0 0 16px 0; font-size: 14px; color: #4A5568;">Book a free 15-minute setup call. We'll help you connect your domain, configure services, and get ready to take your first order.</p>
+                        <a href="{booking_url}" style="display: inline-block; padding: 12px 32px; background: #2B6CB0; color: white; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 15px;">Schedule a Setup Call</a>
+                    </div>
 
                     <h3 style="color: #2D3748; border-bottom: 1px solid #E2E8F0; padding-bottom: 8px;">📱 How to Log In</h3>
                     <ol style="line-height: 2;">
@@ -805,8 +838,8 @@ async def self_service_onboard(body: dict = Body(...)):
                         <li>When prompted, enter the Device Registration Code shown above</li>
                     </ol>
 
-                    <div style="margin-top: 24px; padding: 16px; background: #EBF8FF; border-radius: 8px; border: 1px solid #BEE3F8;">
-                        <p style="margin: 0; font-size: 14px;"><strong>Need help?</strong> Reply to this email or use the support chat in your admin dashboard. We're here to help you get set up!</p>
+                    <div style="margin-top: 24px; padding: 16px; background: #F7FAFC; border-radius: 8px; border: 1px solid #E2E8F0;">
+                        <p style="margin: 0; font-size: 14px;"><strong>Need help?</strong> Reply to this email, use the support chat in your admin dashboard, or <a href="{booking_url}" style="color: #2B6CB0;">schedule a call</a>.</p>
                     </div>
 
                     <p style="margin-top: 24px; font-size: 12px; color: #999;">Please keep your credentials secure. You can find them again in your admin settings or contact support.</p>
