@@ -506,58 +506,82 @@ const MobileOrderPage = () => {
 
         {/* Action Buttons — New workflow layout */}
         <Box bg="white" borderRadius="lg" p={4} shadow="sm">
-          <Text fontSize="sm" fontWeight="bold" color="gray.700" mb={3}>
-            Actions
-          </Text>
+          <HStack justify="space-between" mb={3}>
+            <Text fontSize="sm" fontWeight="bold" color="gray.700">
+              Actions
+            </Text>
+            {/* Next step suggestion */}
+            {order.orderStatus === 'ReceivedAtFacility' && !order.services?.some(s => s.weightOrCount > 0) && (
+              <Badge colorScheme="purple" fontSize="2xs" variant="subtle">Next: Enter Weight</Badge>
+            )}
+            {order.orderStatus === 'ReceivedAtFacility' && order.services?.some(s => s.weightOrCount > 0) && !trackingRecord?.intakeRecord && (
+              <Badge colorScheme="blue" fontSize="2xs" variant="subtle">Next: Scan Received</Badge>
+            )}
+            {order.orderStatus === 'ReceivedAtFacility' && trackingRecord?.intakeRecord && washingPhotos.length === 0 && (
+              <Badge colorScheme="yellow" fontSize="2xs" variant="subtle">Next: Washing</Badge>
+            )}
+            {(order.orderStatus === 'ProcessingStarted' || order.orderStatus === 'Processing') && washingPhotos.length === 0 && (
+              <Badge colorScheme="yellow" fontSize="2xs" variant="subtle">Next: Washing</Badge>
+            )}
+            {(order.orderStatus === 'ProcessingStarted' || order.orderStatus === 'Processing') && washingPhotos.length > 0 && dryingPhotos.length === 0 && (
+              <Badge colorScheme="orange" fontSize="2xs" variant="subtle">Next: Drying</Badge>
+            )}
+            {(order.orderStatus === 'ProcessingStarted' || order.orderStatus === 'Processing') && washingPhotos.length > 0 && dryingPhotos.length > 0 && (
+              <Badge colorScheme="green" fontSize="2xs" variant="subtle">Next: Fold Complete</Badge>
+            )}
+            {order.orderStatus === 'ProcessingCompleted' && (
+              <Badge colorScheme="green" fontSize="2xs" variant="solid">✓ Processing Done</Badge>
+            )}
+          </HStack>
           <SimpleGrid columns={2} spacing={3}>
             {/* Row 1 */}
             <Button
               leftIcon={<FaWeight />}
-              variant="outline"
+              variant={order.services?.some(s => s.weightOrCount > 0) ? "solid" : "outline"}
               colorScheme="purple"
               size="md"
               minH="44px"
               fontSize="xs"
               onClick={onWeightEntryOpen}
             >
-              Enter Weight/Count
+              {order.services?.some(s => s.weightOrCount > 0) ? '✓ ' : ''}Enter Weight/Count
             </Button>
             <Button
               leftIcon={<FaCamera />}
-              variant={activeAction === 'received' ? 'solid' : 'outline'}
+              variant={activeAction === 'received' ? 'solid' : (trackingRecord?.intakeRecord ? 'solid' : 'outline')}
               colorScheme="blue"
               size="md"
               minH="44px"
               fontSize="xs"
               onClick={() => setActiveAction(activeAction === 'received' ? null : 'received')}
             >
-              📷 Received Items
+              {trackingRecord?.intakeRecord ? '✓ ' : '📷 '}Received Items
             </Button>
             {/* Row 2 */}
             <Button
-              variant={activePhotoStep === 'washing' ? 'solid' : 'outline'}
+              variant={activePhotoStep === 'washing' ? 'solid' : (washingPhotos.length > 0 ? 'solid' : 'outline')}
               colorScheme="yellow"
               size="md"
               minH="44px"
               fontSize="xs"
               onClick={() => setActivePhotoStep(activePhotoStep === 'washing' ? null : 'washing')}
             >
-              🧺 Washing
+              {washingPhotos.length > 0 ? `✓ Washing (${washingPhotos.length})` : '🧺 Washing'}
             </Button>
             <Button
-              variant={activePhotoStep === 'drying' ? 'solid' : 'outline'}
+              variant={activePhotoStep === 'drying' ? 'solid' : (dryingPhotos.length > 0 ? 'solid' : 'outline')}
               colorScheme="orange"
               size="md"
               minH="44px"
               fontSize="xs"
               onClick={() => setActivePhotoStep(activePhotoStep === 'drying' ? null : 'drying')}
             >
-              🔥 Drying
+              {dryingPhotos.length > 0 ? `✓ Drying (${dryingPhotos.length})` : '🔥 Drying'}
             </Button>
             {/* Row 3 — full width */}
             <Button
               leftIcon={<FaTshirt />}
-              variant={activeAction === 'fold_complete' ? 'solid' : 'outline'}
+              variant={activeAction === 'fold_complete' ? 'solid' : (order.orderStatus === 'ProcessingCompleted' || trackingRecord?.foldRecord ? 'solid' : 'outline')}
               colorScheme="green"
               size="md"
               minH="44px"
@@ -565,7 +589,7 @@ const MobileOrderPage = () => {
               gridColumn="span 2"
               onClick={() => setActiveAction(activeAction === 'fold_complete' ? null : 'fold_complete')}
             >
-              👕 Fold Complete
+              {(order.orderStatus === 'ProcessingCompleted' || trackingRecord?.foldRecord) ? '✓ ' : '👕 '}Fold Complete
             </Button>
           </SimpleGrid>
         </Box>

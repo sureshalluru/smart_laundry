@@ -20,6 +20,7 @@ import ProductWebsite from './Pages/ProductWebsite';
 import LaundryLandingWrapper from './Pages/LaundryLandingWrapper';
 import PlatformAdminPage from './Pages/PlatformAdminPage';
 import OnboardingPage from './Pages/OnboardingPage';
+import ShowLandingPage from './Pages/ShowLandingPage';
 import SareeRollingPage from './Pages/SareeRollingPage';
 import ItemTrackingUpload from './Pages/ItemTrackingUpload';
 import OrderTrackingPhotos from './Pages/OrderTrackingPhotos';
@@ -87,6 +88,8 @@ function App() {
                         <Route path="/invalid" element={<Navigate to="/" replace />} />
                         <Route path="/platform-admin" element={<PlatformAdminPage />} />
                         <Route path="/onboard" element={<OnboardingPage />} />
+                        <Route path="/show" element={<ShowLandingPage />} />
+                        <Route path="/cla" element={<ShowLandingPage />} />
                         <Route path="/saree-rolling" element={<SareeRollingPage />} />
                         <Route path="/:laundryId/saree-rolling" element={<SareeRollingPage />} />
                         <Route path="/track/:token" element={<ItemTrackingUpload />} />
