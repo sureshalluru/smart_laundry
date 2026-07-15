@@ -22,12 +22,8 @@ reportWebVitals();
 // Service Worker cleanup — unregister any existing SW to prevent stale cache issues
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.getRegistrations().then((registrations) => {
-    registrations.forEach((registration) => {
-      registration.unregister();
-    });
+    registrations.forEach((registration) => registration.unregister());
   });
-  // Register the self-destructing SW to clear caches from users who had the old one
-  navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' }).catch(() => {});
 }
 
 // ── Stale Bundle Detection (Safari/iOS fix) ──────────────────────────────────
