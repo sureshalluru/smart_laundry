@@ -510,15 +510,18 @@ const MobileOrderPage = () => {
             <Text fontSize="sm" fontWeight="bold" color="gray.700">
               Actions
             </Text>
-            {/* Next step suggestion */}
+            {/* Next step suggestion — based on order status + local photo state */}
             {order.orderStatus === 'ReceivedAtFacility' && !order.services?.some(s => s.weightOrCount > 0) && (
               <Badge colorScheme="purple" fontSize="2xs" variant="subtle">Next: Enter Weight</Badge>
             )}
-            {order.orderStatus === 'ReceivedAtFacility' && order.services?.some(s => s.weightOrCount > 0) && !trackingRecord?.intakeRecord && (
-              <Badge colorScheme="blue" fontSize="2xs" variant="subtle">Next: Scan Received</Badge>
-            )}
-            {order.orderStatus === 'ReceivedAtFacility' && trackingRecord?.intakeRecord && washingPhotos.length === 0 && (
+            {order.orderStatus === 'ReceivedAtFacility' && order.services?.some(s => s.weightOrCount > 0) && washingPhotos.length === 0 && (
               <Badge colorScheme="yellow" fontSize="2xs" variant="subtle">Next: Washing</Badge>
+            )}
+            {order.orderStatus === 'ReceivedAtFacility' && washingPhotos.length > 0 && dryingPhotos.length === 0 && (
+              <Badge colorScheme="orange" fontSize="2xs" variant="subtle">Next: Drying</Badge>
+            )}
+            {order.orderStatus === 'ReceivedAtFacility' && washingPhotos.length > 0 && dryingPhotos.length > 0 && (
+              <Badge colorScheme="green" fontSize="2xs" variant="subtle">Next: Fold Complete</Badge>
             )}
             {(order.orderStatus === 'ProcessingStarted' || order.orderStatus === 'Processing') && washingPhotos.length === 0 && (
               <Badge colorScheme="yellow" fontSize="2xs" variant="subtle">Next: Washing</Badge>
@@ -828,9 +831,22 @@ const MobileOrderPage = () => {
               laundryId={laundryId}
               phase="intake"
               employeeId={employeeId}
-              onComplete={() => {
+              onComplete={async () => {
                 setActiveAction(null);
                 fetchTrackingRecord();
+                // Auto-advance order status to ProcessingStarted when received photos are submitted
+                try {
+                  await axios.put(`${API_URL}/api/admin/update-order`, 
+                    { orderStatus: 'ProcessingStarted' },
+                    {
+                      params: { operation: 'updateOrder', orderId, laundryId, empId: employeeId },
+                      headers: { Authorization: `Bearer ${localStorage.getItem('idToken')}` },
+                    }
+                  );
+                } catch (e) {
+                  // Non-blocking — status will be updated on next manual action
+                  console.warn('Auto-status advance failed:', e);
+                }
                 silentFetchOrder();
               }}
               onCancel={() => setActiveAction(null)}
