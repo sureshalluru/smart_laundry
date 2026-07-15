@@ -19,36 +19,15 @@ root.render(
 
 reportWebVitals();
 
-// Service Worker management — handles stale cache issues (especially Safari/iOS)
+// Service Worker cleanup — unregister any existing SW to prevent stale cache issues
 if ('serviceWorker' in navigator) {
-  // Unregister any stale service worker from previous deploys that used different scope
   navigator.serviceWorker.getRegistrations().then((registrations) => {
-    for (const registration of registrations) {
-      // If the SW is outdated (no controller means it never activated), unregister it
-      if (!navigator.serviceWorker.controller) {
-        registration.unregister();
-      }
-    }
+    registrations.forEach((registration) => {
+      registration.unregister();
+    });
   });
-
-  // Register our SW with no-cache to ensure Safari always checks for updates
-  navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' })
-    .then((registration) => {
-      // Check for updates every 5 minutes (Safari won't auto-check frequently)
-      setInterval(() => registration.update(), 5 * 60 * 1000);
-    })
-    .catch(() => {});
-
-  // Listen for SW update notification — auto-reload to pick up new code
-  navigator.serviceWorker.addEventListener('message', (event) => {
-    if (event.data?.type === 'SW_UPDATED') {
-      // Reload the page to pick up new bundles — but only if not mid-interaction
-      // Small delay to let the SW finish activating
-      setTimeout(() => {
-        window.location.reload();
-      }, 1000);
-    }
-  });
+  // Register the self-destructing SW to clear caches from users who had the old one
+  navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' }).catch(() => {});
 }
 
 // ── Stale Bundle Detection (Safari/iOS fix) ──────────────────────────────────
