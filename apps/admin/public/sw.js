@@ -4,7 +4,7 @@
 // 2. Navigation requests ALWAYS go to network (no stale HTML)
 // 3. JS/CSS bundles with hashes are cached, everything else is network-first
 
-const CACHE_VERSION = 4;
+const CACHE_VERSION = 5;
 const CACHE_NAME = `slb-pos-v${CACHE_VERSION}`;
 
 self.addEventListener('install', (event) => {
@@ -24,10 +24,10 @@ self.addEventListener('activate', (event) => {
       // Take control of ALL open tabs immediately
       return self.clients.claim();
     }).then(() => {
-      // Notify all open windows to refresh (picks up new bundles)
+      // Force-reload all open windows to pick up new bundles
       return self.clients.matchAll({ type: 'window' }).then((clients) => {
         clients.forEach((client) => {
-          client.postMessage({ type: 'SW_UPDATED', version: CACHE_VERSION });
+          client.navigate(client.url);
         });
       });
     })
