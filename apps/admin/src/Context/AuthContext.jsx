@@ -29,15 +29,13 @@ export function AuthProvider({ children }) {
                     // Set default auth header
                     axios.defaults.headers.common['Authorization'] = `Bearer ${parsed.accessToken}`;
                 } else {
-                    // Try refresh if refresh token is available
-                    if (parsed.refreshToken) {
-                        refreshToken(parsed.refreshToken);
-                    } else {
-                        localStorage.removeItem('auth');
-                    }
+                    // Token expired — clear and go to login
+                    localStorage.removeItem('auth');
+                    localStorage.removeItem('idToken');
                 }
             } catch (e) {
                 localStorage.removeItem('auth');
+                localStorage.removeItem('idToken');
             }
         }
         // Also check if a valid company token can serve as auth (for company admin navigating into a laundry)

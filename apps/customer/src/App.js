@@ -28,8 +28,14 @@ import TrackingPage from './Pages/TrackingPage';
 import FAQIndexPage from './Pages/FAQIndexPage';
 import FAQDetailPage from './Pages/FAQDetailPage';
 import CityPickupDeliveryPage from './Pages/CityPickupDeliveryPage';
-import { Navigate } from 'react-router-dom';
+import { Navigate, useParams } from 'react-router-dom';
 import theme from './theme';
+
+// Payment link redirect — converts /user/pay/:orderId to /user/my-orders/?order_id=X&is_open=true
+function PayRedirect() {
+    const { laundryId, orderId } = useParams();
+    return <Navigate to={`/${laundryId}/user/my-orders/?order_id=${orderId}&is_open=true`} replace />;
+}
 
 // Domain-to-laundry mapping for multi-tenant root redirect
 function DomainRedirect() {
@@ -112,6 +118,7 @@ function App() {
                                     <Route path="user/track/:orderId" element={
                                         <TrackingPage />
                                     } />
+                                    <Route path="user/pay/:orderId" element={<PayRedirect />} />
                                     <Route path="user/*" element={
                                         <CustomerAuthCheck>
                                             <LaundryHomePage />

@@ -949,10 +949,11 @@ async def update_order_endpoint(
 
                         # SMS
                         if cust.get("notif_phone", True) and cust["phone_number"]:
-                            sms = f"Hi {first_name}! Your laundry order {orderId} is ready. Total: ${grand_total:.2f}."
+                            sms = f"Hi {first_name}! Order {orderId} ready. ${grand_total:.2f}."
                             if not is_paid:
-                                sms += f" Pay here: {base_url}/{laundryId}/user/my-orders/?order_id={orderId}&is_open=true"
-                            sms += f" - {laundry_name}"
+                                # Use path-based URL (no query params) to avoid carrier link shortening
+                                sms += f" Pay: {base_url}/{laundryId}/user/pay/{orderId}"
+                            sms += f" -{laundry_name}"
                             send_sms_for_tenant(cust["phone_number"], sms, laundryId)
 
                         logger.info(f"Auto-notification sent for {orderId} (ProcessingCompleted, paid={is_paid})")
