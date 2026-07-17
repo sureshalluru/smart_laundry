@@ -922,7 +922,7 @@ async def update_order_endpoint(
                         domain_row = cur.fetchone()
                         base_url = domain_row["user_domain"] if domain_row and domain_row["user_domain"] else "https://www.smartlaundrybasket.ai"
                         if not is_paid:
-                            payment_link = f"\n\nPay Now: {base_url}/{laundryId}/user/my-orders/?order_id={orderId}&is_open=true"
+                            payment_link = f"\n\nPay Now: {base_url}/{laundryId}/user/pay/{orderId}"
 
                         # Email
                         if cust.get("notif_email", True) and cust["email"]:

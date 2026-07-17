@@ -59,19 +59,25 @@ export const NotificationButton = ({ order }) => {
     const orderDetailsUrl = `${baseUrl}/${laundryId}/user/my-orders/?order_id=${order?.orderId}&is_open=true`;
 
     useEffect(() => {
-        const shortenUrl = async () => {
-            if (!orderDetailsUrl) return;
-
+        // Use the direct URL — no shortening needed (avoids tinyurl ad pages)
+        if (orderDetailsUrl) {
+            // Convert query-param URL to clean path-based URL for SMS
+            // e.g. https://roundrocklaundry.com/1/user/my-orders/?order_id=X&is_open=true
+            // becomes https://roundrocklaundry.com/1/user/pay/X
             try {
-                const response = await axios.get(`https://tinyurl.com/api-create.php?url=${encodeURIComponent(orderDetailsUrl)}`);
-                setShortUrl(response.data); // Set the shortened URL
-            } catch (error) {
-                console.error("Error shortening URL:", error.response?.data || error.message || error);
-                setShortUrl(orderDetailsUrl); // Fallback to original if API fails
+                const url = new URL(orderDetailsUrl);
+                const orderId = new URLSearchParams(url.search).get('order_id');
+                if (orderId) {
+                    const pathParts = url.pathname.split('/');
+                    const laundryId = pathParts[1]; // e.g. "1"
+                    setShortUrl(`${url.origin}/${laundryId}/user/pay/${orderId}`);
+                } else {
+                    setShortUrl(orderDetailsUrl);
+                }
+            } catch (e) {
+                setShortUrl(orderDetailsUrl);
             }
-        };
-
-        shortenUrl();
+        }
     }, [orderDetailsUrl]);
 
     const sendNotification = async (type) => {
