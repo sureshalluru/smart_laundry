@@ -85,13 +85,13 @@ async def cancel_order_admin(
     with get_db() as conn:
         cur = get_cursor(conn)
 
-        # Cancel the order
+        # Cancel the order (set last_updated_by so DB trigger can record the employee)
         cur.execute("""
             UPDATE orders.orders
             SET order_status = 'OrderCanceled', status_category = 'Cancelled',
-                cancel_reason = %s, updated_at = NOW()
+                cancel_reason = %s, last_updated_by = %s, updated_at = NOW()
             WHERE order_id = %s AND laundry_id = %s
-        """, (cancel_reason, order_id, laundry_id))
+        """, (cancel_reason, emp_id or emp_name, order_id, laundry_id))
 
         # Write audit history (use savepoint to avoid poisoning transaction if table schema differs)
         try:
