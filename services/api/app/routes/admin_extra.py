@@ -93,15 +93,17 @@ async def cancel_order_admin(
             WHERE order_id = %s AND laundry_id = %s
         """, (cancel_reason, order_id, laundry_id))
 
-        # Write audit history
+        # Write audit history (use savepoint to avoid poisoning transaction if table schema differs)
         try:
+            cur.execute("SAVEPOINT audit_sp")
             cur.execute("""
                 INSERT INTO orders.order_history
                     (order_id, laundry_id, emp_id, emp_name, action, field_changed, old_value, new_value, change_summary, changed_at)
                 VALUES (%s, %s, %s, %s, 'order_canceled', 'order_status', 'Active', 'OrderCanceled', %s, NOW())
             """, (order_id, laundry_id, emp_id, emp_name, f'Order canceled by {emp_name}. Reason: {cancel_reason or "None"}'))
+            cur.execute("RELEASE SAVEPOINT audit_sp")
         except Exception:
-            pass
+            cur.execute("ROLLBACK TO SAVEPOINT audit_sp")
 
         if cur.rowcount == 0:
             return {"status": "error", "message": "Order not found"}
