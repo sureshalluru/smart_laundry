@@ -91,7 +91,7 @@ async def cancel_order_admin(
             SET order_status = 'OrderCanceled', status_category = 'Cancelled',
                 cancel_reason = %s, last_updated_by = %s, updated_at = NOW()
             WHERE order_id = %s AND laundry_id = %s
-        """, (cancel_reason, emp_id or emp_name, order_id, laundry_id))
+        """, (cancel_reason, (emp_id or "")[:20], order_id, laundry_id))
 
         # Write audit history (use savepoint to avoid poisoning transaction if table schema differs)
         try:
