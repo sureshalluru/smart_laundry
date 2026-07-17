@@ -1364,21 +1364,25 @@ const MyOrders = ({ customerId, laundryId, laundryTimeZone }) => {
                         <DrawerFooter bg="#ccf0ed" borderTopWidth="1px" display="flex" justifyContent="center">
                             {orderDetails && (() => {
                                 const { orderType, orderStatus, paymentStatus, payByInvoice } = orderDetails;
-                                // Commercial/pay-by-invoice orders never show Pay Now
+                                // Commercial/pay-by-invoice orders never show Pay Now (they use Stripe Invoicing)
                                 if (orderType === 'Commercial' || payByInvoice) {
                                     return null;
                                 }
-                                if (orderType === 'Online' || orderStatus === 'Delivered' || orderStatus === 'OrderPickedUp') {
+                                // Already paid or canceled — no button needed
+                                if (paymentStatus === 'Paid' || orderStatus === 'OrderCanceled') {
                                     return null;
                                 }
-                                const shouldEnablePayNow =
-                                    orderStatus === 'ProcessingCompleted' && paymentStatus === 'Unpaid';
+                                // Show Pay Now for any unpaid order that's past initial submission
+                                const payableStatuses = ['ReceivedAtFacility', 'ProcessingStarted', 'ProcessingCompleted', 'EnRouteToDelivery', 'Delivered', 'OrderPickedUp'];
+                                const shouldEnablePayNow = paymentStatus === 'Unpaid' && payableStatuses.includes(orderStatus);
+                                if (!shouldEnablePayNow) {
+                                    return null;
+                                }
                                 return (
                                     <Button
                                         colorScheme="blue"
                                         width="100%"
                                         onClick={onPaymentAlertOpen}
-                                        isDisabled={!shouldEnablePayNow}
                                     >
                                         Pay Now
                                     </Button>

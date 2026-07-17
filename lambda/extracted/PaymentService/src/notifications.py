@@ -10,21 +10,11 @@ logger.setLevel(logging.INFO)
 # No direct DynamoDB access needed here.
 lambda_client = boto3.client('lambda')
 
-# Shorten the URL to send notifications
+# URL shortening REMOVED — TinyURL shows ad interstitial pages to recipients.
+# Use path-based URLs directly instead.
 def shorten_url(long_url):
-    logger.info(f"Shortening URL: {long_url}")
-    api_url = f"http://tinyurl.com/api-create.php?url={long_url}"
-    try:
-        response = requests.get(api_url)
-        if response.status_code == 200:
-            logger.info("URL shortened successfully.")
-            return response.text
-        else:
-            logger.error(f"Failed to shorten URL. Status Code: {response.status_code}")
-            return long_url
-    except Exception as e:
-        logger.exception("Exception occurred while shortening URL")
-        return long_url
+    """No-op: returns the URL as-is. TinyURL was removed because carriers show ad pages."""
+    return long_url
 
 # Function to send the notifications to the Customer
 def invoke_notification_lambda(customer_id, laundry_id, order_id):

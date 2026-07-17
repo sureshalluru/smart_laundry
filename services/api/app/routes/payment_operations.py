@@ -44,6 +44,10 @@ async def instore_payment(
             if not order:
                 return {"statusCode": 200, "body": {"status": "error", "message": f"Order {orderId} not found"}}
 
+            # Prevent double-charge: if order is already Paid, reject immediately
+            if order["payment_status"] == "Paid":
+                return {"statusCode": 200, "body": {"status": "error", "message": "This order has already been paid. No charge was made."}}
+
             # Extract payment data from body
             tip_payload = body.get("tip_payload", {})
             payment_updates = body.get("payment_updates", [])

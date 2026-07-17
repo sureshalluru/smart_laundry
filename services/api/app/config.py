@@ -57,6 +57,10 @@ class Settings(BaseSettings):
         "http://localhost:3001",
     ]
 
+    # Local dev flags
+    skip_scheduler: bool = False
+    skip_migrations: bool = False
+
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"

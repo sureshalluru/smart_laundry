@@ -1194,6 +1194,24 @@ async def update_order_endpoint(
                 import stripe
                 _init_stripe(laundryId)
 
+                # Fresh check: re-read payment_status RIGHT before charging (prevents race with customer paying via link)
+                with get_db() as conn_check:
+                    cur_check = get_cursor(conn_check)
+                    cur_check.execute("SELECT payment_status FROM orders.orders WHERE order_id = %s", (orderId,))
+                    fresh_row = cur_check.fetchone()
+                    if fresh_row and fresh_row["payment_status"] == "Paid":
+                        logger.info(f"Skipping auto-capture for {orderId}: already Paid (customer paid via link)")
+                        should_auto_capture = False
+
+            except Exception as fresh_check_err:
+                logger.warning(f"Fresh payment check failed for {orderId}: {fresh_check_err}")
+
+        if should_auto_capture and capture_grand_total > 0:
+            try:
+                from app.services.payment_service import _init_stripe
+                import stripe
+                _init_stripe(laundryId)
+
                 # Cancel the $1 hold (can't capture for more than hold amount)
                 if hold_intent_id:
                     try:

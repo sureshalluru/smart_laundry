@@ -16,12 +16,10 @@ lambda_client = boto3.client('lambda')
 base_url = os.getenv("BASE_URL", "https://main.d2th8pw9g4ufxz.amplifyapp.com")
 
 
+# URL shortening REMOVED — TinyURL shows ad interstitial pages to recipients.
 def shorten_url(long_url):
-    try:
-        resp = requests.get(f"http://tinyurl.com/api-create.php?url={long_url}", timeout=3)
-        return resp.text if resp.status_code == 200 else long_url
-    except Exception:
-        return long_url
+    """No-op: returns the URL as-is. TinyURL removed because carriers show ad pages."""
+    return long_url
 
 
 def _get_employee_name(tip_receiver_id, laundry_id):
