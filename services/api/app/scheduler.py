@@ -85,6 +85,11 @@ def _check_and_run_missed_jobs():
 
 def start_scheduler():
     """Start the background scheduler with all jobs."""
+    import os
+    if os.environ.get("SKIP_SCHEDULER") == "1":
+        logger.info("Skipping scheduler (SKIP_SCHEDULER=1)")
+        return
+
     if scheduler.running:
         logger.info("Scheduler already running, skipping start")
         return

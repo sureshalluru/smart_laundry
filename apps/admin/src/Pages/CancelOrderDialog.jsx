@@ -116,6 +116,7 @@ export default function CancelOrderDialog({
         orderId: order?.orderId,
         laundryId,
         cancelReason: finalReason,
+        empId: localStorage.getItem('empId') || '',
         isRecurring:
           isCancelRecurring === "This order only" || isCancelRecurring === ""
             ? "false"
@@ -130,8 +131,7 @@ export default function CancelOrderDialog({
         payload,
         {
           headers: {
-            'x-api-key': process.env.REACT_APP_AWS_API_KEY
-            // 'Authorization': `Bearer ${authToken}`
+            'Authorization': `Bearer ${authToken}`
           },
         }
       );

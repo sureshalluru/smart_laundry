@@ -56,6 +56,7 @@ async def get_order_audit_history(
 @router.put("/cancel-order-admin")
 async def cancel_order_admin(
     body: dict = Body({}),
+    current_user: dict = Depends(get_current_user),
 ):
     """Cancel an order from the admin panel. Reverses hold and optionally cancels frequency."""
     order_id = body.get("orderId")
@@ -63,9 +64,23 @@ async def cancel_order_admin(
     laundry_id = body.get("laundryId")
     cancel_reason = body.get("cancelReason", "")
     is_recurring = body.get("isRecurring", "false")
+    emp_id = body.get("empId") or current_user.get("sub", "")
 
     if not order_id or not laundry_id:
         return {"status": "error", "message": "Missing orderId or laundryId"}
+
+    # Resolve employee name for audit
+    emp_name = "System"
+    if emp_id:
+        try:
+            with get_db() as conn_emp:
+                cur_emp = get_cursor(conn_emp)
+                cur_emp.execute("SELECT first_name, last_name FROM shop.employees WHERE emp_id = %s AND laundry_id = %s", (emp_id, laundry_id))
+                emp_row = cur_emp.fetchone()
+                if emp_row:
+                    emp_name = f"{emp_row['first_name']} {emp_row['last_name'] or ''}".strip()
+        except Exception:
+            pass
 
     with get_db() as conn:
         cur = get_cursor(conn)
@@ -77,6 +92,16 @@ async def cancel_order_admin(
                 cancel_reason = %s, updated_at = NOW()
             WHERE order_id = %s AND laundry_id = %s
         """, (cancel_reason, order_id, laundry_id))
+
+        # Write audit history
+        try:
+            cur.execute("""
+                INSERT INTO orders.order_history
+                    (order_id, laundry_id, emp_id, emp_name, action, field_changed, old_value, new_value, change_summary, changed_at)
+                VALUES (%s, %s, %s, %s, 'order_canceled', 'order_status', 'Active', 'OrderCanceled', %s, NOW())
+            """, (order_id, laundry_id, emp_id, emp_name, f'Order canceled by {emp_name}. Reason: {cancel_reason or "None"}'))
+        except Exception:
+            pass
 
         if cur.rowcount == 0:
             return {"status": "error", "message": "Order not found"}
