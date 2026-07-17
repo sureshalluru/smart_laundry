@@ -81,17 +81,22 @@ async def cancel_order_admin(
                     emp_name = f"{emp_row['first_name']} {emp_row['last_name'] or ''}".strip()
         except Exception:
             pass
+    # If employee not found (admin user, not an employee), use name from JWT token
+    if emp_name == "System":
+        token_name = current_user.get("name", "")
+        if token_name:
+            emp_name = token_name
 
     with get_db() as conn:
         cur = get_cursor(conn)
 
-        # Cancel the order (set last_updated_by so DB trigger can record the employee)
+        # Cancel the order
         cur.execute("""
             UPDATE orders.orders
             SET order_status = 'OrderCanceled', status_category = 'Cancelled',
-                cancel_reason = %s, last_updated_by = %s, updated_at = NOW()
+                cancel_reason = %s, updated_at = NOW()
             WHERE order_id = %s AND laundry_id = %s
-        """, (cancel_reason, (emp_id or "")[:20], order_id, laundry_id))
+        """, (cancel_reason, order_id, laundry_id))
 
         # Write audit history (use savepoint to avoid poisoning transaction if table schema differs)
         try:
