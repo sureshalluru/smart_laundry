@@ -532,6 +532,24 @@ async def customer_place_order(
         except Exception as notif_err:
             logger.warning(f"Failed to send order confirmation for {order_id}: {notif_err}")
 
+        # Update trigger-created order_history rows to show customer name instead of "System"
+        try:
+            with get_db() as conn_audit:
+                cur_audit = get_cursor(conn_audit)
+                # Get customer name
+                cur_audit.execute("SELECT first_name, last_name FROM shop.customers WHERE customer_id = %s", (customer_id,))
+                cust_row = cur_audit.fetchone()
+                if cust_row:
+                    cust_name = f"{cust_row['first_name'] or ''} {cust_row['last_name'] or ''}".strip() or "Customer"
+                    cur_audit.execute("""
+                        UPDATE orders.order_history
+                        SET emp_name = %s
+                        WHERE order_id = %s AND (emp_name IS NULL OR emp_name = '' OR emp_name = 'System')
+                    """, (cust_name, order_id))
+                    logger.info(f"Updated {cur_audit.rowcount} order_history rows for {order_id} with customer name '{cust_name}'")
+        except Exception as audit_err:
+            logger.warning(f"Failed to update order_history for {order_id}: {audit_err}")
+
         return {"status": "success", "orderId": order_id}
 
     except Exception as e:

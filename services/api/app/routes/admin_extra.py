@@ -98,17 +98,20 @@ async def cancel_order_admin(
             WHERE order_id = %s AND laundry_id = %s
         """, (cancel_reason, order_id, laundry_id))
 
-        # Write audit history (use savepoint to avoid poisoning transaction if table schema differs)
+        # The DB trigger automatically creates order_history rows when order_status changes.
+        # We UPDATE those trigger-created rows to stamp the actual employee/admin name.
         try:
-            cur.execute("SAVEPOINT audit_sp")
+            cur.execute("SAVEPOINT audit_update_sp")
             cur.execute("""
-                INSERT INTO orders.order_history
-                    (order_id, laundry_id, emp_id, emp_name, action, field_changed, old_value, new_value, change_summary, changed_at)
-                VALUES (%s, %s, %s, %s, 'order_canceled', 'order_status', 'Active', 'OrderCanceled', %s, NOW())
-            """, (order_id, laundry_id, emp_id, emp_name, f'Order canceled by {emp_name}. Reason: {cancel_reason or "None"}'))
-            cur.execute("RELEASE SAVEPOINT audit_sp")
+                UPDATE orders.order_history
+                SET emp_id = %s, emp_name = %s
+                WHERE order_id = %s AND laundry_id = %s
+                  AND (emp_name IS NULL OR emp_name = '' OR emp_name = 'System')
+                  AND changed_at >= NOW() - INTERVAL '5 seconds'
+            """, (emp_id, emp_name, order_id, laundry_id))
+            cur.execute("RELEASE SAVEPOINT audit_update_sp")
         except Exception:
-            cur.execute("ROLLBACK TO SAVEPOINT audit_sp")
+            cur.execute("ROLLBACK TO SAVEPOINT audit_update_sp")
 
         if cur.rowcount == 0:
             return {"status": "error", "message": "Order not found"}

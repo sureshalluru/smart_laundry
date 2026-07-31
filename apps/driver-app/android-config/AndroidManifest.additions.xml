@@ -1,0 +1,31 @@
+<!--
+  Add these permissions and service declarations to:
+  android/app/src/main/AndroidManifest.xml
+
+  Add INSIDE the <manifest> tag (before <application>):
+-->
+
+<!-- Location permissions -->
+<uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+<uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+<uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
+
+<!-- Foreground service (required for background GPS on Android 8+) -->
+<uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+<uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+
+<!-- Notifications (Android 13+) -->
+<uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+<!-- Wake lock for keeping GPS active -->
+<uses-permission android:name="android.permission.WAKE_LOCK" />
+
+<!--
+  Add INSIDE the <application> tag:
+-->
+
+<!-- Foreground service for background location tracking -->
+<service
+    android:name="team.capawesome.capacitor.android.foregroundservice.ForegroundService"
+    android:foregroundServiceType="location"
+    android:exported="false" />

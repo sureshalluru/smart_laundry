@@ -34,6 +34,8 @@ import DateFilter from './DriverDateFilter';
 import SidebarLayout from './DriverSidebar';
 import LocationAutocompleteInput from '../hooks/LocationAutocompleteInput';
 import { useLocationBroadcaster } from '../hooks/useLocationBroadcaster';
+import { isNativePlatform, useNativeLocationBroadcaster } from '../hooks/useNativeLocationBroadcaster';
+import LocationPermissionAlert from '../hooks/LocationPermissionAlert';
 import { getUserEmpId } from '../utils/permissions';
 import DriverNoDelivery from '../images/DriverNoDelivery.png';
 
@@ -175,12 +177,23 @@ const DriverHome = ({ laundryId }) => {
     return activeStops.length > 0 ? (routeAssignments[activeStops[0].orderId] || 1) : 1;
   }, [orders, routeAssignments, assignedOrderIds]);
 
-  const { permissionDenied } = useLocationBroadcaster({
+  // Use native background geolocation when running in Capacitor app,
+  // otherwise fall back to browser geolocation (web)
+  const webBroadcaster = useLocationBroadcaster({
     laundryId,
     driverId: empId,
-    isRouteActive,
+    isRouteActive: isNativePlatform() ? false : isRouteActive, // disable web broadcaster on native
     currentStopPosition,
   });
+
+  const nativeBroadcaster = useNativeLocationBroadcaster({
+    laundryId,
+    driverId: empId,
+    isRouteActive: isNativePlatform() ? isRouteActive : false, // only enable on native
+    currentStopPosition,
+  });
+
+  const permissionDenied = isNativePlatform() ? nativeBroadcaster.permissionDenied : webBroadcaster.permissionDenied;
 
   // Show a toast reminder if location permission was denied and route is active
   useEffect(() => {

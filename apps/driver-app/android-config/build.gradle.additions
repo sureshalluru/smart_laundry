@@ -1,0 +1,25 @@
+// Add/modify these in android/app/build.gradle after running `npx cap add android`:
+
+// In the android { defaultConfig { ... } } block, set:
+//   minSdkVersion 24    // Android 7.0+
+//   targetSdkVersion 34 // Latest stable
+
+// For release signing, add inside android { } block:
+/*
+signingConfigs {
+    release {
+        storeFile file('../../keystore/driver-release.jks')
+        storePassword System.getenv('DRIVER_STORE_PASSWORD') ?: project.findProperty('DRIVER_STORE_PASSWORD') ?: ''
+        keyAlias 'driver'
+        keyPassword System.getenv('DRIVER_KEY_PASSWORD') ?: project.findProperty('DRIVER_KEY_PASSWORD') ?: ''
+    }
+}
+
+buildTypes {
+    release {
+        signingConfig signingConfigs.release
+        minifyEnabled false
+        proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+    }
+}
+*/

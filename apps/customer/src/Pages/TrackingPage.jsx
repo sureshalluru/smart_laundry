@@ -9,16 +9,21 @@ import {
   AlertIcon,
   AlertDescription,
   VStack,
+  Badge,
+  useToast,
 } from '@chakra-ui/react';
 import { GoogleMap, Marker, DirectionsRenderer } from '@react-google-maps/api';
 import axios from 'axios';
 import { useGoogleMaps } from '../Components/Contexts/GoogleMapsProvider';
 import ProgressBar from '../Components/Tracking/ProgressBar';
 import { formatEta } from '../Components/Tracking/formatEta';
+import { lerp, easeInOut, isArriving } from '../utils/trackingUtils';
 
 const API_URL = process.env.REACT_APP_AWS_API_URL;
-const POLL_INTERVAL = 12000; // 12 seconds
+const POLL_INTERVAL = 10000; // 10 seconds
 const MAX_CONSECUTIVE_FAILURES = 3;
+const STALE_THRESHOLD_MS = 60000; // 60 seconds
+const ANIMATION_DURATION = 2000; // 2 seconds for smoother animation
 
 const mapContainerStyle = {
   width: '100%',
@@ -28,27 +33,18 @@ const mapContainerStyle = {
 const defaultCenter = { lat: 30.5, lng: -97.7 };
 
 /**
- * Lerp (linear interpolation) between two positions for smooth marker animation.
+ * Car icon for driver marker — rotated based on heading.
  */
-function lerp(start, end, t) {
+function getCarIcon(heading = 0) {
   return {
-    lat: start.lat + (end.lat - start.lat) * t,
-    lng: start.lng + (end.lng - start.lng) * t,
-  };
-}
-
-/**
- * Car icon for driver marker.
- */
-function getCarIcon() {
-  return {
-    path: 'M29.395,0H17.636c-3.117,0-5.643,3.467-5.643,6.584v34.804c0,3.116,2.526,5.644,5.643,5.644h11.759c3.116,0,5.644-2.527,5.644-5.644V6.584C35.037,3.467,32.511,0,29.395,0z M ## M17.636,10.062h11.759v5.644H17.636V10.062z',
+    path: 'M29.395,0H17.636c-3.117,0-5.643,3.467-5.643,6.584v34.804c0,3.116,2.526,5.644,5.643,5.644h11.759c3.116,0,5.644-2.527,5.644-5.644V6.584C35.037,3.467,32.511,0,29.395,0z M17.636,10.062h11.759v5.644H17.636V10.062z',
     fillColor: '#4285F4',
     fillOpacity: 1,
     strokeWeight: 1,
     strokeColor: '#2563EB',
     scale: 0.5,
     anchor: { x: 24, y: 24 },
+    rotation: heading,
   };
 }
 
@@ -74,11 +70,19 @@ export default function TrackingPage() {
   const [eta, setEta] = useState(null);
   const [connectionLost, setConnectionLost] = useState(false);
 
+  // Stale & arrival detection
+  const [lastUpdateTime, setLastUpdateTime] = useState(null);
+  const [isStale, setIsStale] = useState(false);
+  const [hasShownArrival, setHasShownArrival] = useState(false);
+  const [driverHeading, setDriverHeading] = useState(0);
+  const toast = useToast();
+
   // Refs
   const consecutiveFailuresRef = useRef(0);
   const pollIntervalRef = useRef(null);
   const animationFrameRef = useRef(null);
   const previousPositionRef = useRef(null);
+  const staleTimerRef = useRef(null);
 
   /**
    * Fetch order details on mount to determine trackability.
@@ -146,8 +150,12 @@ export default function TrackingPage() {
         const wasUnavailable = trackingStatus === 'unavailable';
         setTrackingStatus('active');
         setUnavailableReason(null);
+        setLastUpdateTime(Date.now());
+        setIsStale(false);
 
         const newPosition = { lat: data.latitude, lng: data.longitude };
+        const newHeading = data.heading || 0;
+        setDriverHeading(newHeading);
 
         // If transitioning from unavailable, clear stale directions/ETA so they refresh
         if (wasUnavailable) {
@@ -158,6 +166,18 @@ export default function TrackingPage() {
         previousPositionRef.current = driverPosition || newPosition;
         setDriverPosition(newPosition);
         setDriverName(data.driverName || '');
+
+        // Arrival detection — show toast once when within 200m
+        if (customerAddress && !hasShownArrival && isArriving(newPosition, customerAddress)) {
+          setHasShownArrival(true);
+          toast({
+            title: '🚗 Driver is arriving!',
+            description: 'Your driver is almost at your location.',
+            status: 'success',
+            duration: 8000,
+            isClosable: true,
+          });
+        }
 
         // Animate marker to new position
         animateMarker(previousPositionRef.current, newPosition);
@@ -198,24 +218,24 @@ export default function TrackingPage() {
   }, [isTrackable, loading, fetchDriverLocation]);
 
   /**
-   * Animate driver marker smoothly between positions.
+   * Animate driver marker smoothly between positions with easing.
    */
   function animateMarker(from, to) {
     if (animationFrameRef.current) {
       cancelAnimationFrame(animationFrameRef.current);
     }
 
-    const duration = 1000; // 1 second animation
     const startTime = performance.now();
 
     function step(currentTime) {
       const elapsed = currentTime - startTime;
-      const t = Math.min(elapsed / duration, 1);
+      const rawT = Math.min(elapsed / ANIMATION_DURATION, 1);
+      const t = easeInOut(rawT); // Apply easing for smoother movement
 
       const interpolated = lerp(from, to, t);
       setAnimatedPosition(interpolated);
 
-      if (t < 1) {
+      if (rawT < 1) {
         animationFrameRef.current = requestAnimationFrame(step);
       }
     }
@@ -271,8 +291,28 @@ export default function TrackingPage() {
       if (animationFrameRef.current) {
         cancelAnimationFrame(animationFrameRef.current);
       }
+      if (staleTimerRef.current) {
+        clearInterval(staleTimerRef.current);
+      }
     };
   }, []);
+
+  /**
+   * Stale detection — check every 10s if last update is > 60s ago.
+   */
+  useEffect(() => {
+    if (!lastUpdateTime || trackingStatus !== 'active') return;
+
+    staleTimerRef.current = setInterval(() => {
+      if (Date.now() - lastUpdateTime > STALE_THRESHOLD_MS) {
+        setIsStale(true);
+      }
+    }, 10000);
+
+    return () => {
+      if (staleTimerRef.current) clearInterval(staleTimerRef.current);
+    };
+  }, [lastUpdateTime, trackingStatus]);
 
   // Loading state
   if (loading) {
@@ -331,11 +371,31 @@ export default function TrackingPage() {
               </Alert>
             )}
 
-            {/* ETA display */}
-            {eta && trackingStatus === 'active' && (
-              <Text fontSize="lg" fontWeight="bold" textAlign="center" color="green.600">
-                {eta}
-              </Text>
+            {/* ETA + Driver info panel */}
+            {trackingStatus === 'active' && (
+              <Box bg="white" borderRadius="md" p={3} boxShadow="sm" borderWidth="1px">
+                <Flex justify="space-between" align="center">
+                  <VStack align="start" spacing={0}>
+                    {driverName && <Text fontSize="sm" color="gray.600">Driver: <strong>{driverName}</strong></Text>}
+                    <Text fontSize="sm" color={hasShownArrival ? 'green.600' : 'gray.600'} fontWeight="500">
+                      {hasShownArrival ? '🚗 Driver is arriving!' : '🚗 Driver is on the way'}
+                    </Text>
+                  </VStack>
+                  {eta && !isStale && (
+                    <Badge colorScheme="green" fontSize="md" px={3} py={1} borderRadius="md">
+                      {eta}
+                    </Badge>
+                  )}
+                </Flex>
+              </Box>
+            )}
+
+            {/* Stale location indicator */}
+            {isStale && trackingStatus === 'active' && (
+              <Alert status="info" borderRadius="md">
+                <AlertIcon />
+                <AlertDescription>Updating driver location...</AlertDescription>
+              </Alert>
             )}
 
             {/* Google Map */}
@@ -352,11 +412,11 @@ export default function TrackingPage() {
                     mapTypeControl: false,
                   }}
                 >
-                  {/* Driver marker with car icon */}
-                  {(animatedPosition || driverPosition) && (
+                  {/* Driver marker with car icon — rotated to heading */}
+                  {(animatedPosition || driverPosition) && !isStale && (
                     <Marker
                       position={animatedPosition || driverPosition}
-                      icon={getCarIcon()}
+                      icon={getCarIcon(driverHeading)}
                       title={driverName ? `Driver: ${driverName}` : 'Driver'}
                     />
                   )}

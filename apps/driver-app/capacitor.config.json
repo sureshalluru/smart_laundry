@@ -1,0 +1,15 @@
+{
+  "appId": "com.smartlaundry.driver",
+  "appName": "Smart Laundry Driver",
+  "webDir": "../admin/build",
+  "server": {
+    "url": "http://10.0.2.2:8000/1/admin",
+    "cleartext": true
+  },
+  "android": {
+    "allowMixedContent": true
+  },
+  "plugins": {
+    "BackgroundGeolocation": {}
+  }
+}
