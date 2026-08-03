@@ -58,6 +58,7 @@ import { toZonedTime, format } from 'date-fns-tz';
 import { CardElement, useStripe, useElements } from '@stripe/react-stripe-js';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Accordion, AccordionItem, AccordionButton, AccordionPanel, AccordionIcon } from "@chakra-ui/react";
+import SubscriptionCard from './SubscriptionCard';
 
 
 const MyOrders = ({ customerId, laundryId, laundryTimeZone }) => {
@@ -844,6 +845,9 @@ const MyOrders = ({ customerId, laundryId, laundryTimeZone }) => {
             </Box>
 
             <Box p={[2, 4]} overflowY="auto" mt={[2, 10]} flex="1" bg="#EBF8FF">
+                {/* Subscription management card — shown when customer has active frequency */}
+                <SubscriptionCard customerId={customerId} laundryId={laundryId} />
+
                 {loading && orders.length === 0 ? (
                     <Flex justify="center" align="center" h="50vh">
                         <Spinner size="xl" />

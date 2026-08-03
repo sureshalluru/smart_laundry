@@ -2,12 +2,14 @@
 Order Frequency routes — replaces OrderFrequencyService Lambda.
 Processes recurring orders based on laundry_frequency subscriptions.
 """
-from fastapi import APIRouter, Depends, Query, Body
+from fastapi import APIRouter, Depends, Query, Body, HTTPException
 from app.database import get_db, get_cursor
 from app.auth import get_current_user
-from datetime import datetime, timedelta
+from app.services.subscription_service import SubscriptionService
+from datetime import datetime, timedelta, date
 import uuid
 import logging
+import re
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -70,14 +72,53 @@ async def process_frequencies():
     Creates orders for subscriptions where future_pickup_date <= today.
     """
     today = datetime.now().strftime('%Y-%m-%d')
+    today_date = datetime.now().date()
     tomorrow = (datetime.now() + timedelta(days=1)).strftime('%Y-%m-%d')
     orders_created = 0
     errors = []
 
     try:
+        # Auto-resume: unpause subscriptions where pause_resume_date has passed
+        with get_db() as conn:
+            cur = get_cursor(conn)
+            cur.execute("""
+                SELECT frequency_id, future_pickup_date, frequency
+                FROM orders.laundry_frequency
+                WHERE is_active = TRUE
+                  AND is_paused = TRUE
+                  AND pause_resume_date <= %s
+            """, (today,))
+            to_resume = cur.fetchall()
+
+            for paused_sub in to_resume:
+                freq_id = paused_sub["frequency_id"]
+                freq = paused_sub["frequency"]
+                base_date = paused_sub["future_pickup_date"]
+                # Calculate next cadence-aligned date on or after today
+                if freq.lower() == 'weekly':
+                    fd = 7
+                elif freq.lower() == 'monthly':
+                    fd = 30
+                else:
+                    fd = 14
+                next_date = base_date
+                while next_date <= today_date:
+                    next_date = next_date + timedelta(days=fd)
+                cur.execute("""
+                    UPDATE orders.laundry_frequency
+                    SET is_paused = FALSE,
+                        future_pickup_date = %s,
+                        pause_resume_date = NULL,
+                        pause_started_at = NULL,
+                        updated_at = NOW()
+                    WHERE frequency_id = %s
+                """, (next_date, freq_id))
+                logger.info(f"Auto-resumed subscription {freq_id}, next pickup: {next_date}")
+
         with get_db() as conn:
             cur = get_cursor(conn)
             # Find subscriptions where pickup is tomorrow (create order day before)
+            # Exclude paused subscriptions
             cur.execute("""
                 SELECT lf.*, ca.address, ca.door_number, ca.address_instructions,
                        cpp.stripe_customer_id,
@@ -93,6 +134,7 @@ async def process_frequencies():
                 LEFT JOIN shop.customer_payment_profiles cpp
                     ON cpp.customer_id = lf.customer_id AND cpp.laundry_id = lf.laundry_id
                 WHERE lf.is_active = TRUE
+                  AND (lf.is_paused = FALSE OR lf.is_paused IS NULL)
                   AND lf.future_pickup_date <= %s
             """, (tomorrow,))
             due_subscriptions = cur.fetchall()
@@ -117,13 +159,22 @@ async def process_frequencies():
                 dropoff_date = dropoff_dt.strftime('%Y-%m-%d')
 
                 # Calculate next future pickup date
+                # If rescheduled (original_pickup_date is set), advance from original date
+                # Otherwise advance from current future_pickup_date
+                original_pickup_date = sub.get("original_pickup_date")
                 if frequency.lower() == 'weekly':
                     freq_days = 7
                 elif frequency.lower() == 'monthly':
                     freq_days = 30
                 else:
                     freq_days = 14  # bi-weekly
-                next_future_pickup = (pickup_dt + timedelta(days=freq_days)).strftime('%Y-%m-%d')
+
+                if original_pickup_date:
+                    # Advance from original date to maintain cadence
+                    base_dt = datetime.combine(original_pickup_date, datetime.min.time())
+                    next_future_pickup = (base_dt + timedelta(days=freq_days)).strftime('%Y-%m-%d')
+                else:
+                    next_future_pickup = (pickup_dt + timedelta(days=freq_days)).strftime('%Y-%m-%d')
 
                 # Determine Uber pickup/dropoff from frequency flags
                 uber_pickup_freq = sub.get("uber_pickup_frequency", False)
@@ -135,12 +186,16 @@ async def process_frequencies():
                 order_id = f"O-{uuid.uuid4().hex[:8].upper()}"
 
                 # FIRST: Advance the future_pickup_date (prevents stuck subscriptions if order INSERT fails)
+                # Also clear reschedule metadata and reset consecutive_skips on successful processing
                 with get_db() as conn:
                     cur = get_cursor(conn)
                     cur.execute("""
                         UPDATE orders.laundry_frequency
                         SET future_pickup_date = %s,
                             pickup_date = %s,
+                            original_pickup_date = NULL,
+                            reschedule_offset = NULL,
+                            consecutive_skips = 0,
                             updated_at = NOW()
                         WHERE frequency_id = %s
                     """, (next_future_pickup, future_pickup_date, freq_id))
@@ -605,3 +660,485 @@ async def get_upcoming_orders(
         "totalCount": len(upcoming),
         "daysProjected": days,
     }
+
+
+# ─── Customer Subscription Management Endpoints ───
+
+@router.get("/subscription/details")
+async def get_subscription_details(
+    frequencyId: str = Query(...),
+    customerId: str = Query(...),
+    current_user: dict = Depends(get_current_user),
+):
+    """Get subscription details including upcoming dates and status."""
+    result = SubscriptionService.get_details(frequencyId, customerId)
+    if result is None:
+        raise HTTPException(status_code=404, detail={
+            "status": "error",
+            "code": "SUBSCRIPTION_NOT_FOUND",
+            "message": "Subscription not found or inactive."
+        })
+    return {"status": "success", "data": result}
+
+
+@router.post("/subscription/reschedule")
+async def reschedule_subscription(
+    body: dict = Body(...),
+    current_user: dict = Depends(get_current_user),
+):
+    """Reschedule the next occurrence to a target date within ±3 days."""
+    frequency_id = body.get("frequencyId")
+    customer_id = body.get("customerId")
+    target_date = body.get("targetDate")
+
+    if not frequency_id or not customer_id or not target_date:
+        raise HTTPException(status_code=422, detail={
+            "status": "error",
+            "code": "MISSING_FIELDS",
+            "message": "frequencyId, customerId, and targetDate are required."
+        })
+
+    result = SubscriptionService.reschedule(frequency_id, customer_id, target_date)
+
+    if result["status"] == "error":
+        status_code = _error_code_to_http(result.get("code"))
+        raise HTTPException(status_code=status_code, detail=result)
+
+    return result
+
+
+@router.post("/subscription/undo-reschedule")
+async def undo_reschedule_subscription(
+    body: dict = Body(...),
+    current_user: dict = Depends(get_current_user),
+):
+    """Revert a reschedule back to the original date."""
+    frequency_id = body.get("frequencyId")
+    customer_id = body.get("customerId")
+
+    if not frequency_id or not customer_id:
+        raise HTTPException(status_code=422, detail={
+            "status": "error",
+            "code": "MISSING_FIELDS",
+            "message": "frequencyId and customerId are required."
+        })
+
+    result = SubscriptionService.undo_reschedule(frequency_id, customer_id)
+
+    if result["status"] == "error":
+        status_code = _error_code_to_http(result.get("code"))
+        raise HTTPException(status_code=status_code, detail=result)
+
+    return result
+
+
+@router.post("/subscription/skip")
+async def skip_subscription(
+    body: dict = Body(...),
+    current_user: dict = Depends(get_current_user),
+):
+    """Skip the next occurrence and advance to the following cadence date."""
+    frequency_id = body.get("frequencyId")
+    customer_id = body.get("customerId")
+    reason = body.get("reason")
+
+    if not frequency_id or not customer_id:
+        raise HTTPException(status_code=422, detail={
+            "status": "error",
+            "code": "MISSING_FIELDS",
+            "message": "frequencyId and customerId are required."
+        })
+
+    result = SubscriptionService.skip(frequency_id, customer_id, reason=reason)
+
+    if result["status"] == "error":
+        status_code = _error_code_to_http(result.get("code"))
+        raise HTTPException(status_code=status_code, detail=result)
+
+    return result
+
+
+@router.post("/subscription/pause")
+async def pause_subscription(
+    body: dict = Body(...),
+    current_user: dict = Depends(get_current_user),
+):
+    """Pause subscription for 1-4 weeks."""
+    frequency_id = body.get("frequencyId")
+    customer_id = body.get("customerId")
+    weeks = body.get("weeks")
+
+    if not frequency_id or not customer_id or weeks is None:
+        raise HTTPException(status_code=422, detail={
+            "status": "error",
+            "code": "MISSING_FIELDS",
+            "message": "frequencyId, customerId, and weeks are required."
+        })
+
+    result = SubscriptionService.pause(frequency_id, customer_id, int(weeks))
+
+    if result["status"] == "error":
+        status_code = _error_code_to_http(result.get("code"))
+        raise HTTPException(status_code=status_code, detail=result)
+
+    return result
+
+
+@router.post("/subscription/resume")
+async def resume_subscription(
+    body: dict = Body(...),
+    current_user: dict = Depends(get_current_user),
+):
+    """Resume a paused subscription."""
+    frequency_id = body.get("frequencyId")
+    customer_id = body.get("customerId")
+
+    if not frequency_id or not customer_id:
+        raise HTTPException(status_code=422, detail={
+            "status": "error",
+            "code": "MISSING_FIELDS",
+            "message": "frequencyId and customerId are required."
+        })
+
+    result = SubscriptionService.resume(frequency_id, customer_id)
+
+    if result["status"] == "error":
+        status_code = _error_code_to_http(result.get("code"))
+        raise HTTPException(status_code=status_code, detail=result)
+
+    return result
+
+
+# ─── SMS Webhook ───
+
+def _parse_sms_command(body_text: str) -> dict:
+    """
+    Parse an inbound SMS command. Returns dict with 'command' and optional 'argument'.
+    Supported commands: SKIP, MOVE ±1-3, PAUSE 1-4, RESUME (case-insensitive).
+    """
+    text = (body_text or "").strip().upper()
+
+    if not text:
+        return {"command": None, "error": "Empty message"}
+
+    # SKIP
+    if re.match(r'^SKIP\b', text):
+        return {"command": "skip"}
+
+    # MOVE ±1-3
+    move_match = re.match(r'^MOVE\s*([+-]?\d+)?$', text)
+    if move_match:
+        offset_str = move_match.group(1)
+        offset = int(offset_str) if offset_str else 1
+        if abs(offset) < 1 or abs(offset) > 3:
+            return {"command": None, "error": f"MOVE offset must be ±1-3, got {offset}"}
+        return {"command": "move", "argument": offset}
+
+    # PAUSE 1-4
+    pause_match = re.match(r'^PAUSE\s*(\d+)?$', text)
+    if pause_match:
+        weeks_str = pause_match.group(1)
+        weeks = int(weeks_str) if weeks_str else 1
+        if weeks < 1 or weeks > 4:
+            return {"command": None, "error": f"PAUSE weeks must be 1-4, got {weeks}"}
+        return {"command": "pause", "argument": weeks}
+
+    # RESUME
+    if re.match(r'^RESUME\b', text):
+        return {"command": "resume"}
+
+    return {"command": None, "error": f"Unrecognized command: {text}"}
+
+
+@router.post("/sms-webhook")
+async def sms_webhook(body: dict = Body(...)):
+    """
+    Inbound SMS webhook (Twilio-style).
+    Parses SMS commands and delegates to SubscriptionService.
+    No JWT auth — relies on Twilio signature validation in production.
+    """
+    # Twilio sends From and Body fields
+    from_number = body.get("From", "") or body.get("from", "")
+    sms_body = body.get("Body", "") or body.get("body", "")
+
+    if not from_number:
+        return {"status": "error", "message": "Missing phone number."}
+
+    # Normalize phone number (strip +1 prefix for lookup)
+    normalized_phone = from_number.replace("+1", "").replace("-", "").replace(" ", "").strip()
+    if normalized_phone.startswith("1") and len(normalized_phone) == 11:
+        normalized_phone = normalized_phone[1:]
+
+    # Resolve customer by phone
+    customer = None
+    with get_db() as conn:
+        cur = get_cursor(conn)
+        cur.execute("""
+            SELECT customer_id, first_name FROM shop.customers
+            WHERE REPLACE(REPLACE(phone_number, '+1', ''), '-', '') = %s
+            LIMIT 1
+        """, (normalized_phone,))
+        customer = cur.fetchone()
+
+    if not customer:
+        return {
+            "status": "error",
+            "message": "We couldn't find a subscription for this number. Text HELP for assistance."
+        }
+
+    customer_id = customer["customer_id"]
+
+    # Find active frequency for this customer
+    with get_db() as conn:
+        cur = get_cursor(conn)
+        cur.execute("""
+            SELECT frequency_id FROM orders.laundry_frequency
+            WHERE customer_id = %s AND is_active = TRUE
+            ORDER BY future_pickup_date ASC
+            LIMIT 1
+        """, (customer_id,))
+        freq_row = cur.fetchone()
+
+    if not freq_row:
+        return {
+            "status": "error",
+            "message": "No active subscription found. Text HELP for assistance."
+        }
+
+    frequency_id = str(freq_row["frequency_id"])
+
+    # Parse command
+    parsed = _parse_sms_command(sms_body)
+    if parsed["command"] is None:
+        error_msg = parsed.get("error", "Unrecognized command")
+        return {
+            "status": "error",
+            "message": f"{error_msg}. Reply SKIP, MOVE ±1-3, PAUSE 1-4, or RESUME."
+        }
+
+    # Execute command
+    command = parsed["command"]
+
+    if command == "skip":
+        result = SubscriptionService.skip(frequency_id, customer_id, reason="SMS", actor="customer")
+    elif command == "move":
+        # Calculate target date from offset
+        details = SubscriptionService.get_details(frequency_id, customer_id)
+        if not details:
+            return {"status": "error", "message": "Subscription not found."}
+        current_date = date.fromisoformat(details["nextPickupDate"])
+        target_date = current_date + timedelta(days=parsed["argument"])
+        result = SubscriptionService.reschedule(frequency_id, customer_id, str(target_date))
+    elif command == "pause":
+        weeks = parsed.get("argument", 1)
+        result = SubscriptionService.pause(frequency_id, customer_id, weeks)
+    elif command == "resume":
+        result = SubscriptionService.resume(frequency_id, customer_id)
+    else:
+        return {"status": "error", "message": "Unknown command."}
+
+    # Return result message
+    return {
+        "status": result.get("status", "error"),
+        "message": result.get("message", "Action completed.")
+    }
+
+
+# ─── Admin Subscription Endpoints ───
+
+@router.get("/admin/subscription-status")
+async def admin_subscription_status(
+    frequencyId: str = Query(...),
+    current_user: dict = Depends(get_current_user),
+):
+    """Get full subscription details for admin view."""
+    with get_db() as conn:
+        cur = get_cursor(conn)
+        cur.execute("""
+            SELECT lf.frequency_id, lf.customer_id, lf.frequency, lf.future_pickup_date,
+                   lf.pickup_time_interval, lf.is_active, lf.is_paused,
+                   lf.pause_resume_date, lf.pause_started_at,
+                   lf.original_pickup_date, lf.reschedule_offset,
+                   lf.consecutive_skips, lf.total_skips_30d, lf.last_skip_date,
+                   c.first_name, c.last_name, c.phone_number
+            FROM orders.laundry_frequency lf
+            JOIN shop.customers c ON c.customer_id = lf.customer_id
+            WHERE lf.frequency_id = %s
+        """, (frequencyId,))
+        sub = cur.fetchone()
+
+    if not sub:
+        raise HTTPException(status_code=404, detail={
+            "status": "error",
+            "code": "SUBSCRIPTION_NOT_FOUND",
+            "message": "Subscription not found."
+        })
+
+    return {
+        "status": "success",
+        "data": {
+            "frequencyId": str(sub["frequency_id"]),
+            "customerId": sub["customer_id"],
+            "customerName": f"{sub['first_name']} {sub['last_name']}".strip(),
+            "customerPhone": sub["phone_number"],
+            "frequency": sub["frequency"],
+            "futurePickupDate": str(sub["future_pickup_date"]) if sub["future_pickup_date"] else None,
+            "pickupTimeInterval": sub["pickup_time_interval"],
+            "isActive": sub["is_active"],
+            "isPaused": sub["is_paused"] or False,
+            "pauseResumeDate": str(sub["pause_resume_date"]) if sub["pause_resume_date"] else None,
+            "pauseStartedAt": str(sub["pause_started_at"]) if sub["pause_started_at"] else None,
+            "originalPickupDate": str(sub["original_pickup_date"]) if sub["original_pickup_date"] else None,
+            "rescheduleOffset": sub["reschedule_offset"],
+            "consecutiveSkips": sub["consecutive_skips"] or 0,
+            "totalSkips30d": sub["total_skips_30d"] or 0,
+            "lastSkipDate": str(sub["last_skip_date"]) if sub["last_skip_date"] else None,
+        }
+    }
+
+
+@router.post("/admin/reschedule")
+async def admin_reschedule(
+    body: dict = Body(...),
+    current_user: dict = Depends(get_current_user),
+):
+    """Admin reschedule — bypasses cutoff window."""
+    frequency_id = body.get("frequencyId")
+    customer_id = body.get("customerId")
+    target_date = body.get("targetDate")
+
+    if not frequency_id or not customer_id or not target_date:
+        raise HTTPException(status_code=422, detail={
+            "status": "error",
+            "code": "MISSING_FIELDS",
+            "message": "frequencyId, customerId, and targetDate are required."
+        })
+
+    result = SubscriptionService.reschedule(frequency_id, customer_id, target_date, actor="admin")
+
+    if result["status"] == "error":
+        status_code = _error_code_to_http(result.get("code"))
+        raise HTTPException(status_code=status_code, detail=result)
+
+    return result
+
+
+@router.post("/admin/skip")
+async def admin_skip(
+    body: dict = Body(...),
+    current_user: dict = Depends(get_current_user),
+):
+    """Admin skip — bypasses cutoff window."""
+    frequency_id = body.get("frequencyId")
+    customer_id = body.get("customerId")
+    reason = body.get("reason")
+
+    if not frequency_id or not customer_id:
+        raise HTTPException(status_code=422, detail={
+            "status": "error",
+            "code": "MISSING_FIELDS",
+            "message": "frequencyId and customerId are required."
+        })
+
+    result = SubscriptionService.skip(frequency_id, customer_id, reason=reason, actor="admin")
+
+    if result["status"] == "error":
+        status_code = _error_code_to_http(result.get("code"))
+        raise HTTPException(status_code=status_code, detail=result)
+
+    return result
+
+
+@router.get("/admin/action-log")
+async def admin_action_log(
+    frequencyId: str = Query(...),
+    current_user: dict = Depends(get_current_user),
+):
+    """Get audit log for a subscription."""
+    with get_db() as conn:
+        cur = get_cursor(conn)
+        cur.execute("""
+            SELECT action_id, frequency_id, action_type, actor,
+                   original_date, new_date, reason, metadata, created_at
+            FROM orders.subscription_actions
+            WHERE frequency_id = %s
+            ORDER BY created_at DESC
+            LIMIT 50
+        """, (frequencyId,))
+        actions = cur.fetchall()
+
+    log_entries = []
+    for a in actions:
+        log_entries.append({
+            "actionId": str(a["action_id"]),
+            "frequencyId": str(a["frequency_id"]),
+            "actionType": a["action_type"],
+            "actor": a["actor"],
+            "originalDate": str(a["original_date"]) if a["original_date"] else None,
+            "newDate": str(a["new_date"]) if a["new_date"] else None,
+            "reason": a["reason"],
+            "metadata": a["metadata"] or {},
+            "createdAt": str(a["created_at"]) if a["created_at"] else None,
+        })
+
+    return {"status": "success", "data": log_entries}
+
+
+@router.get("/admin/at-risk")
+async def admin_at_risk(
+    laundryId: str = Query(...),
+    current_user: dict = Depends(get_current_user),
+):
+    """Get subscriptions with 3+ consecutive skips (at-risk for churn)."""
+    with get_db() as conn:
+        cur = get_cursor(conn)
+        cur.execute("""
+            SELECT lf.frequency_id, lf.customer_id, lf.frequency,
+                   lf.future_pickup_date, lf.consecutive_skips,
+                   lf.last_skip_date, lf.is_paused,
+                   c.first_name, c.last_name, c.phone_number
+            FROM orders.laundry_frequency lf
+            JOIN shop.customers c ON c.customer_id = lf.customer_id
+            WHERE lf.laundry_id = %s
+              AND lf.is_active = TRUE
+              AND lf.consecutive_skips >= 3
+            ORDER BY lf.consecutive_skips DESC
+        """, (laundryId,))
+        at_risk = cur.fetchall()
+
+    results = []
+    for r in at_risk:
+        results.append({
+            "frequencyId": str(r["frequency_id"]),
+            "customerId": r["customer_id"],
+            "customerName": f"{r['first_name']} {r['last_name']}".strip(),
+            "customerPhone": r["phone_number"],
+            "frequency": r["frequency"],
+            "futurePickupDate": str(r["future_pickup_date"]) if r["future_pickup_date"] else None,
+            "consecutiveSkips": r["consecutive_skips"] or 0,
+            "lastSkipDate": str(r["last_skip_date"]) if r["last_skip_date"] else None,
+            "isPaused": r["is_paused"] or False,
+        })
+
+    return {"status": "success", "data": results, "count": len(results)}
+
+
+# ─── Helper: Map error codes to HTTP status ───
+
+def _error_code_to_http(code: str) -> int:
+    """Map SubscriptionService error codes to HTTP status codes."""
+    code_map = {
+        "CUTOFF_EXCEEDED": 422,
+        "INVALID_DATE_RANGE": 422,
+        "DATE_IN_PAST": 422,
+        "INVALID_PAUSE_DURATION": 422,
+        "ALREADY_RESCHEDULED": 409,
+        "NOT_RESCHEDULED": 409,
+        "ALREADY_PAUSED": 409,
+        "NOT_PAUSED": 409,
+        "ORDER_IN_PROGRESS": 409,
+        "SUBSCRIPTION_NOT_FOUND": 404,
+        "INVALID_SMS_COMMAND": 422,
+        "MISSING_FIELDS": 422,
+    }
+    return code_map.get(code, 400)
