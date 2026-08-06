@@ -260,7 +260,7 @@ const OnboardingPage = () => {
                     signed: agreementSigned,
                     signatureName: signatureName,
                     signatureDate: signatureDate,
-                    terms: 'Platform fee of $149/month applies when monthly revenue processed through the platform exceeds $2,999. Invoice sent at end of month, payment due within 30 days.',
+                    terms: 'Platform fee of $49/month applies when monthly revenue processed through the platform exceeds $999. Invoice sent at end of month, payment due within 30 days.',
                 },
             };
 
@@ -428,16 +428,18 @@ const OnboardingPage = () => {
             <VStack spacing={{ base: 4, md: 6 }} align="stretch">
                 {/* Hero image — only on first step */}
                 {activeStep === 0 && (
-                    <Box textAlign="center">
-                        <Box mx="auto" mb={2} maxW={{ base: '100%', md: '700px' }} borderRadius="xl" overflow="hidden" boxShadow="md">
-                            <img
-                                src="https://laundry-images-store-prod.s3.us-east-1.amazonaws.com/onboard-hero.png"
-                                alt="Smart Laundry Basket - All-in-One Laundromat Platform"
-                                style={{ width: '100%', height: 'auto' }}
-                            />
-                        </Box>
-                        <Heading size={{ base: 'sm', md: 'md' }} color="blue.700">Get Started in 2 Minutes</Heading>
-                        <Text color="gray.600" mt={1} fontSize={{ base: 'xs', md: 'sm' }}>Free until $3K/month revenue. No contracts.</Text>
+                    <Box textAlign="center" py={6} bg="blue.50" borderRadius="xl" px={4}>
+                        <Heading size={{ base: 'lg', md: 'xl' }} color="blue.700" fontWeight="800">
+                            $49/month — Only After You Hit $1,000
+                        </Heading>
+                        <Text color="gray.600" mt={2} fontSize={{ base: 'sm', md: 'md' }} fontWeight="500">
+                            Use the full platform free. You only pay once your monthly revenue on this platform exceeds $1,000.
+                        </Text>
+                        <HStack justify="center" mt={3} spacing={4} fontSize="xs" color="gray.500">
+                            <Text>✓ No setup fees</Text>
+                            <Text>✓ No contracts</Text>
+                            <Text>✓ No revenue cuts</Text>
+                        </HStack>
                     </Box>
                 )}
 
@@ -916,9 +918,9 @@ const OnboardingPage = () => {
 
                                     <Text fontWeight="bold">1. Platform Usage Fee</Text>
                                     <Text>
-                                        A monthly platform fee of <strong>$149</strong> applies when the total revenue
-                                        processed through this platform for your laundry exceeds <strong>$2,999</strong>
-                                        in a calendar month. If your monthly revenue is $2,999 or below, no platform fee is charged.
+                                        A monthly platform fee of <strong>$49</strong> applies when the total revenue
+                                        processed through this platform for your business exceeds <strong>$999</strong>
+                                        in a calendar month. If your monthly revenue is $999 or below, no platform fee is charged.
                                     </Text>
 
                                     <Text fontWeight="bold">2. Billing & Payment</Text>
@@ -930,7 +932,7 @@ const OnboardingPage = () => {
                                     <Text fontWeight="bold">3. Free Tier</Text>
                                     <Text>
                                         You may use the platform at no cost as long as your monthly processed revenue
-                                        remains at or below $2,999. There are no setup fees, no per-transaction fees,
+                                        remains at or below $999. There are no setup fees, no per-transaction fees,
                                         and no hidden charges.
                                     </Text>
 
@@ -974,8 +976,8 @@ const OnboardingPage = () => {
                             size="lg"
                         >
                             <Text fontSize="sm">
-                                I agree to the Platform Service Agreement terms above. I understand that a $149/month
-                                fee applies when my monthly revenue exceeds $2,999.
+                                I agree to the Platform Service Agreement terms above. I understand that a $49/month
+                                fee applies when my monthly revenue exceeds $999.
                             </Text>
                         </Checkbox>
                     </VStack>
