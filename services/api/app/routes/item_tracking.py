@@ -1465,7 +1465,7 @@ async def detect_weight(request: DetectWeightRequest):
 
         # Call Claude Vision — use Haiku for fast weight detection (~1-2s)
         response = client.messages.create(
-            model="claude-3-5-haiku-latest",
+            model="claude-sonnet-4-6",
             max_tokens=256,
             system=weight_prompt,
             messages=[
