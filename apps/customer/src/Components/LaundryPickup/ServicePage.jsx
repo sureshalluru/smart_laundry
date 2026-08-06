@@ -134,8 +134,11 @@ useEffect(() => {
     console.log("⚡ Instant mode set:", currentDate, instantTime);
   } else {
     setPickupService("LaundryDriver");
-    const tomorrow = getDateInTimeZone(addDays(new Date(), 1), laundryTimeZone);
-    setPickupDate(tomorrow);
+    const sameDayOk = new Date().getHours() < 13;
+    const defaultDate = sameDayOk
+        ? new Date().toISOString().split('T')[0]
+        : getDateInTimeZone(addDays(new Date(), 1), laundryTimeZone);
+    setPickupDate(defaultDate);
   }
 }, [pickupMode, laundryTimeZone]);
 
@@ -454,7 +457,9 @@ useEffect(() => {
     }, [services, pickupDate, pickupTime, dropoffDate, dropoffTime, setIsServiceStepValid]);
 
     const today = new Date();
-    const todayDate = getDateInTimeZone(addDays(today, 1), laundryTimeZone);
+    const todayDate = today.getHours() < 13
+        ? today.toISOString().split('T')[0]
+        : getDateInTimeZone(addDays(today, 1), laundryTimeZone);
     const pickupModeRef = useRef(pickupMode);
     useEffect(() => { pickupModeRef.current = pickupMode; }, [pickupMode]);
 

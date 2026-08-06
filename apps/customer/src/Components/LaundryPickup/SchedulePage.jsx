@@ -174,9 +174,11 @@ export default function SchedulePage({
             setPickupService('Uber');
         } else {
             if (!pickupService) setPickupService('LaundryDriver');
-            const tz = laundryTimeZone || 'America/New_York';
-            const tomorrow = getDateInTimeZone(addDays(new Date(), 1), tz);
-            if (!pickupDate) setPickupDate(tomorrow);
+            const sameDayOk = new Date().getHours() < 13;
+            const defaultDate = sameDayOk
+                ? new Date().toISOString().split('T')[0]
+                : getDateInTimeZone(addDays(new Date(), 1), laundryTimeZone || 'America/Chicago');
+            if (!pickupDate) setPickupDate(defaultDate);
         }
     }, [pickupMode, laundryTimeZone]);
 
@@ -398,8 +400,10 @@ export default function SchedulePage({
 
     // ─── Derived Values ───
 
-    const tz = laundryTimeZone || 'America/New_York';
-    const todayDate = getDateInTimeZone(addDays(new Date(), 1), tz);
+    const tz = laundryTimeZone || 'America/Chicago';
+    const todayDate = new Date().getHours() < 13
+        ? new Date().toISOString().split('T')[0]
+        : getDateInTimeZone(addDays(new Date(), 1), tz);
     const isFormValid = pickupDate && pickupTime && dropoffDate && dropoffTime;
 
     // ─── Render ───

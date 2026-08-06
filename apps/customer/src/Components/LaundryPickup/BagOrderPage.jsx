@@ -132,12 +132,22 @@ export default function BagOrderPage({
         return slots;
     }, [deliveryTimeSlots, deliveryTimeInterval, laundryTimeZone]);
 
+    // Determine if same-day pickup is available (before 1 PM in laundry timezone)
+    const isSameDayAvailable = useCallback(() => {
+        return new Date().getHours() < 13; // Before 1 PM local time
+    }, []);
+
     // Initialize dates
     useEffect(() => {
-        const tz = laundryTimeZone || 'America/New_York';
+        const tz = laundryTimeZone || 'America/Chicago';
         if (!pickupDate) {
-            const tomorrow = getDateInTimeZone(addDays(new Date(), 1), tz);
-            setPickupDate(tomorrow);
+            if (isSameDayAvailable()) {
+                const today = new Date().toISOString().split('T')[0];
+                setPickupDate(today);
+            } else {
+                const tomorrow = getDateInTimeZone(addDays(new Date(), 1), tz);
+                setPickupDate(tomorrow);
+            }
         }
         if (!dropoffDate && pickupDate) {
             let tryDate = addDays(new Date(pickupDate + 'T12:00:00'), 1);
@@ -153,7 +163,7 @@ export default function BagOrderPage({
         }
         setPickupService('LaundryDriver');
         setDropoffService('LaundryDriver');
-    }, [laundryTimeZone, pickupDate, deliveryTimeSlots, generateTimeSlots]);
+    }, [laundryTimeZone, pickupDate, deliveryTimeSlots, generateTimeSlots, isSameDayAvailable]);
 
     // Generate slots when dates change
     useEffect(() => {
@@ -186,7 +196,9 @@ export default function BagOrderPage({
         setIsServiceStepValid(!!isValid);
     }, [totalItems, pickupDate, pickupTime, dropoffDate, dropoffTime, setIsServiceStepValid]);
 
-    const minPickupDate = getDateInTimeZone(addDays(new Date(), 1), laundryTimeZone || 'America/New_York');
+    const minPickupDate = isSameDayAvailable()
+        ? new Date().toISOString().split('T')[0]
+        : getDateInTimeZone(addDays(new Date(), 1), laundryTimeZone || 'America/Chicago');
 
     const handlePickupDateChange = (e) => {
         const newDate = e.target.value;
