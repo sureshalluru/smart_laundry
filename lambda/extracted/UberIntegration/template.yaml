@@ -23,13 +23,13 @@ Resources:
         Variables:
           GOOGLE_GEOCODE_URL: https://maps.googleapis.com/maps/api/geocode/json
           DB_PORT: '5432'
-          GOOGLE_MAPS_API_KEY: AIzaSyAiZ-5YYfKIPhpIexNoHRfym1mc-uXXr_g
+          GOOGLE_MAPS_API_KEY: YOUR_GOOGLE_MAPS_API_KEY
           DB_USER: smart_laundry
           UBER_AUTH_URL: https://auth.uber.com/oauth/v2/token
           DB_NAME: smart_laundry
           UBER_SCOPE: eats.deliveries
-          DB_HOST: smart-laundry.cpy626ke6rm6.us-east-1.rds.amazonaws.com
-          DB_PASSWORD: tNxSN6rX6eB0LTHlSDff
+          DB_HOST: YOUR_DB_HOST
+          DB_PASSWORD: YOUR_DB_PASSWORD
       EphemeralStorage:
         Size: 512
       Handler: lambda_function.lambda_handler

@@ -12,7 +12,7 @@ logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 # === CONSTANTS ===
-# GOOGLE_MAPS_API_KEY = "AIzaSyAiZ-5YYfKIPhpIexNoHRfym1mc-uXXr_g"
+# GOOGLE_MAPS_API_KEY = "YOUR_GOOGLE_MAPS_API_KEY"
 DYNAMODB = boto3.resource("dynamodb")
 laundry_shop_table  = DYNAMODB.Table("LaundryShopInfo")
 orders_table = DYNAMODB.Table("LaundryOrders")

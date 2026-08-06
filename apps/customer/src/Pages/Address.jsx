@@ -114,16 +114,29 @@ const Address = () => {
     })();
 
     return (
-        <Box bg={themeGradient} minH="100vh" display="flex" flexDirection="column" alignItems="center" justifyContent="flex-start" px={[7, 9, 11]} py={[12, 16, 20]}>
-            <Box w="full" maxW="600px">
-                <VStack spacing={[4, 6, 8]} align="center">
-                    <Image src={LaundryPickupImage} alt="Free Pickup & Delivery" objectFit="contain" w={{ base: '240px', md: '320px' }} h={{ base: '160px', md: '200px' }} />
-                    <Heading size={['md', 'lg']} color="blue.600" textAlign="center">
+        <Box bg={themeGradient} minH="100vh" display="flex" flexDirection="column" alignItems="center" justifyContent="center" px={[5, 7, 9]} py={[6, 8]}>
+            <Box w="full" maxW="500px">
+                <VStack spacing={[2, 3]} align="center">
+                    {/* Logo — prominent branding */}
+                    {laundryData?.laundryLogo && (
+                        <Image
+                            src={laundryData.laundryLogo}
+                            alt={laundryData?.laundryName}
+                            objectFit="contain"
+                            maxW={{ base: '140px', md: '180px' }}
+                            maxH={{ base: '60px', md: '70px' }}
+                        />
+                    )}
+                    <Image src={LaundryPickupImage} alt="Free Pickup & Delivery" objectFit="contain" w={{ base: '140px', md: '160px' }} h={{ base: '90px', md: '100px' }} />
+                    <Heading size={['sm', 'md']} color="blue.700" textAlign="center" fontWeight="700">
                         Welcome to {laundryData?.laundryName}
                     </Heading>
+                    <Text fontSize={['xs', 'sm']} color="gray.600" textAlign="center" maxW="360px">
+                        Free pickup & delivery at your doorstep. Fresh clothes, zero hassle.
+                    </Text>
                 </VStack>
 
-                <VStack as="form" onSubmit={handleSubmit} spacing={[4, 5, 6]} mt={[6, 8]} w="full" align="stretch">
+                <VStack as="form" onSubmit={handleSubmit} spacing={[3, 4]} mt={[3, 4]} w="full" align="stretch">
                     <FormControl id="address" isRequired>
                         <FormLabel fontSize={["sm", "md", "lg"]} color="blue.600" mb={2}>
                             Enter your address for free pickup
@@ -147,9 +160,29 @@ const Address = () => {
                         </StandaloneSearchBox>
                     </FormControl>
 
-                    <Button type="submit" colorScheme="blue" size="md" alignSelf="center" isLoading={validatingAddress} loadingText="Validating Address" boxShadow="md" w={["full","auto"]}>
-                        Continue
+                    <Button type="submit" colorScheme="blue" size="lg" alignSelf="center" isLoading={validatingAddress} loadingText="Validating Address" boxShadow="md" w={["full","auto"]} px={10} borderRadius="full" fontWeight="600">
+                        Schedule Free Pickup
                     </Button>
+
+                    {/* Trust badges */}
+                    <HStack spacing={[3, 5]} justify="center" pt={1} flexWrap="wrap">
+                        <VStack spacing={0}>
+                            <Text fontSize="lg">🚚</Text>
+                            <Text fontSize="xs" color="gray.500" fontWeight="500">Free Pickup</Text>
+                        </VStack>
+                        <VStack spacing={0}>
+                            <Text fontSize="lg">⚡</Text>
+                            <Text fontSize="xs" color="gray.500" fontWeight="500">Same Day</Text>
+                        </VStack>
+                        <VStack spacing={0}>
+                            <Text fontSize="lg">💳</Text>
+                            <Text fontSize="xs" color="gray.500" fontWeight="500">Pay Later</Text>
+                        </VStack>
+                        <VStack spacing={0}>
+                            <Text fontSize="lg">📍</Text>
+                            <Text fontSize="xs" color="gray.500" fontWeight="500">Live Tracking</Text>
+                        </VStack>
+                    </HStack>
 
                     {/* Notify Me Form — shows when address is not serviceable */}
                     {showNotifyForm && (
