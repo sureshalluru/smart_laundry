@@ -22,6 +22,7 @@ from app.migrations import add_vision_tasks
 from app.migrations import add_faq_tables
 from app.migrations import seed_faq_templates
 from app.migrations import add_sms_settings
+from app.migrations import add_tenant_api_keys
 
 logger = logging.getLogger(__name__)
 
@@ -48,4 +49,5 @@ def run_all():
     add_faq_tables.run()
     seed_faq_templates.run()
     add_sms_settings.run()
+    add_tenant_api_keys.run()
     logger.info("All migrations complete.")

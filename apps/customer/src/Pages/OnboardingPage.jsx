@@ -10,6 +10,7 @@ import {
 import { AddIcon, DeleteIcon } from '@chakra-ui/icons';
 import axios from 'axios';
 import MultiLocationOption from '../Components/Onboarding/MultiLocationOption';
+import OnboardingApiKeysStep from '../Components/Onboarding/OnboardingApiKeysStep';
 
 const DAYS_OF_WEEK = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 const TIMEZONES = [
@@ -35,6 +36,7 @@ const steps = [
     { title: 'Schedule', description: 'Operating hours' },
     { title: 'Payments', description: 'Stripe setup' },
     { title: 'Add-Ons', description: 'SMS & extras' },
+    { title: 'API Keys', description: 'Optional integrations' },
     { title: 'Agreement', description: 'Service terms' },
     { title: 'Review', description: 'Confirm & launch' },
 ];
@@ -54,7 +56,7 @@ const OnboardingPage = () => {
     });
 
     // Email verification state
-    const [emailVerified, setEmailVerified] = useState(false);
+    const [emailVerified, setEmailVerified] = useState(process.env.REACT_APP_SKIP_EMAIL_VERIFICATION === '1');
     const [emailVerificationToken, setEmailVerificationToken] = useState('');
     const [verificationCodeSent, setVerificationCodeSent] = useState(false);
     const [verificationCode, setVerificationCode] = useState('');
@@ -107,6 +109,9 @@ const OnboardingPage = () => {
 
     // Step 5: Add-Ons
     const [smsEnabled, setSmsEnabled] = useState(false);
+
+    // Step 6: API Keys (optional)
+    const [apiKeys, setApiKeys] = useState([]);
 
     // Step 5: Agreement
     const [agreementSigned, setAgreementSigned] = useState(false);
@@ -260,8 +265,9 @@ const OnboardingPage = () => {
                     signed: agreementSigned,
                     signatureName: signatureName,
                     signatureDate: signatureDate,
-                    terms: 'Platform fee of $49/month applies when monthly revenue processed through the platform exceeds $999. Invoice sent at end of month, payment due within 30 days.',
+                    terms: 'Tiered platform fee applies to managed hosting based on monthly revenue: $0-$999 Free, $1k-$5k $49/mo, $5k-$10k $74/mo, $10k-$15k $99/mo, $15k-$25k $124/mo, $25k+ $149/mo cap. Calendar-month billing, payment due within 30 days.',
                 },
+                apiKeys: apiKeys.length > 0 ? apiKeys : undefined,
             };
 
             const response = await axios.post(
@@ -271,7 +277,7 @@ const OnboardingPage = () => {
 
             if (response.data.status === 'success') {
                 setResult(response.data);
-                setActiveStep(8); // Move past the last step to show results
+                setActiveStep(9); // Move past the last step to show results
                 toast({ title: 'Laundry created successfully!', status: 'success', duration: 5000 });
             } else {
                 toast({ title: 'Error', description: response.data.message, status: 'error', duration: 5000 });
@@ -305,7 +311,8 @@ const OnboardingPage = () => {
     const canProceed = () => {
         switch (activeStep) {
             case 0: {
-                const baseValid = businessInfo.laundryName && businessInfo.ownerPhone && businessInfo.street && emailVerified && !addressDuplicate;
+                const skipEmailCheck = process.env.REACT_APP_SKIP_EMAIL_VERIFICATION === '1';
+                const baseValid = businessInfo.laundryName && businessInfo.ownerPhone && businessInfo.street && (skipEmailCheck || emailVerified) && !addressDuplicate;
                 if (!baseValid) return false;
                 if (multiLocationOption === 'join') return companyVerified === true;
                 if (multiLocationOption === 'create') return (companyName || '').trim().length > 0;
@@ -316,7 +323,8 @@ const OnboardingPage = () => {
             case 3: return schedule.some(s => s.enabled);
             case 4: return true; // Stripe optional at onboarding
             case 5: return true; // Add-Ons optional
-            case 6: return agreementSigned && signatureName.trim().length > 2;
+            case 6: return true; // API Keys optional
+            case 7: return agreementSigned && signatureName.trim().length > 2;
             default: return true;
         }
     };
@@ -430,15 +438,15 @@ const OnboardingPage = () => {
                 {activeStep === 0 && (
                     <Box textAlign="center" py={6} bg="blue.50" borderRadius="xl" px={4}>
                         <Heading size={{ base: 'lg', md: 'xl' }} color="blue.700" fontWeight="800">
-                            $49/month — Only After You Hit $1,000
+                            Start Free — Scales With You
                         </Heading>
                         <Text color="gray.600" mt={2} fontSize={{ base: 'sm', md: 'md' }} fontWeight="500">
-                            Use the full platform free. You only pay once your monthly revenue on this platform exceeds $1,000.
+                            Free until $1,000/month revenue. Then just $49/mo. No contracts.
                         </Text>
                         <HStack justify="center" mt={3} spacing={4} fontSize="xs" color="gray.500">
                             <Text>✓ No setup fees</Text>
                             <Text>✓ No contracts</Text>
-                            <Text>✓ No revenue cuts</Text>
+                            <Text>✓ $149/mo max</Text>
                         </HStack>
                     </Box>
                 )}
@@ -834,47 +842,20 @@ const OnboardingPage = () => {
                 {/* Step 6: Add-Ons */}
                 {activeStep === 5 && (
                     <VStack spacing={4} align="stretch">
-                        <Heading size="md">📱 SMS Messaging Add-On</Heading>
+                        <Heading size="md">📱 Notifications & AI Features</Heading>
                         <Text fontSize="sm" color="gray.600">
-                            Keep your customers informed with automated text notifications for order updates, delivery tracking, and reminders.
-                            Pay only for what you use — simple, tiered pricing based on your message volume.
+                            Everything below is included in your platform fee — no extra charges.
                         </Text>
 
                         <Card variant="outline" bg="green.50" borderColor="green.200">
                             <CardBody>
                                 <VStack spacing={2} align="stretch">
-                                    <Heading size="sm" color="green.700">✅ Included Free (Always Active)</Heading>
-                                    <Text fontSize="sm">• <strong>Login OTP via SMS</strong> — Customers always receive a one-time passcode text to verify their phone number</Text>
-                                    <Text fontSize="sm">• <strong>Email Notifications</strong> — All order status changes, payment confirmations, delivery updates, and receipts are sent via email at no extra cost</Text>
-                                </VStack>
-                            </CardBody>
-                        </Card>
-
-                        <Card variant="outline" bg="orange.50" borderColor="orange.200">
-                            <CardBody>
-                                <VStack spacing={3} align="stretch">
-                                    <Heading size="sm" color="orange.700">📲 Optional: SMS Order Notifications</Heading>
-                                    <Text fontSize="sm" color="gray.700">
-                                        Want to also send text messages when orders are ready, out for delivery, or when reminders go out?
-                                        Enable SMS notifications below. This is in addition to the emails that always go out.
-                                    </Text>
-                                    <Table size="sm" variant="simple">
-                                        <Thead>
-                                            <Tr>
-                                                <Th>Messages / Month</Th>
-                                                <Th>Cost</Th>
-                                            </Tr>
-                                        </Thead>
-                                        <Tbody>
-                                            <Tr><Td>Up to 500</Td><Td fontWeight="bold">$20/month</Td></Tr>
-                                            <Tr><Td>501 – 1,000</Td><Td fontWeight="bold">$40/month</Td></Tr>
-                                            <Tr><Td>1,001 – 2,000</Td><Td fontWeight="bold">$75/month</Td></Tr>
-                                            <Tr><Td>Over 2,000</Td><Td fontWeight="bold">+$30 per 1,000 messages</Td></Tr>
-                                        </Tbody>
-                                    </Table>
-                                    <Text fontSize="xs" color="gray.600">
-                                        Invoiced monthly based on actual usage. No commitment — cancel anytime from your admin panel.
-                                    </Text>
+                                    <Heading size="sm" color="green.700">✅ All Included in Your Plan</Heading>
+                                    <Text fontSize="sm">• <strong>Login OTP via SMS</strong> — Customers receive a one-time passcode to verify their phone number</Text>
+                                    <Text fontSize="sm">• <strong>SMS Order Notifications</strong> — Text messages for order ready, out for delivery, and reminders</Text>
+                                    <Text fontSize="sm">• <strong>Email Notifications</strong> — All order status changes, payment confirmations, delivery updates, and receipts</Text>
+                                    <Text fontSize="sm">• <strong>AI Item Tracking</strong> — Photo-based garment identification and counting</Text>
+                                    <Text fontSize="sm">• <strong>AI Weight Detection</strong> — Automatic scale reading from photos</Text>
                                 </VStack>
                             </CardBody>
                         </Card>
@@ -884,7 +865,7 @@ const OnboardingPage = () => {
                                 <VStack align="start" spacing={0}>
                                     <Text fontWeight="bold">{smsEnabled ? '✅ SMS Notifications Enabled' : 'Enable SMS Order Notifications'}</Text>
                                     <Text fontSize="xs" color="gray.500">
-                                        {smsEnabled ? 'Customers will receive text messages for order updates, delivery tracking, and reminders (in addition to emails).' : 'Emails always go out. Turn this on to also send texts for order ready, delivery, and reminder notifications.'}
+                                        {smsEnabled ? 'Customers will receive text messages for order updates and delivery tracking.' : 'Turn this on to send texts for order ready, delivery, and reminder notifications.'}
                                     </Text>
                                 </VStack>
                                 <Checkbox
@@ -902,8 +883,20 @@ const OnboardingPage = () => {
                     </VStack>
                 )}
 
-                {/* Step 6: Agreement */}
+                {/* Step 7: API Keys (Optional) */}
                 {activeStep === 6 && (
+                    <OnboardingApiKeysStep
+                        onSubmit={(keys) => {
+                            // Store keys for submission later (they'll be sent after laundry creation)
+                            setApiKeys(keys);
+                            setActiveStep(7);
+                        }}
+                        onSkip={() => setActiveStep(7)}
+                    />
+                )}
+
+                {/* Step 7: Agreement */}
+                {activeStep === 7 && (
                     <VStack spacing={4} align="stretch">
                         <Heading size="md">Service Agreement</Heading>
                         <Text fontSize="sm" color="gray.600">
@@ -916,11 +909,30 @@ const OnboardingPage = () => {
                                     <Heading size="sm">Platform Service Agreement</Heading>
                                     <Divider />
 
-                                    <Text fontWeight="bold">1. Platform Usage Fee</Text>
+                                    <Text fontWeight="bold">1. Platform Usage Fee (Managed Hosting Only)</Text>
                                     <Text>
-                                        A monthly platform fee of <strong>$49</strong> applies when the total revenue
-                                        processed through this platform for your business exceeds <strong>$999</strong>
-                                        in a calendar month. If your monthly revenue is $999 or below, no platform fee is charged.
+                                        A tiered monthly platform fee applies based on total revenue processed through
+                                        this platform for your business in a calendar month:
+                                    </Text>
+                                    <Table size="sm" variant="simple">
+                                        <Thead>
+                                            <Tr>
+                                                <Th>Monthly Revenue</Th>
+                                                <Th>Platform Fee</Th>
+                                            </Tr>
+                                        </Thead>
+                                        <Tbody>
+                                            <Tr><Td>$0 – $999</Td><Td fontWeight="bold" color="green.600">Free</Td></Tr>
+                                            <Tr><Td>$1,000 – $4,999</Td><Td>$49/month</Td></Tr>
+                                            <Tr><Td>$5,000 – $9,999</Td><Td>$74/month</Td></Tr>
+                                            <Tr><Td>$10,000 – $14,999</Td><Td>$99/month</Td></Tr>
+                                            <Tr><Td>$15,000 – $24,999</Td><Td>$124/month</Td></Tr>
+                                            <Tr><Td>$25,000+</Td><Td fontWeight="bold">$149/month (cap)</Td></Tr>
+                                        </Tbody>
+                                    </Table>
+                                    <Text fontSize="xs" color="gray.500">
+                                        The maximum platform fee is <strong>$149/month</strong> regardless of revenue.
+                                        Fees are calculated on a calendar-month basis.
                                     </Text>
 
                                     <Text fontWeight="bold">2. Billing & Payment</Text>
@@ -936,13 +948,19 @@ const OnboardingPage = () => {
                                         and no hidden charges.
                                     </Text>
 
-                                    <Text fontWeight="bold">4. Cancellation</Text>
+                                    <Text fontWeight="bold">4. Self-Hosting</Text>
+                                    <Text>
+                                        Self-hosted deployments are completely free with no platform fees.
+                                        The tiered pricing above applies only to managed hosting.
+                                    </Text>
+
+                                    <Text fontWeight="bold">5. Cancellation</Text>
                                     <Text>
                                         You may cancel your use of the platform at any time. Any outstanding invoices
                                         remain due. No refunds will be issued for partial months.
                                     </Text>
 
-                                    <Text fontWeight="bold">5. Data & Privacy</Text>
+                                    <Text fontWeight="bold">6. Data & Privacy</Text>
                                     <Text>
                                         Your customer data belongs to you. We will not share, sell, or use your customer
                                         data for any purpose other than operating this platform on your behalf.
@@ -976,15 +994,15 @@ const OnboardingPage = () => {
                             size="lg"
                         >
                             <Text fontSize="sm">
-                                I agree to the Platform Service Agreement terms above. I understand that a $49/month
-                                fee applies when my monthly revenue exceeds $999.
+                                I agree to the Platform Service Agreement terms above. I understand that tiered
+                                platform fees apply based on my monthly revenue, with a maximum of $149/month.
                             </Text>
                         </Checkbox>
                     </VStack>
                 )}
 
-                {/* Step 7: Review */}
-                {activeStep === 7 && (
+                {/* Step 8: Review */}
+                {activeStep === 8 && (
                     <VStack spacing={4} align="stretch">
                         <Heading size="md">Review & Launch</Heading>
 
@@ -1016,7 +1034,7 @@ const OnboardingPage = () => {
                 )}
 
                 {/* Navigation */}
-                {activeStep < 8 && (
+                {activeStep < 9 && (
                     <VStack spacing={2} pt={4}>
                         {!canProceed() && activeStep === 0 && (
                             <Alert status="info" borderRadius="md" size="sm">
@@ -1030,7 +1048,7 @@ const OnboardingPage = () => {
                             <Button variant="ghost" onClick={() => setActiveStep(Math.max(0, activeStep - 1))} isDisabled={activeStep === 0}>
                                 Back
                             </Button>
-                            {activeStep < 7 && (
+                            {activeStep < 8 && (
                                 <Button colorScheme="blue" onClick={() => setActiveStep(activeStep + 1)} isDisabled={!canProceed()}>
                                     Next
                                 </Button>

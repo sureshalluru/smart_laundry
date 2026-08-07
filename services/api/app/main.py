@@ -86,6 +86,7 @@ from app.routes import (
     faq_admin,
     city_pages,
     sitemap,
+    admin_integrations,
 )
 
 app = FastAPI(
@@ -108,6 +109,14 @@ def startup_event():
         logger.info("Skipping migrations (SKIP_MIGRATIONS=1)")
     from app.scheduler import start_scheduler
     start_scheduler()
+
+    # Initialize encryption service (validates MASTER_ENCRYPTION_KEY)
+    from app.services.encryption_service import get_encryption_service
+    enc = get_encryption_service()
+    if enc:
+        logger.info("[startup] EncryptionService initialized — tenant key encryption enabled")
+    else:
+        logger.warning("[startup] EncryptionService not available — MASTER_ENCRYPTION_KEY not configured")
 
 # CORS (still needed for local dev when React dev servers run separately)
 app.add_middleware(
@@ -148,6 +157,7 @@ app.include_router(export.router, prefix="/api/admin", tags=["Export"])
 app.include_router(item_tracking.router, prefix="/api/admin", tags=["Item Tracking"])
 app.include_router(item_tracking.track_router, prefix="/api", tags=["Item Tracking Mobile"])
 app.include_router(route_planning.router, prefix="/api/routes", tags=["Route Planning"])
+app.include_router(admin_integrations.router, prefix="/api/admin", tags=["Admin Integrations"])
 app.include_router(onboarding_verification.router, prefix="/api/platform/onboard", tags=["Onboarding Verification"])
 app.include_router(company_join.router, prefix="/api/platform/onboard", tags=["Company Join"])
 app.include_router(reports.router, prefix="/api/admin/reports", tags=["Financial Reports"])

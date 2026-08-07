@@ -4,6 +4,7 @@ import axios from "axios";
 import { useParams, useNavigate } from "react-router-dom";
 import { DeleteIcon, AddIcon } from "@chakra-ui/icons";
 import ServiceCatalogManager from "../Components/ServiceCatalog/ServiceCatalogManager";
+import IntegrationsTab from "../Components/Integrations/IntegrationsTab";
 import {
     Box,
     Spinner,
@@ -1834,6 +1835,11 @@ const LaundryInfoManagement = ({ validateEmpCredentials, type, empPrefix }) => {
             {/* Payment Settings */}
             {type === "paymentSettings" && (
                 <PaymentSettingsSection laundryId={laundryId} />
+            )}
+
+            {/* Integrations */}
+            {type === "integrations" && (
+                <IntegrationsTab laundryId={laundryId} />
             )}
 
             {/* Website Services */}

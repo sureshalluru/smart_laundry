@@ -1543,6 +1543,24 @@ async def detect_weight(request: DetectWeightRequest):
         else:
             confidence = 0
 
+        # Update the order weight in DB if we got a valid weight
+        if weight is not None and weight > 0 and request.orderId and request.laundryId:
+            try:
+                from app.database import get_db_connection
+                conn = get_db_connection()
+                cur = conn.cursor()
+                cur.execute("""
+                    UPDATE laundry_orders
+                    SET service_weight = %s
+                    WHERE order_id = %s AND laundry_id = %s
+                """, (str(weight), request.orderId, request.laundryId))
+                conn.commit()
+                cur.close()
+                conn.close()
+                logger.info(f"[item-tracking] Updated order {request.orderId} weight to {weight} {unit}")
+            except Exception as db_err:
+                logger.error(f"[item-tracking] Failed to update order weight in DB: {db_err}")
+
         return DetectWeightResponse(
             statusCode=200,
             body={"weight": weight, "unit": unit, "confidence": confidence}

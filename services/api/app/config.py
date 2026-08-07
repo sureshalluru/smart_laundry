@@ -51,6 +51,10 @@ class Settings(BaseSettings):
     # Anthropic (Claude Vision for item tracking)
     anthropic_api_key: str = ""
 
+    # Encryption (for per-tenant API key storage)
+    # Generate with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+    master_encryption_key: str = ""
+
     # CORS
     cors_origins: List[str] = [
         "http://localhost:3000",
@@ -64,6 +68,7 @@ class Settings(BaseSettings):
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"
+        extra = "ignore"
 
 
 settings = Settings()

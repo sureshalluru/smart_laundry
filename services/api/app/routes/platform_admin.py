@@ -1595,3 +1595,90 @@ async def remove_location_from_company(company_id: str, laundry_id: str, x_platf
         )
 
     return {"status": "success", "message": "Laundry removed from company"}
+
+
+# ── Tenant API Key Management ─────────────────────────────────────────────────
+
+@router.put("/tenant-keys")
+async def set_tenant_keys(body: dict = Body(...), x_platform_key: str = Header(None)):
+    """
+    Platform admin sets API keys for a tenant (marked as platform-managed).
+    These keys cannot be modified by the tenant themselves.
+    """
+    verify_platform_admin(x_platform_key)
+
+    from app.services.key_resolver import upsert_tenant_key, VALID_KEYS
+
+    laundry_id = body.get("laundryId")
+    keys = body.get("keys", [])
+
+    if not laundry_id:
+        raise HTTPException(status_code=400, detail="laundryId is required")
+    if not keys:
+        raise HTTPException(status_code=400, detail="keys array is required")
+
+    with get_db() as conn:
+        cur = get_cursor(conn)
+
+        # Verify laundry exists
+        cur.execute("SELECT laundry_id FROM shop.laundry_shops WHERE laundry_id = %s", (laundry_id,))
+        if not cur.fetchone():
+            raise HTTPException(status_code=404, detail=f"Laundry {laundry_id} not found")
+
+        for key_entry in keys:
+            provider = key_entry.get("provider")
+            key_name = key_entry.get("key_name")
+            value = key_entry.get("value", "")
+
+            if not provider or not key_name:
+                raise HTTPException(status_code=400, detail="Each key must have provider and key_name")
+            if (provider, key_name) not in VALID_KEYS:
+                raise HTTPException(status_code=400, detail=f"Invalid provider/key_name: {provider}/{key_name}")
+            if len(value) > 10 * 1024:
+                raise HTTPException(status_code=400, detail="Key value too large (max 10KB)")
+
+            upsert_tenant_key(conn, laundry_id, provider, key_name, value, is_platform_managed=True)
+            logger.info(f"[platform-admin] Set tenant key: tenant={laundry_id}, provider={provider}, key_name={key_name}, managed=True")
+
+    return {"status": "success", "message": f"Set {len(keys)} key(s) for laundry {laundry_id}"}
+
+
+@router.delete("/tenant-keys")
+async def delete_tenant_keys(body: dict = Body(...), x_platform_key: str = Header(None)):
+    """
+    Platform admin removes a tenant key or clears the platform-managed flag.
+    """
+    verify_platform_admin(x_platform_key)
+
+    laundry_id = body.get("laundryId")
+    provider = body.get("provider")
+    key_name = body.get("key_name")
+    action = body.get("action", "delete")  # "delete" or "release" (clears managed flag)
+
+    if not laundry_id or not provider or not key_name:
+        raise HTTPException(status_code=400, detail="laundryId, provider, and key_name are required")
+
+    with get_db() as conn:
+        cur = get_cursor(conn)
+
+        if action == "release":
+            # Remove platform-managed flag so tenant can manage it themselves
+            cur.execute("""
+                UPDATE tenant_api_keys
+                SET is_platform_managed = FALSE
+                WHERE laundry_id = %s AND provider = %s AND key_name = %s
+            """, (laundry_id, provider, key_name))
+            if cur.rowcount == 0:
+                raise HTTPException(status_code=404, detail="Key not found")
+            logger.info(f"[platform-admin] Released managed flag: tenant={laundry_id}, provider={provider}, key_name={key_name}")
+            return {"status": "success", "message": "Platform-managed flag removed"}
+        else:
+            # Delete the key entirely
+            cur.execute("""
+                DELETE FROM tenant_api_keys
+                WHERE laundry_id = %s AND provider = %s AND key_name = %s
+            """, (laundry_id, provider, key_name))
+            if cur.rowcount == 0:
+                raise HTTPException(status_code=404, detail="Key not found")
+            logger.info(f"[platform-admin] Deleted tenant key: tenant={laundry_id}, provider={provider}, key_name={key_name}")
+            return {"status": "success", "message": "Key deleted"}
