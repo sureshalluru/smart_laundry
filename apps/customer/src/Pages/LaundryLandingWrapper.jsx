@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { Box, Spinner, VStack, Text } from '@chakra-ui/react';
 import axios from 'axios';
 import SiteLandingPage from './SiteLandingPage';
@@ -13,8 +13,17 @@ import SiteLandingPage from './SiteLandingPage';
 export default function LaundryLandingWrapper() {
     const { laundryId } = useParams();
     const navigate = useNavigate();
+    const [searchParams] = useSearchParams();
     const [laundryConfig, setLaundryConfig] = useState(null);
     const [loading, setLoading] = useState(true);
+
+    // Persist referral code from URL query param so it survives navigation to login/signup
+    useEffect(() => {
+        const refCode = searchParams.get('ref');
+        if (refCode) {
+            localStorage.setItem('pendingReferralCode', refCode);
+        }
+    }, [searchParams]);
 
     useEffect(() => {
         async function fetchConfig() {

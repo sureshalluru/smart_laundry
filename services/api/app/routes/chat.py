@@ -88,7 +88,7 @@ async def customer_send_message(body: dict = Body(...)):
                     <tr><td style="padding:8px 12px; font-weight:bold; background:#f7f7f7; border:1px solid #ddd;">Message</td>
                         <td style="padding:8px 12px; border:1px solid #ddd; font-style:italic;">{message}</td></tr>
                 </table>
-                <p><a href="https://smartlaundrybasket.com/platform-admin" style="color:#2B6CB0; font-weight:bold;">Open Platform Admin to reply →</a></p>
+                <p><a href="https://smartlaundrybasket.ai/platform-admin" style="color:#2B6CB0; font-weight:bold;">Open Platform Admin to reply →</a></p>
                 <p style="font-size:12px; color:#999;">This is an automated notification from Smart Laundry Basket support chat.</p>
                 """
                 send_email("roundrocklaundry@gmail.com", f"💬 Chat from {laundry_name}: {message[:50]}", email_html)

@@ -1,18 +1,71 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
     Box, VStack, FormControl, FormLabel, Input, Button,
     Switch, useToast, Text, Icon, Flex, HStack, Checkbox, Collapse
 } from "@chakra-ui/react";
-import { FiUserPlus } from "react-icons/fi";
+import { FiUserPlus, FiCheckCircle } from "react-icons/fi";
 
-export default function SignupPage({ onSubmit, phoneNumber, isSignUpLoading }) {
+const API_URL = process.env.REACT_APP_AWS_API_URL || '';
+
+export default function SignupPage({ onSubmit, phoneNumber, isSignUpLoading, initialReferralCode, laundryId }) {
     const [firstName, setFirstName] = useState("");
     const [lastName, setLastName] = useState("");
     const [email, setEmail] = useState("");
     const [receivePhoneNotification, setReceivePhoneNotification] = useState(true);
     const [isCommercial, setIsCommercial] = useState(false);
     const [billingEmail, setBillingEmail] = useState("");
+    const [referralCode, setReferralCode] = useState(initialReferralCode || "");
+    const [referralStatus, setReferralStatus] = useState(null); // null | { valid, referrerFirstName, reason }
+    const [referralValidating, setReferralValidating] = useState(false);
     const toast = useToast();
+
+    // Pre-fill referral code from props (URL param)
+    useEffect(() => {
+        if (initialReferralCode) {
+            setReferralCode(initialReferralCode);
+            validateReferralCode(initialReferralCode);
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [initialReferralCode]);
+
+    const validateReferralCode = async (code) => {
+        if (!code || code.trim().length === 0) {
+            setReferralStatus(null);
+            return;
+        }
+        setReferralValidating(true);
+        try {
+            const res = await fetch(`${API_URL}/api/referrals/validate-code`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    code: code.trim(),
+                    laundryId: laundryId,
+                    phoneNumber: phoneNumber || "",
+                    email: email || "",
+                }),
+            });
+            if (res.ok) {
+                const data = await res.json();
+                setReferralStatus(data);
+            } else {
+                setReferralStatus({ valid: false, reason: "validation_error" });
+            }
+        } catch (err) {
+            console.error("Referral code validation error:", err);
+            setReferralStatus({ valid: false, reason: "network_error" });
+        } finally {
+            setReferralValidating(false);
+        }
+    };
+
+    const handleReferralBlur = () => {
+        if (referralCode.trim()) {
+            validateReferralCode(referralCode);
+        } else {
+            setReferralStatus(null);
+        }
+    };
 
     const handleSubmit = () => {
         if (firstName && lastName && email) {
@@ -26,7 +79,7 @@ export default function SignupPage({ onSubmit, phoneNumber, isSignUpLoading }) {
                 });
                 return;
             }
-            onSubmit(phoneNumber, firstName, lastName, email, receivePhoneNotification, isCommercial, billingEmail);
+            onSubmit(phoneNumber, firstName, lastName, email, receivePhoneNotification, isCommercial, billingEmail, referralCode.trim() || null);
         } else {
             toast({
                 title: "Missing Information",
@@ -92,6 +145,43 @@ export default function SignupPage({ onSubmit, phoneNumber, isSignUpLoading }) {
                 <FormControl>
                     <FormLabel fontSize="sm" color="gray.600" mb={1}>Phone</FormLabel>
                     <Input size="lg" value={phoneNumber} isReadOnly bg="gray.50" color="gray.600" />
+                </FormControl>
+
+                {/* Referral Code (Optional) */}
+                <FormControl>
+                    <FormLabel fontSize="sm" color="gray.600" mb={1}>Referral Code (Optional)</FormLabel>
+                    <Input
+                        size="lg" placeholder="Enter referral code"
+                        value={referralCode}
+                        onChange={(e) => {
+                            setReferralCode(e.target.value.toUpperCase());
+                            if (!e.target.value.trim()) setReferralStatus(null);
+                        }}
+                        onBlur={handleReferralBlur}
+                        bg="white" border="1px solid" borderColor="gray.200"
+                        _focus={{ borderColor: "blue.400", boxShadow: "0 0 0 1px #63b3ed" }}
+                        isDisabled={referralValidating}
+                    />
+                    {referralValidating && (
+                        <Text fontSize="xs" color="blue.500" mt={1}>Validating code...</Text>
+                    )}
+                    {referralStatus?.valid && (
+                        <HStack mt={1} spacing={1}>
+                            <Icon as={FiCheckCircle} color="green.500" boxSize={3} />
+                            <Text fontSize="xs" color="green.600">
+                                Referred by {referralStatus.referrerFirstName}
+                            </Text>
+                        </HStack>
+                    )}
+                    {referralStatus && !referralStatus.valid && (
+                        <Text fontSize="xs" color="red.500" mt={1}>
+                            {referralStatus.reason === "self_referral"
+                                ? "You cannot use your own referral code."
+                                : referralStatus.reason === "network_error"
+                                ? "Could not validate code. You can still register."
+                                : "Invalid referral code. You can still register without one."}
+                        </Text>
+                    )}
                 </FormControl>
 
                 {/* Commercial Account */}

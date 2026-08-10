@@ -308,4 +308,4 @@ In plain English:
 - **Self-hosted:** Community support via GitHub Issues
 - **Managed ($49/mo):** Priority email support, hosting, backups, updates included
 
-[Get Managed Hosting →](https://smartlaundrybasket.com/onboard)
+[Get Managed Hosting →](https://smartlaundrybasket.ai/onboard)

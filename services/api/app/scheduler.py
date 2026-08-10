@@ -5,12 +5,15 @@ No dependency on Render cron jobs or external HTTP calls.
 Jobs:
 - Frequency processor: daily at 6 AM CT (creates recurring orders)
 - Engagement processor: daily at 10 AM CT (sends customer reminders)
+- Community board refresh: every 5 minutes (referral community board cache)
+- Credit expiration: daily at 2 AM CT (expire old credits, send reminders)
 
 Safety: On startup, checks if today's jobs were missed and runs them immediately.
 """
 import logging
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
+from apscheduler.triggers.interval import IntervalTrigger
 from pytz import timezone
 from datetime import datetime, timedelta
 
@@ -67,6 +70,211 @@ def run_engagement_processor():
         logger.exception(f"⏰ Engagement processor failed: {e}")
 
 
+def run_community_board_refresh():
+    """Refresh the community board cache for all laundries with active referral programs.
+
+    Runs every 5 minutes. For each laundry with an active referral program, aggregates:
+    - Recent referral activity (anonymized first-name-only)
+    - Monthly leaderboard (first name + last initial)
+    - Community milestones (50, 100, 250, 500 total referrals)
+
+    Writes results to shop.community_board_cache.
+    """
+    logger.info("⏰ Scheduler: Running community board refresh...")
+    try:
+        from app.database import get_db, get_cursor
+
+        MILESTONES = [50, 100, 250, 500]
+
+        with get_db() as conn:
+            cur = get_cursor(conn)
+
+            # Get all laundries with active referral programs
+            cur.execute("""
+                SELECT laundry_id FROM shop.referral_program_config
+                WHERE is_active = TRUE
+            """)
+            active_laundries = cur.fetchall()
+
+            for row in active_laundries:
+                laundry_id = row["laundry_id"]
+
+                # 1. Recent referral activity (last 7 days, anonymized first-name-only)
+                cur.execute("""
+                    SELECT c.first_name, re.status, re.updated_at
+                    FROM shop.referral_events re
+                    JOIN shop.customers c ON c.customer_id = re.referrer_id
+                    WHERE re.laundry_id = %s
+                      AND re.updated_at >= NOW() - interval '7 days'
+                    ORDER BY re.updated_at DESC
+                    LIMIT 20
+                """, (laundry_id,))
+                recent_events = cur.fetchall()
+
+                recent_activity = []
+                for event in recent_events:
+                    first_name = event.get("first_name", "Someone")
+                    status = event.get("status", "")
+                    if status == "first_order_completed":
+                        recent_activity.append(
+                            f"{first_name} just earned a reward!"
+                        )
+                    elif status == "signed_up":
+                        recent_activity.append(
+                            f"{first_name} referred a friend!"
+                        )
+
+                # 2. Monthly leaderboard (first name + last initial)
+                cur.execute("""
+                    SELECT c.first_name, c.last_name, COUNT(*) as referral_count
+                    FROM shop.referral_events re
+                    JOIN shop.customers c ON c.customer_id = re.referrer_id
+                    WHERE re.laundry_id = %s
+                      AND re.status IN ('first_order_completed', 'rewarded')
+                      AND re.updated_at >= date_trunc('month', NOW())
+                      AND re.updated_at < date_trunc('month', NOW()) + interval '1 month'
+                    GROUP BY c.customer_id, c.first_name, c.last_name
+                    ORDER BY referral_count DESC
+                    LIMIT 10
+                """, (laundry_id,))
+                leaderboard_rows = cur.fetchall()
+
+                leaderboard = []
+                for lb_row in leaderboard_rows:
+                    first_name = lb_row.get("first_name", "")
+                    last_name = lb_row.get("last_name", "")
+                    last_initial = f" {last_name[0].upper()}." if last_name else ""
+                    leaderboard.append({
+                        "name": f"{first_name}{last_initial}",
+                        "count": lb_row["referral_count"],
+                    })
+
+                # 3. Total referrals and milestones
+                cur.execute("""
+                    SELECT COUNT(*) as total
+                    FROM shop.referral_events
+                    WHERE laundry_id = %s
+                """, (laundry_id,))
+                total_row = cur.fetchone()
+                total_referrals = total_row["total"] if total_row else 0
+
+                milestones = [m for m in MILESTONES if total_referrals >= m]
+
+                # 4. Upsert into community_board_cache
+                import json
+                cur.execute("""
+                    INSERT INTO shop.community_board_cache
+                        (laundry_id, recent_activity, leaderboard, milestones,
+                         total_referrals, refreshed_at)
+                    VALUES (%s, %s, %s, %s, %s, NOW())
+                    ON CONFLICT (laundry_id) DO UPDATE SET
+                        recent_activity = EXCLUDED.recent_activity,
+                        leaderboard = EXCLUDED.leaderboard,
+                        milestones = EXCLUDED.milestones,
+                        total_referrals = EXCLUDED.total_referrals,
+                        refreshed_at = NOW()
+                """, (
+                    laundry_id,
+                    json.dumps(recent_activity),
+                    json.dumps(leaderboard),
+                    json.dumps(milestones),
+                    total_referrals,
+                ))
+
+        logger.info("⏰ Community board refresh completed for %d laundries", len(active_laundries))
+    except Exception as e:
+        logger.exception(f"⏰ Community board refresh failed: {e}")
+
+
+def run_credit_expiration():
+    """Process credit expiration and send reminder notifications.
+
+    Runs daily at 2 AM CT:
+    - Marks credits past expires_at as 'expired'
+    - Sends reminder notifications for credits within 7 days of expiry
+    """
+    logger.info("⏰ Scheduler: Running credit expiration job...")
+    try:
+        from app.database import get_db, get_cursor
+
+        with get_db() as conn:
+            cur = get_cursor(conn)
+
+            # 1. Mark expired credits
+            cur.execute("""
+                UPDATE shop.reward_credits
+                SET status = 'expired'
+                WHERE status = 'active'
+                  AND expires_at < NOW()
+            """)
+            expired_count = cur.rowcount
+            logger.info(f"⏰ Marked {expired_count} credits as expired")
+
+            # 2. Find credits expiring within 7 days and send reminders
+            cur.execute("""
+                SELECT rc.id, rc.customer_id, rc.laundry_id, rc.amount, rc.expires_at,
+                       c.first_name, c.email, c.phone_number
+                FROM shop.reward_credits rc
+                JOIN shop.customers c ON c.customer_id = rc.customer_id
+                WHERE rc.status = 'active'
+                  AND rc.expires_at >= NOW()
+                  AND rc.expires_at <= NOW() + interval '7 days'
+            """)
+            expiring_soon = cur.fetchall()
+
+        # Send reminder notifications (best effort, outside transaction)
+        reminder_count = 0
+        for credit in expiring_soon:
+            try:
+                _send_expiration_reminder(credit)
+                reminder_count += 1
+            except Exception as e:
+                logger.warning(
+                    "Failed to send expiration reminder for credit %s: %s",
+                    credit["id"], str(e)
+                )
+
+        logger.info(
+            "⏰ Credit expiration completed: %d expired, %d reminders sent",
+            expired_count, reminder_count
+        )
+    except Exception as e:
+        logger.exception(f"⏰ Credit expiration job failed: {e}")
+
+
+def _send_expiration_reminder(credit):
+    """Send an expiration reminder notification for a credit about to expire.
+
+    Args:
+        credit: dict with customer_id, laundry_id, amount, expires_at,
+                first_name, email, phone_number
+    """
+    from app.services.notification_service import send_email, send_sms_for_tenant
+
+    first_name = credit.get("first_name", "Customer")
+    amount = credit.get("amount", 0)
+    expires_at = credit.get("expires_at")
+    email = credit.get("email")
+    phone = credit.get("phone_number")
+    laundry_id = credit.get("laundry_id")
+
+    expiry_str = expires_at.strftime("%B %d, %Y") if expires_at else "soon"
+    message = (
+        f"Hi {first_name}! Your ${amount:.2f} referral reward credit expires on "
+        f"{expiry_str}. Use it on your next order before it expires!"
+    )
+
+    if email:
+        send_email(
+            email,
+            "Your referral credit is expiring soon!",
+            f"<p>{message}</p>",
+        )
+
+    if phone:
+        send_sms_for_tenant(phone, message, laundry_id)
+
+
 def _check_and_run_missed_jobs():
     """On startup, check if today's jobs were missed and run them now."""
     now = datetime.now(CT)
@@ -112,6 +320,26 @@ def start_scheduler():
         name="Customer engagement reminders (10 AM CT)",
         replace_existing=True,
         misfire_grace_time=7200,
+    )
+
+    # Community board refresh: every 5 minutes
+    scheduler.add_job(
+        run_community_board_refresh,
+        IntervalTrigger(minutes=5),
+        id="community_board_refresh",
+        name="Refresh community board cache (every 5 min)",
+        replace_existing=True,
+        misfire_grace_time=300,  # 5 minutes grace period
+    )
+
+    # Credit expiration: daily at 2:00 AM Central Time
+    scheduler.add_job(
+        run_credit_expiration,
+        CronTrigger(hour=2, minute=0, timezone=CT),
+        id="credit_expiration",
+        name="Credit expiration + reminders (2 AM CT)",
+        replace_existing=True,
+        misfire_grace_time=7200,  # 2 hours grace period
     )
 
     # Run missed jobs check 30 seconds after startup (gives DB time to connect)

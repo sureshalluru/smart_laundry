@@ -23,6 +23,8 @@ from app.migrations import add_faq_tables
 from app.migrations import seed_faq_templates
 from app.migrations import add_sms_settings
 from app.migrations import add_tenant_api_keys
+from app.migrations import add_referral_system
+from app.migrations import add_google_review_url
 
 logger = logging.getLogger(__name__)
 
@@ -50,4 +52,6 @@ def run_all():
     seed_faq_templates.run()
     add_sms_settings.run()
     add_tenant_api_keys.run()
+    add_referral_system.run()
+    add_google_review_url.run()
     logger.info("All migrations complete.")

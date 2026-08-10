@@ -39,6 +39,8 @@ const ReportsPage = lazy(() => import('./Pages/ReportsPage'));
 const MobileOrderPage = lazy(() => import('./Pages/MobileOrderPage'));
 const EmployeeLoginPage = lazy(() => import('./Pages/EmployeeLoginPage'));
 const PinEntryPage = lazy(() => import('./Pages/PinEntryPage'));
+const ReferralConfigPage = lazy(() => import('./Pages/ReferralConfigPage'));
+const ReferralAnalyticsPage = lazy(() => import('./Pages/ReferralAnalyticsPage'));
 
 // Company pages (multi-location management)
 const CompanyLoginPage = lazy(() => import('./Pages/CompanyLoginPage'));
@@ -406,6 +408,16 @@ function App() {
                     <Route path="reports" element={
                         <Suspense fallback={<LoadingSpinner/>}>
                             <WrappedReportsPage/>
+                        </Suspense>
+                    }/>
+                    <Route path="referrals" element={
+                        <Suspense fallback={<LoadingSpinner/>}>
+                            <ReferralConfigPage/>
+                        </Suspense>
+                    }/>
+                    <Route path="referral-analytics" element={
+                        <Suspense fallback={<LoadingSpinner/>}>
+                            <ReferralAnalyticsPage/>
                         </Suspense>
                     }/>
                 </Route>

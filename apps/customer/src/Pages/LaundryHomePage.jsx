@@ -15,7 +15,7 @@ import {
     DrawerCloseButton,
     useDisclosure
 } from '@chakra-ui/react';
-import {FiMenu, FiCalendar, FiList, FiUser, FiLogOut, FiHelpCircle} from 'react-icons/fi';
+import {FiMenu, FiCalendar, FiList, FiUser, FiLogOut, FiHelpCircle, FiGift} from 'react-icons/fi';
 import {FaWallet} from "react-icons/fa";
 import {useAuthenticator} from "../Context/AuthContext";
 import {useNavigate, Routes, Route, useLocation} from "react-router-dom";
@@ -30,6 +30,7 @@ import {loadStripe} from "@stripe/stripe-js";
 import {LaundryContext} from "../Components/Contexts/LaundryContext";
 import PaymentMethods from "../Components/LaundryHome/PaymentMethods";
 import ChatWidget from "../Components/Chat/ChatWidget";
+import ReferralDashboardPage from "./ReferralDashboardPage";
 const LaundryHomePage = ({laundryId, customerId, customerPaymentId: initialCustomerPaymentId = '', specialInstructions: initialSpecialInstructions=''}) => {
     const [isCollapsed, setIsCollapsed] = useState(false);
     const [customerPaymentId, setCustomerPaymentId] = useState(initialCustomerPaymentId); // State for Customer Payment Intent Id
@@ -60,6 +61,7 @@ const LaundryHomePage = ({laundryId, customerId, customerPaymentId: initialCusto
     const sidebarItems = [
         {label: 'Schedule Order', icon: FiCalendar, path: 'schedule-order'},
         {label: 'My Orders', icon: FiList, path: 'my-orders'},
+        {label: 'Referrals', icon: FiGift, path: 'referrals'},
         {label: 'Account', icon: FiUser, path: 'account'},
         {label: 'Payment Methods', icon: FaWallet, path: 'payment'},
         {label: 'FAQ', icon: FiHelpCircle, path: 'faq'}
@@ -297,6 +299,7 @@ const LaundryHomePage = ({laundryId, customerId, customerPaymentId: initialCusto
                         />
                         <Route path="order-success" element={<OrderSuccess laundryId={laundryId} />} />
                         <Route path="faq" element={<FAQPage />} />
+                        <Route path="referrals" element={<ReferralDashboardPage />} />
                         {/* Fallback */}
                         <Route path="*" element={<NoPage />} />
                     </Routes>

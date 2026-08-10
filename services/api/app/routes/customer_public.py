@@ -107,7 +107,8 @@ async def customer_place_order(
         # Commercial is an account-level property — order_type stays as the channel (Online)
         # but pay_by_invoice = TRUE means no card payment, invoice will be sent
         order_type = "Online"
-        pay_by_invoice = False
+        # Preserve customer-selected pay_by_invoice from the request body
+        # Commercial accounts always get pay_by_invoice = True regardless
         with get_db() as conn_comm:
             cur_comm = get_cursor(conn_comm)
             cur_comm.execute(
@@ -118,6 +119,9 @@ async def customer_place_order(
             if comm_row and comm_row.get("is_commercial"):
                 pay_by_invoice = True
                 logger.info(f"Commercial account detected: customer_id={customer_id}, order_type=Online, pay_by_invoice=True")
+            elif not pay_by_invoice:
+                # Keep whatever the customer selected (already read from body on line above)
+                pass
 
         tip_amount = round(float(str(tip_data.get("tipAmount", 0) or 0)), 2)
 
@@ -184,6 +188,37 @@ async def customer_place_order(
                 grand_total = round(total_cost + tip_amount + tax_amount, 2)
         except Exception as tax_err:
             logger.warning(f"Tax calculation error: {tax_err}")
+
+        # Apply reward credits as discount (FIFO — oldest first)
+        credit_discount = 0
+        used_credit_ids = []
+        try:
+            if grand_total > 0:
+                with get_db() as conn_credits:
+                    cur_credits = get_cursor(conn_credits)
+                    cur_credits.execute("""
+                        SELECT id, amount FROM shop.reward_credits
+                        WHERE customer_id = %s AND laundry_id = %s
+                          AND status = 'active' AND expires_at > NOW()
+                        ORDER BY created_at ASC
+                    """, (customer_id, laundry_id))
+                    available_credits = cur_credits.fetchall()
+
+                    remaining = grand_total
+                    for credit in available_credits:
+                        if remaining <= 0:
+                            break
+                        applied = min(float(credit["amount"]), remaining)
+                        credit_discount += applied
+                        remaining -= applied
+                        used_credit_ids.append((credit["id"], applied))
+
+                    if credit_discount > 0:
+                        grand_total = round(remaining, 2)
+        except Exception as credit_err:
+            logger.warning(f"Credit application error: {credit_err}")
+            credit_discount = 0
+            used_credit_ids = []
 
         order_id = f"O-{uuid.uuid4().hex[:8].upper()}"
 
@@ -308,6 +343,20 @@ async def customer_place_order(
                     dropoff_time_interval, future_pickup,
                     auto_charge,
                 ))
+
+        # Mark used credits as 'used' with reference to order_id
+        if used_credit_ids:
+            try:
+                with get_db() as conn_mark:
+                    cur_mark = get_cursor(conn_mark)
+                    for credit_id, _applied_amount in used_credit_ids:
+                        cur_mark.execute("""
+                            UPDATE shop.reward_credits
+                            SET status = 'used', used_on_order_id = %s
+                            WHERE id = %s
+                        """, (order_id, credit_id))
+            except Exception as mark_err:
+                logger.warning(f"Failed to mark credits as used for order {order_id}: {mark_err}")
 
         # Create $1 hold on customer's card to verify payment method (skip for invoice orders)
         if customer_payment_id and not pay_by_invoice:

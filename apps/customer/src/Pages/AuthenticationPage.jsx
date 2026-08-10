@@ -29,8 +29,10 @@ export default function AuthenticationPage() {
     const [customerFirstName, setCustomerFirstName] = useState("");
     const [searchParams] = useSearchParams();
     const redirectTo = searchParams.get('redirectTo') || '';
+    const refCode = searchParams.get('ref') || localStorage.getItem('pendingReferralCode') || '';
     const [otpTimer, setOtpTimer] = useState(180);
     const [commercialData, setCommercialData] = useState(null);
+    const [referralCode, setReferralCode] = useState(refCode);
 
     const handleLoginSubmit = async (phone) => {
         setPhoneNumber(phone);
@@ -95,10 +97,12 @@ export default function AuthenticationPage() {
         }
     };
 
-    const handleSignupSubmit = async (phone, firstName, lastName, email, receivePhoneNotification, isCommercial, billingEmail) => {
+    const handleSignupSubmit = async (phone, firstName, lastName, email, receivePhoneNotification, isCommercial, billingEmail, refCodeFromForm) => {
         setIsSignUpLoading(true);
+        // Store referral code for passing in the API call
+        if (refCodeFromForm) setReferralCode(refCodeFromForm);
         try {
-            const { error } = await initiateSignUp(laundryId, email, phone, firstName, lastName, false, receivePhoneNotification, isCommercial, billingEmail);
+            const { error } = await initiateSignUp(laundryId, email, phone, firstName, lastName, false, receivePhoneNotification, isCommercial, billingEmail, refCodeFromForm || referralCode || null);
             if (error) {
                 if (error.includes("UsernameExistsException")) {
                     toast({ title: "Account exists", description: "Sending verification code...", status: "info", duration: 3000, isClosable: true });
@@ -187,7 +191,7 @@ export default function AuthenticationPage() {
                     <LoginPage onLoginSubmit={handleLoginSubmit} isLoginLoading={isLoginLoading} initialPhoneNumber={phoneNumber} />
                 )}
                 {authStatus === "unauthenticated" && currentPage === "signup" && (
-                    <SignupPage onSubmit={handleSignupSubmit} phoneNumber={phoneNumber} isSignUpLoading={isSignUpLoading} />
+                    <SignupPage onSubmit={handleSignupSubmit} phoneNumber={phoneNumber} isSignUpLoading={isSignUpLoading} initialReferralCode={referralCode} laundryId={laundryId} />
                 )}
                 {authStatus === "unauthenticated" && currentPage === "otpValidation" && (
                     <OTPValidationPage

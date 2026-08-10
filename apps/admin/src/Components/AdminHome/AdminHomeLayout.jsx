@@ -764,6 +764,32 @@ const SidebarContent = ({
         </Button>
         )}
 
+        {/* Referral Program - visible to Admin only */}
+        {hasPermission(role, FEATURES.ENGAGEMENT) && (
+        <Button as="a" href={`/${laundryId}/admin/referrals`}
+                leftIcon={<FaUsers />}
+                variant="ghost"
+                colorScheme="teal"
+                justifyContent="flex-start"
+                onClick={() => navigate(`/${laundryId}/admin/referrals`)}
+        >
+            Referral Program
+        </Button>
+        )}
+
+        {/* Referral Analytics - visible to Admin only */}
+        {hasPermission(role, FEATURES.ENGAGEMENT) && (
+        <Button as="a" href={`/${laundryId}/admin/referral-analytics`}
+                leftIcon={<FaClipboardList />}
+                variant="ghost"
+                colorScheme="purple"
+                justifyContent="flex-start"
+                onClick={() => navigate(`/${laundryId}/admin/referral-analytics`)}
+        >
+            Referral Analytics
+        </Button>
+        )}
+
         {/* Support Chat - visible to Admin only (LAUNDRY_SETTINGS) */}
         {hasPermission(role, FEATURES.LAUNDRY_SETTINGS) && (
         <Button as="a" href={`/${laundryId}/admin/support-chat`}

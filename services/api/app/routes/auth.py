@@ -8,6 +8,7 @@ from app.auth import (
     hash_password, verify_password,
     create_access_token, create_refresh_token, decode_token,
 )
+from app.services.referral_service import validate_referral_code, create_referral_code_for_customer
 import logging
 
 logger = logging.getLogger(__name__)
@@ -70,6 +71,34 @@ async def register(body: dict = Body(...)):
                 INSERT INTO shop.customer_laundry_stats (customer_id, laundry_id)
                 VALUES (%s, %s) ON CONFLICT DO NOTHING
             """, (customer_id, laundry_id))
+
+    # Referral handling (best-effort — never block registration)
+    try:
+        referral_code = body.get("referralCode")
+        if referral_code and laundry_id:
+            validation = validate_referral_code(referral_code, laundry_id, phone, email)
+            if validation.get("valid"):
+                # Look up referral code record to get referral_code_id and referrer_id
+                with get_db() as conn:
+                    cur = get_cursor(conn)
+                    cur.execute("""
+                        SELECT id, customer_id FROM shop.referral_codes
+                        WHERE code = %s AND laundry_id = %s AND is_active = TRUE
+                    """, (referral_code, laundry_id))
+                    code_row = cur.fetchone()
+                    if code_row:
+                        cur.execute("""
+                            INSERT INTO shop.referral_events
+                                (laundry_id, referrer_id, referee_id, referral_code_id, status)
+                            VALUES (%s, %s, %s, %s, 'signed_up')
+                            ON CONFLICT (laundry_id, referee_id) DO NOTHING
+                        """, (laundry_id, code_row["customer_id"], customer_id, code_row["id"]))
+
+        # Generate a referral code for the newly registered customer
+        if laundry_id:
+            create_referral_code_for_customer(customer_id, laundry_id)
+    except Exception as e:
+        logger.warning("Referral handling failed during registration (non-blocking): %s", str(e))
 
     # Issue tokens
     token_data = {
@@ -565,22 +594,43 @@ async def customer_register(body: dict = Body(...)):
     # Send OTP for verification
     try:
         otp_result = await send_otp({"phoneNumber": phone})
-        return {
-            "status": "success",
-            "isSignUpComplete": False,
-            "nextStep": "CONFIRM_SIGN_UP",
-            "userId": customer_id,
-            "error": None,
-        }
     except Exception as e:
-        return {
-            "status": "success",
-            "isSignUpComplete": False,
-            "nextStep": "CONFIRM_SIGN_UP",
-            "userId": customer_id,
-            "error": None,
-            "otpError": str(e),
-        }
+        otp_result = None
+
+    # Referral handling (best-effort — never block registration)
+    try:
+        referral_code = body.get("referralCode")
+        if referral_code and laundry_id:
+            validation = validate_referral_code(referral_code, laundry_id, phone, email)
+            if validation.get("valid"):
+                with get_db() as conn:
+                    cur = get_cursor(conn)
+                    cur.execute("""
+                        SELECT id, customer_id FROM shop.referral_codes
+                        WHERE code = %s AND laundry_id = %s AND is_active = TRUE
+                    """, (referral_code, laundry_id))
+                    code_row = cur.fetchone()
+                    if code_row:
+                        cur.execute("""
+                            INSERT INTO shop.referral_events
+                                (laundry_id, referrer_id, referee_id, referral_code_id, status)
+                            VALUES (%s, %s, %s, %s, 'signed_up')
+                            ON CONFLICT (laundry_id, referee_id) DO NOTHING
+                        """, (laundry_id, code_row["customer_id"], customer_id, code_row["id"]))
+
+        # Generate a referral code for the newly registered customer
+        if laundry_id:
+            create_referral_code_for_customer(customer_id, laundry_id)
+    except Exception as e:
+        logger.warning("Referral handling failed during customer-register (non-blocking): %s", str(e))
+
+    return {
+        "status": "success",
+        "isSignUpComplete": False,
+        "nextStep": "CONFIRM_SIGN_UP",
+        "userId": customer_id,
+        "error": None,
+    }
 
 
 # In-memory OTP store (use Redis in production)

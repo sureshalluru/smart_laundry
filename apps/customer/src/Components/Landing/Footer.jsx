@@ -9,7 +9,7 @@ const Footer = () => (
       <Link href="#" isExternal><Icon as={FaTwitter} boxSize={6} /></Link>
       <Link href="#" isExternal><Icon as={FaInstagram} boxSize={6} /></Link>
     </HStack>
-    <Text mt={3}>Contact us: <Link href="mailto:info@smartlaundrybasket.com" color="blue.300">info@smartlaundrybasket.com</Link></Text>
+    <Text mt={3}>Contact us: <Link href="mailto:info@smartlaundrybasket.ai" color="blue.300">info@smartlaundrybasket.ai</Link></Text>
   </Box>
 );
 

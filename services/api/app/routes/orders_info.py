@@ -839,8 +839,27 @@ async def update_order_endpoint(
                 cancelled_statuses = {"OrderCanceled", "Cancelled"}
                 if order_status in active_statuses:
                     update_fields["status_category"] = "Active"
+                    # Referral reward hook — trigger when order is paid/processing completed
+                    if order_status == "ProcessingCompleted":
+                        try:
+                            from app.services.referral_service import process_first_order_reward
+                            cust_id = current_order.get("customer_id")
+                            if cust_id:
+                                result = process_first_order_reward(cust_id, laundryId, orderId)
+                                logger.info(f"Referral reward result for order {orderId}, customer {cust_id}, laundry {laundryId}: {result}")
+                        except Exception as referral_err:
+                            logger.warning(f"Referral reward processing error for order {orderId}: {referral_err}")
                 elif order_status in completed_statuses:
                     update_fields["status_category"] = "Completed"
+                    # Referral reward hook — also trigger on delivery (fallback if not triggered at ProcessingCompleted)
+                    try:
+                        from app.services.referral_service import process_first_order_reward
+                        cust_id = current_order.get("customer_id")
+                        if cust_id:
+                            result = process_first_order_reward(cust_id, laundryId, orderId)
+                            logger.info(f"Referral reward result for order {orderId}, customer {cust_id}, laundry {laundryId}: {result}")
+                    except Exception as referral_err:
+                        logger.warning(f"Referral reward processing error for order {orderId}: {referral_err}")
                 elif order_status in cancelled_statuses:
                     update_fields["status_category"] = "Cancelled"
 
@@ -1096,7 +1115,7 @@ async def update_order_endpoint(
                         FROM shop.customers WHERE customer_id = %s
                     """, (customer_id_for_review,))
                     cust = cur.fetchone()
-                    cur.execute("SELECT laundry_name, user_domain, contact_email FROM shop.laundry_shops WHERE laundry_id = %s", (laundryId,))
+                    cur.execute("SELECT laundry_name, user_domain, contact_email, google_review_url FROM shop.laundry_shops WHERE laundry_id = %s", (laundryId,))
                     shop = cur.fetchone()
 
                     # Get who processed the laundry (employee who set status to ProcessingCompleted)
@@ -1124,17 +1143,46 @@ async def update_order_endpoint(
                         laundry_name = shop["laundry_name"]
                         base_url = shop["user_domain"] or "https://www.smartlaundrybasket.ai"
                         first_name = cust["first_name"] or "Customer"
-                        review_url = f"{base_url}/{laundryId}/user/my-orders/?order_id={orderId}&is_open=true"
+                        google_review_url = shop.get("google_review_url") or ""
+                        review_url = google_review_url or f"{base_url}/{laundryId}/user/my-orders/?order_id={orderId}&is_open=true"
 
                         processed_msg = f" Your laundry was handled by <strong>{processor_name}</strong>." if processor_name else ""
 
+                        # Check if this customer earned a referral credit on this order
+                        referral_credit_msg = ""
+                        referral_credit_sms = ""
+                        try:
+                            cur.execute("""
+                                SELECT amount FROM shop.reward_credits
+                                WHERE customer_id = %s AND laundry_id = %s
+                                  AND referral_event_id IN (
+                                      SELECT id FROM shop.referral_events
+                                      WHERE referee_id = %s AND laundry_id = %s AND status = 'first_order_completed'
+                                  )
+                                  AND source = 'referee_reward'
+                                ORDER BY created_at DESC LIMIT 1
+                            """, (customer_id_for_review, laundryId, customer_id_for_review, laundryId))
+                            credit_row = cur.fetchone()
+                            if credit_row:
+                                credit_amt = float(credit_row["amount"])
+                                referral_credit_msg = f'<p style="background:#E6FFFA;padding:12px;border-radius:8px;border:1px solid #81E6D9;">🎉 <strong>You earned a ${credit_amt:.0f} referral credit!</strong> It will be applied automatically on your next order.</p>'
+                                referral_credit_sms = f" 🎉 You earned a ${credit_amt:.0f} credit for your next order!"
+                        except Exception:
+                            pass
+
                         if cust.get("notif_email", True) and cust["email"]:
+                            review_button = ""
+                            if google_review_url:
+                                review_button = f'<p><a href="{google_review_url}" style="background:#4299E1;color:white;padding:12px 24px;text-decoration:none;border-radius:8px;font-weight:bold;display:inline-block;">Leave a Google Review ⭐</a></p>'
+                            else:
+                                review_button = f'<p><a href="{review_url}" style="background:#4299E1;color:white;padding:12px 24px;text-decoration:none;border-radius:8px;font-weight:bold;display:inline-block;">Leave a Review</a></p>'
                             html_body = f"""
                             <h2>Thank you for choosing {laundry_name}! 🙏</h2>
                             <p>Hi {first_name},</p>
                             <p>Your laundry order <strong>{orderId}</strong> is complete.{processed_msg}</p>
+                            {referral_credit_msg}
                             <p>We'd love to hear how we did! Your feedback helps us improve.</p>
-                            <p><a href="{review_url}" style="background:#4299E1;color:white;padding:12px 24px;text-decoration:none;border-radius:8px;font-weight:bold;display:inline-block;">Leave a Review</a></p>
+                            {review_button}
                             <p style="color:#777;font-size:13px;">Thank you for your business! — {laundry_name} Team</p>
                             """
                             send_email(cust["email"], f"How was your experience? - {laundry_name}", html_body,
@@ -1145,7 +1193,10 @@ async def update_order_endpoint(
                             sms = f"Hi {first_name}! Your order {orderId} is complete."
                             if processor_name:
                                 sms += f" Handled by {processor_name}."
-                            sms += f" We'd love a review: {review_url} - {laundry_name}"
+                            sms += referral_credit_sms
+                            if google_review_url:
+                                sms += f" Leave a review: {google_review_url}"
+                            sms += f" - {laundry_name}"
                             send_sms_for_tenant(cust["phone_number"], sms, laundryId)
 
                         logger.info(f"Review notification sent for {orderId} (processed by: {processor_name})")
