@@ -186,6 +186,81 @@ def run_community_board_refresh():
         logger.exception(f"⏰ Community board refresh failed: {e}")
 
 
+def flush_notification_queue():
+    """Flush pending notifications from the quiet-hours queue.
+
+    Runs every 5 minutes. For each pending message whose scheduled_for time
+    has passed (i.e. it's now 7 AM or later in that laundry's timezone), send
+    the message via the appropriate channel and mark as 'sent'.
+    """
+    logger.info("⏰ Scheduler: Flushing notification queue...")
+    try:
+        from app.database import get_db, get_cursor
+        from app.services.notification_service import send_sms, send_email
+
+        with get_db() as conn:
+            cur = get_cursor(conn)
+            cur.execute("""
+                SELECT id, laundry_id, recipient, channel, subject, body
+                FROM shop.notification_queue
+                WHERE status = 'pending' AND scheduled_for <= NOW()
+                ORDER BY created_at ASC
+                LIMIT 100
+            """)
+            rows = cur.fetchall()
+
+        sent_count = 0
+        failed_count = 0
+
+        for row in rows:
+            msg_id = row["id"]
+            channel = row["channel"]
+            recipient = row["recipient"]
+            body = row["body"]
+            subject = row.get("subject")
+            success = False
+
+            try:
+                if channel == "sms":
+                    success = send_sms(recipient, body)
+                elif channel == "email":
+                    success = send_email(recipient, subject or "Notification", body)
+            except Exception as e:
+                logger.warning(f"Failed to send queued notification {msg_id}: {e}")
+
+            # Update status
+            try:
+                from app.database import get_db, get_cursor as gc
+                with get_db() as conn:
+                    cur = gc(conn)
+                    if success:
+                        cur.execute("""
+                            UPDATE shop.notification_queue
+                            SET status = 'sent', sent_at = NOW()
+                            WHERE id = %s
+                        """, (msg_id,))
+                        sent_count += 1
+                    else:
+                        cur.execute("""
+                            UPDATE shop.notification_queue
+                            SET status = 'failed'
+                            WHERE id = %s
+                        """, (msg_id,))
+                        failed_count += 1
+            except Exception as e:
+                logger.warning(f"Failed to update queue status for {msg_id}: {e}")
+
+        if rows:
+            logger.info(
+                "⏰ Notification queue flush: %d sent, %d failed out of %d pending",
+                sent_count, failed_count, len(rows),
+            )
+        else:
+            logger.debug("⏰ Notification queue: nothing pending.")
+    except Exception as e:
+        logger.exception(f"⏰ Notification queue flush failed: {e}")
+
+
 def run_credit_expiration():
     """Process credit expiration and send reminder notifications.
 
@@ -328,6 +403,16 @@ def start_scheduler():
         IntervalTrigger(minutes=5),
         id="community_board_refresh",
         name="Refresh community board cache (every 5 min)",
+        replace_existing=True,
+        misfire_grace_time=300,  # 5 minutes grace period
+    )
+
+    # Notification queue flush: every 5 minutes
+    scheduler.add_job(
+        flush_notification_queue,
+        IntervalTrigger(minutes=5),
+        id="notification_queue_flush",
+        name="Flush quiet-hours notification queue (every 5 min)",
         replace_existing=True,
         misfire_grace_time=300,  # 5 minutes grace period
     )

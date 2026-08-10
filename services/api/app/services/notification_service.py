@@ -1,23 +1,111 @@
 """
 Notification service — sends emails via Brevo (formerly Sendinblue) and SMS via Twilio.
 No AWS dependency.
+
+Quiet hours: Messages are not sent between 9 PM and 7 AM in the laundry's
+timezone.  Instead they are queued in shop.notification_queue and flushed at
+7 AM by the scheduler.
 """
 import logging
+from datetime import datetime, timedelta
+
 import httpx
+from pytz import timezone as pytz_timezone
+
 from app.config import settings
 
 logger = logging.getLogger(__name__)
 
+DEFAULT_TIMEZONE = "America/Chicago"
+
+# Quiet hours boundaries (inclusive of start, exclusive of end)
+QUIET_START_HOUR = 21  # 9 PM
+QUIET_END_HOUR = 7     # 7 AM
+
+
+def is_quiet_hours(timezone_str: str = DEFAULT_TIMEZONE) -> bool:
+    """Return True if the current local time is during quiet hours (9 PM – 7 AM)."""
+    try:
+        tz = pytz_timezone(timezone_str)
+    except Exception:
+        tz = pytz_timezone(DEFAULT_TIMEZONE)
+    now = datetime.now(tz)
+    return now.hour >= QUIET_START_HOUR or now.hour < QUIET_END_HOUR
+
+
+def _next_delivery_time(timezone_str: str = DEFAULT_TIMEZONE) -> datetime:
+    """Compute the next 7 AM delivery timestamp in the given timezone (UTC result)."""
+    try:
+        tz = pytz_timezone(timezone_str)
+    except Exception:
+        tz = pytz_timezone(DEFAULT_TIMEZONE)
+    now = datetime.now(tz)
+    # If it's before 7 AM today, deliver at 7 AM today; otherwise next day 7 AM
+    if now.hour < QUIET_END_HOUR:
+        delivery = now.replace(hour=QUIET_END_HOUR, minute=0, second=0, microsecond=0)
+    else:
+        delivery = (now + timedelta(days=1)).replace(hour=QUIET_END_HOUR, minute=0, second=0, microsecond=0)
+    return delivery
+
+
+def _get_laundry_timezone(laundry_id: str) -> str:
+    """Look up the laundry's timezone from shop.laundry_shops. Falls back to default."""
+    if not laundry_id:
+        return DEFAULT_TIMEZONE
+    try:
+        from app.database import get_db, get_cursor
+        with get_db() as conn:
+            cur = get_cursor(conn)
+            cur.execute(
+                "SELECT laundry_timezone FROM shop.laundry_shops WHERE laundry_id = %s",
+                (laundry_id,),
+            )
+            row = cur.fetchone()
+            if row and row.get("laundry_timezone"):
+                return row["laundry_timezone"]
+    except Exception as e:
+        logger.warning(f"Could not fetch timezone for laundry {laundry_id}: {e}")
+    return DEFAULT_TIMEZONE
+
+
+def queue_notification(laundry_id: str, recipient: str, channel: str, body: str,
+                       subject: str = None, timezone_str: str = DEFAULT_TIMEZONE):
+    """Insert a message into the notification queue for later delivery."""
+    scheduled_for = _next_delivery_time(timezone_str)
+    try:
+        from app.database import get_db, get_cursor
+        with get_db() as conn:
+            cur = get_cursor(conn)
+            cur.execute("""
+                INSERT INTO shop.notification_queue
+                    (laundry_id, recipient, channel, subject, body, status, scheduled_for)
+                VALUES (%s, %s, %s, %s, %s, 'pending', %s)
+            """, (laundry_id, recipient, channel, subject, body, scheduled_for))
+        logger.info(f"Notification queued ({channel}) for {recipient}, scheduled_for={scheduled_for}")
+    except Exception as e:
+        logger.exception(f"Failed to queue notification for {recipient}: {e}")
+
 
 def send_email(to_email: str, subject: str, html_body: str, sender: str = None,
-               sender_name: str = None, reply_to: str = None):
+               sender_name: str = None, reply_to: str = None, laundry_id: str = None):
     """Send HTML email via Brevo API.
     
     For multi-tenant branding:
     - sender_name: Display name (e.g., "Spin & Shine Laundromat")
     - reply_to: Tenant's actual email for customer replies (e.g., "spinandshine@gmail.com")
     - sender: Override the from email (defaults to platform notifications address)
+    - laundry_id: If provided, quiet hours are enforced using the laundry's timezone.
+                  If None, email is sent immediately (system/platform email).
     """
+    # Quiet hours check — only when tied to a specific laundry
+    if laundry_id:
+        tz_str = _get_laundry_timezone(laundry_id)
+        if is_quiet_hours(tz_str):
+            queue_notification(laundry_id, to_email, "email", html_body,
+                               subject=subject, timezone_str=tz_str)
+            logger.info("Email queued for morning delivery (quiet hours) to %s", to_email)
+            return True
+
     api_key = settings.brevo_api_key
     from_email = sender or settings.source_email
 
@@ -91,20 +179,28 @@ def send_sms_for_tenant(to_phone: str, message: str, laundry_id: str):
     Checks shop.laundry_shops.sms_enabled flag.
     Falls back to NOT sending if flag is missing or False.
     Tracks SMS count for billing.
+    Respects quiet hours (9 PM – 7 AM in the laundry's timezone).
     """
     try:
         from app.database import get_db, get_cursor
         with get_db() as conn:
             cur = get_cursor(conn)
-            cur.execute("SELECT sms_enabled FROM shop.laundry_shops WHERE laundry_id = %s", (laundry_id,))
+            cur.execute("SELECT sms_enabled, laundry_timezone FROM shop.laundry_shops WHERE laundry_id = %s", (laundry_id,))
             row = cur.fetchone()
             if not row or not row.get("sms_enabled"):
                 logger.info(f"SMS disabled for tenant {laundry_id}. Skipping SMS to {to_phone}.")
                 return False
+            tz_str = row.get("laundry_timezone") or DEFAULT_TIMEZONE
     except Exception as e:
         # If column doesn't exist yet (migration not run), skip SMS
         logger.warning(f"SMS check failed for tenant {laundry_id}: {e}. Skipping SMS.")
         return False
+
+    # Quiet hours check
+    if is_quiet_hours(tz_str):
+        queue_notification(laundry_id, to_phone, "sms", message, timezone_str=tz_str)
+        logger.info(f"SMS queued for morning delivery (quiet hours) to {to_phone}")
+        return True
 
     # Tenant has SMS enabled — send it
     result = send_sms(to_phone, message)
