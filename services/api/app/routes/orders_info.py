@@ -926,20 +926,17 @@ async def update_order_endpoint(
                         FROM shop.customers WHERE customer_id = %s
                     """, (customer_id_for_notif,))
                     cust = cur.fetchone()
-                    cur.execute("SELECT laundry_name, contact_email FROM shop.laundry_shops WHERE laundry_id = %s", (laundryId,))
+                    cur.execute("SELECT laundry_name, contact_email, user_domain FROM shop.laundry_shops WHERE laundry_id = %s", (laundryId,))
                     shop = cur.fetchone()
 
                     if cust and shop:
                         laundry_name = shop["laundry_name"]
                         first_name = cust["first_name"] or "Customer"
                         is_paid = current_order["payment_status"] == "Paid" or (order_status == "ProcessingCompleted" and current_order["order_type"] == "Online")
+                        base_url = shop.get("user_domain") or "https://www.smartlaundrybasket.ai"
 
                         # Payment link (only if unpaid)
                         payment_link = ""
-                        # Get user domain for this laundry
-                        cur.execute("SELECT user_domain FROM shop.laundry_shops WHERE laundry_id = %s", (laundryId,))
-                        domain_row = cur.fetchone()
-                        base_url = domain_row["user_domain"] if domain_row and domain_row["user_domain"] else "https://www.smartlaundrybasket.ai"
                         if not is_paid:
                             payment_link = f"\n\nPay Now: {base_url}/{laundryId}/user/pay/{orderId}"
 
@@ -970,7 +967,6 @@ async def update_order_endpoint(
                         if cust.get("notif_phone", True) and cust["phone_number"]:
                             sms = f"Hi {first_name}! Order {orderId} ready. ${grand_total:.2f}."
                             if not is_paid:
-                                # Use path-based URL (no query params) to avoid carrier link shortening
                                 sms += f" Pay: {base_url}/{laundryId}/user/pay/{orderId}"
                             sms += f" -{laundry_name}"
                             send_sms_for_tenant(cust["phone_number"], sms, laundryId)
@@ -1170,6 +1166,23 @@ async def update_order_endpoint(
                         except Exception:
                             pass
 
+                        # Build referral sharing link for this customer
+                        referral_share_msg = ""
+                        referral_share_sms = ""
+                        try:
+                            cur.execute("""
+                                SELECT code FROM shop.referral_codes
+                                WHERE customer_id = %s AND laundry_id = %s AND is_active = TRUE
+                                LIMIT 1
+                            """, (customer_id_for_review, laundryId))
+                            ref_code_row = cur.fetchone()
+                            if ref_code_row:
+                                ref_link = f"{base_url}/{laundryId}/site?ref={ref_code_row['code']}"
+                                referral_share_msg = f'<p style="background:#EBF8FF;padding:12px;border-radius:8px;border:1px solid #90CDF4;">💰 <strong>Refer a friend, earn $5!</strong> Share your link: <a href="{ref_link}">{ref_link}</a></p>'
+                                referral_share_sms = f" Refer a friend & earn $5: {ref_link}"
+                        except Exception:
+                            pass
+
                         if cust.get("notif_email", True) and cust["email"]:
                             review_button = ""
                             if google_review_url:
@@ -1183,6 +1196,7 @@ async def update_order_endpoint(
                             {referral_credit_msg}
                             <p>We'd love to hear how we did! Your feedback helps us improve.</p>
                             {review_button}
+                            {referral_share_msg}
                             <p style="color:#777;font-size:13px;">Thank you for your business! — {laundry_name} Team</p>
                             """
                             send_email(cust["email"], f"How was your experience? - {laundry_name}", html_body,
@@ -1196,6 +1210,7 @@ async def update_order_endpoint(
                             sms += referral_credit_sms
                             if google_review_url:
                                 sms += f" Leave a review: {google_review_url}"
+                            sms += referral_share_sms
                             sms += f" - {laundry_name}"
                             send_sms_for_tenant(cust["phone_number"], sms, laundryId)
 
