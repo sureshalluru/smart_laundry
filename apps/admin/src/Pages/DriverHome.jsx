@@ -956,11 +956,17 @@ const DriverHome = ({ laundryId }) => {
                       {order.pickupDate && (
                         <Text>
                           <strong>Pickup:</strong> {order.pickupDate}
+                          {order.pickupTimeInterval && (
+                            <Text as="span" color="orange.600" fontWeight="600"> ({order.pickupTimeInterval})</Text>
+                          )}
                         </Text>
                       )}
                       {order.dropoffDate && (
                         <Text>
                           <strong>Drop-off:</strong> {order.dropoffDate}
+                          {order.dropoffTimeInterval && (
+                            <Text as="span" color="blue.600" fontWeight="600"> ({order.dropoffTimeInterval})</Text>
+                          )}
                         </Text>
                       )}
                       
