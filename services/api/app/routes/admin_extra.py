@@ -1908,6 +1908,11 @@ async def photo_upload_status(
             if not gate_result.get("allowed"):
                 return {"statusCode": 400, "body": {"message": gate_result["error"], "photoUploaded": True}}
 
+            # If the gate auto-charged the card, update payment_status to 'Paid'
+            payment_status_update = ""
+            if gate_result.get("charged"):
+                payment_status_update = ", payment_status = 'Paid'"
+
             # Update order: status, image column, last_updated_by, updated_at
             # For weight/washing/drying photos, append to existing (|||‐separated) to support multi-photo
             if db_column in ("weight_image_url", "washing_image_url", "drying_image_url"):
@@ -1926,6 +1931,7 @@ async def photo_upload_status(
                         END,
                         last_updated_by = %s,
                         updated_at = NOW()
+                        {payment_status_update}
                     WHERE order_id = %s AND laundry_id = %s
                 """, (targetStatus, image_url, image_url, empId, orderId, laundryId))
             else:
@@ -1935,6 +1941,7 @@ async def photo_upload_status(
                         {db_column} = %s,
                         last_updated_by = %s,
                         updated_at = NOW()
+                        {payment_status_update}
                     WHERE order_id = %s AND laundry_id = %s
                 """, (targetStatus, image_url, empId, orderId, laundryId))
 

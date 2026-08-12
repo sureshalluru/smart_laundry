@@ -1940,9 +1940,8 @@ const { open: openCancelUber, ModalUI: CancelUberModal } = useCancelUberHandoff(
                                                         const isPaid = selectedOrderDetails?.paymentStatus === "Paid" || selectedOrderDetails?.paymentStatus === "Invoice Sent";
                                                         const isInStoreOrder = selectedOrderDetails?.orderType === "InStore";
                                                         const isCommercialOrder = selectedOrderDetails?.payByInvoice;
-                                                        const isPastProcessing = ["EnRouteToDelivery", "Delivered", "OrderPickedUp"].includes(status);
-                                                        const isBlockedByPayment = isPastProcessing && !isPaid && !isCommercialOrder
-                                                            && !(isInStoreOrder && status === "OrderPickedUp");
+                                                        const isPastProcessing = ["ReadyForDelivery", "EnRouteToDelivery", "Delivered", "OrderPickedUp"].includes(status);
+                                                        const isBlockedByPayment = isPastProcessing && !isPaid && !isCommercialOrder;
 
                                                         // For in-store orders: allow jumping from ProcessingCompleted to OrderPickedUp
                                                         const isPickedUpFromProcessing = isInStoreOrder && status === "OrderPickedUp" && baseStatus === "ProcessingCompleted";

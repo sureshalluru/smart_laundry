@@ -25,12 +25,25 @@ CT = timezone("America/Chicago")
 
 
 def _was_frequency_run_today():
-    """Check if the frequency processor already created orders today."""
+    """Check if the frequency processor already ran successfully today (all subscriptions processed)."""
     try:
         from app.database import get_db, get_cursor
         today = datetime.now(CT).strftime('%Y-%m-%d')
+        tomorrow = (datetime.now(CT) + timedelta(days=1)).strftime('%Y-%m-%d')
         with get_db() as conn:
             cur = get_cursor(conn)
+            # Check if there are still unprocessed subscriptions due today
+            cur.execute("""
+                SELECT COUNT(*) as cnt FROM orders.laundry_frequency
+                WHERE is_active = TRUE
+                  AND (is_paused = FALSE OR is_paused IS NULL)
+                  AND future_pickup_date <= %s
+            """, (tomorrow,))
+            pending = cur.fetchone()["cnt"]
+            # If there are pending subscriptions, we should run
+            if pending > 0:
+                return False
+            # Otherwise check if we already created orders today
             cur.execute("""
                 SELECT COUNT(*) as cnt FROM orders.orders
                 WHERE auto_generated = TRUE AND created_at::date = %s

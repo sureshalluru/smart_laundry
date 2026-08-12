@@ -832,6 +832,9 @@ async def update_order_endpoint(
                 gate_result = check_payment_gate(current_order, order_status, laundryId)
                 if not gate_result.get("allowed"):
                     return {"statusCode": 400, "body": {"message": gate_result["error"]}}
+                # If the gate auto-charged the card, update payment_status to 'Paid'
+                if gate_result.get("charged"):
+                    update_fields["payment_status"] = "Paid"
                 update_fields["order_status"] = order_status
                 # Update status category
                 active_statuses = {"OrderSubmitted", "ReadyForIntake", "ReceivedAtFacility", "ProcessingStarted", "ProcessingCompleted", "EnRouteToDelivery"}

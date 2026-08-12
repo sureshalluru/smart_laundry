@@ -191,6 +191,7 @@ async def start_route(
             logger.info(f"start-route: using explicit orderId={explicit_order_id} from frontend")
             cur.execute("""
                 SELECT o.order_id, o.order_status, o.customer_id,
+                       o.payment_status, o.order_type, o.grand_total, o.pay_by_invoice,
                        c.phone_number, c.first_name, s.user_domain, s.laundry_name
                 FROM orders.orders o
                 JOIN shop.customers c ON c.customer_id = o.customer_id
@@ -223,6 +224,7 @@ async def start_route(
             if date_str:
                 cur.execute("""
                     SELECT ra.order_id, ra.sequence_position, o.order_status, o.customer_id,
+                           o.payment_status, o.order_type, o.grand_total, o.pay_by_invoice,
                            c.phone_number, c.first_name, s.user_domain, s.laundry_name
                     FROM routes.route_assignments ra
                     JOIN orders.orders o ON o.order_id = ra.order_id
@@ -238,6 +240,7 @@ async def start_route(
                 # No date — find any pending assignment
                 cur.execute("""
                     SELECT ra.order_id, ra.sequence_position, o.order_status, o.customer_id,
+                           o.payment_status, o.order_type, o.grand_total, o.pay_by_invoice,
                            c.phone_number, c.first_name, s.user_domain, s.laundry_name
                     FROM routes.route_assignments ra
                     JOIN orders.orders o ON o.order_id = ra.order_id
@@ -265,8 +268,24 @@ async def start_route(
 
         # Move to EnRouteToDelivery if not already
         if order_status != "EnRouteToDelivery":
-            cur.execute("""
-                UPDATE orders.orders SET order_status = 'EnRouteToDelivery', updated_at = NOW()
+            # Payment gate check — block if order is unpaid
+            from app.services.payment_service import check_payment_gate
+            order_for_gate = {
+                "order_id": order_id,
+                "order_status": order_status,
+                "payment_status": first_stop.get("payment_status"),
+                "order_type": first_stop.get("order_type"),
+                "customer_id": first_stop.get("customer_id"),
+                "grand_total": first_stop.get("grand_total"),
+                "pay_by_invoice": first_stop.get("pay_by_invoice"),
+            }
+            gate_result = check_payment_gate(order_for_gate, "EnRouteToDelivery", laundry_id)
+            if not gate_result.get("allowed"):
+                return {"status": "payment_required", "message": gate_result["error"], "orderId": order_id}
+
+            payment_update = ", payment_status = 'Paid'" if gate_result.get("charged") else ""
+            cur.execute(f"""
+                UPDATE orders.orders SET order_status = 'EnRouteToDelivery', updated_at = NOW(){payment_update}
                 WHERE order_id = %s
             """, (order_id,))
 
