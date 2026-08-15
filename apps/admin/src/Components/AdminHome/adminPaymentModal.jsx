@@ -509,7 +509,7 @@ const PaymentModal = ({
 
                                             <RadioGroup
                                                 onChange={(val) => {
-                                                    if (val === "Cash" && orderType?.toLowerCase() === "commercial") {
+                                                    if (val === "Cash") {
                                                         setIsCashCheckConfirmOpen(true); // prompt first
                                                     }
                                                     setMethod(val); // set method regardless

@@ -79,20 +79,25 @@ async def process_frequencies():
             cur = get_cursor(conn)
             # Find subscriptions where pickup is tomorrow (create order day before)
             # Auto-resume paused subscriptions whose pause_resume_date has passed
-            cur.execute("""
-                UPDATE orders.laundry_frequency
-                SET is_paused = FALSE,
-                    pause_resume_date = NULL,
-                    pause_started_at = NULL,
-                    updated_at = NOW()
-                WHERE is_active = TRUE
-                  AND is_paused = TRUE
-                  AND pause_resume_date IS NOT NULL
-                  AND pause_resume_date <= %s
-            """, (today,))
-            auto_resumed = cur.rowcount
-            if auto_resumed > 0:
-                logger.info(f"Auto-resumed {auto_resumed} paused subscriptions")
+            try:
+                cur.execute("""
+                    UPDATE orders.laundry_frequency
+                    SET is_paused = FALSE,
+                        pause_resume_date = NULL,
+                        pause_started_at = NULL,
+                        updated_at = NOW()
+                    WHERE is_active = TRUE
+                      AND is_paused = TRUE
+                      AND pause_resume_date IS NOT NULL
+                      AND pause_resume_date <= %s
+                """, (today,))
+                auto_resumed = cur.rowcount
+                if auto_resumed > 0:
+                    logger.info(f"Auto-resumed {auto_resumed} paused subscriptions")
+            except Exception as e:
+                logger.warning(f"Auto-resume query skipped (columns may not exist): {e}")
+                # Rollback the failed transaction so the connection is usable
+                conn.rollback()
 
             cur.execute("""
                 SELECT lf.*, ca.address, ca.door_number, ca.address_instructions,
@@ -127,36 +132,6 @@ async def process_frequencies():
                 dropoff_time_interval = sub["dropoff_time_interval"]
                 future_pickup_date = str(sub["future_pickup_date"])
                 customer_payment_id = sub.get("stripe_customer_id")
-
-                # Skip stale subscriptions: if future_pickup_date is before today,
-                # just advance the date without creating an order (avoids confusing backdated orders)
-                pickup_dt = datetime.strptime(future_pickup_date, '%Y-%m-%d')
-                if pickup_dt.date() < datetime.strptime(today, '%Y-%m-%d').date():
-                    # Calculate next future pickup date and advance silently
-                    original_pickup_date = sub.get("original_pickup_date")
-                    if frequency.lower() == 'weekly':
-                        freq_days = 7
-                    elif frequency.lower() == 'monthly':
-                        freq_days = 30
-                    else:
-                        freq_days = 14
-                    if original_pickup_date:
-                        orig_dt = datetime.strptime(str(original_pickup_date), '%Y-%m-%d') if isinstance(original_pickup_date, str) else datetime.combine(original_pickup_date, datetime.min.time())
-                        next_future_pickup = (orig_dt + timedelta(days=freq_days)).strftime('%Y-%m-%d')
-                    else:
-                        next_future_pickup = (pickup_dt + timedelta(days=freq_days)).strftime('%Y-%m-%d')
-                    with get_db() as conn:
-                        cur = get_cursor(conn)
-                        cur.execute("""
-                            UPDATE orders.laundry_frequency
-                            SET future_pickup_date = %s,
-                                original_pickup_date = NULL,
-                                reschedule_offset = NULL,
-                                updated_at = NOW()
-                            WHERE frequency_id = %s
-                        """, (next_future_pickup, freq_id))
-                    logger.info(f"Skipped stale subscription {freq_id} (date {future_pickup_date} < today), advanced to {next_future_pickup}")
-                    continue
 
                 # Calculate dropoff date (pickup + 1 day)
                 pickup_dt = datetime.strptime(future_pickup_date, '%Y-%m-%d')
@@ -196,9 +171,6 @@ async def process_frequencies():
                         UPDATE orders.laundry_frequency
                         SET future_pickup_date = %s,
                             pickup_date = %s,
-                            original_pickup_date = NULL,
-                            reschedule_offset = NULL,
-                            consecutive_skips = 0,
                             updated_at = NOW()
                         WHERE frequency_id = %s
                     """, (next_future_pickup, future_pickup_date, freq_id))
