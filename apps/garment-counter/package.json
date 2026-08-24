@@ -33,7 +33,9 @@
     "jsdom": "^24.1.1",
     "typescript": "^5.5.4",
     "vite": "^5.4.0",
-    "vite-plugin-pwa": "^0.20.1",
+    "vite-plugin-pwa": "0.21.1",
+    "workbox-build": "7.1.1",
+    "workbox-window": "7.1.0",
     "vitest": "^2.0.5"
   }
 }
