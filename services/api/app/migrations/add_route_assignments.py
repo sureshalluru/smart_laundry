@@ -21,14 +21,22 @@ def run():
             # IF NOT EXISTS not supported on all PG versions for enums
             logger.info(f"Driver role enum may already exist: {e}")
 
-        # Normalize legacy role values to standard ones
-        # This is safe to run multiple times
-        try:
-            cur.execute("UPDATE shop.employees SET role = 'Driver' WHERE role = 'Delivery Driver'")
-            cur.execute("UPDATE shop.employees SET role = 'Employee' WHERE role IN ('Attendant', 'LaundryCare Specialist')")
-            logger.info("Legacy employee roles normalized")
-        except Exception as e:
-            logger.info(f"Role normalization skipped: {e}")
+        # Normalize legacy role values to standard ones.
+        # On a fresh database the enum has no legacy labels ('Delivery Driver',
+        # etc.), so these comparisons raise and would poison the whole
+        # transaction. Wrap each in a SAVEPOINT so a failure rolls back only
+        # that statement, leaving the rest of the migration intact.
+        for legacy_sql in (
+            "UPDATE shop.employees SET role = 'Driver' WHERE role = 'Delivery Driver'",
+            "UPDATE shop.employees SET role = 'Employee' WHERE role IN ('Attendant', 'LaundryCare Specialist')",
+        ):
+            try:
+                cur.execute("SAVEPOINT role_norm")
+                cur.execute(legacy_sql)
+                cur.execute("RELEASE SAVEPOINT role_norm")
+            except Exception as e:
+                cur.execute("ROLLBACK TO SAVEPOINT role_norm")
+                logger.info(f"Role normalization skipped (no legacy values on fresh DB): {e}")
 
         # Create routes schema
         cur.execute("CREATE SCHEMA IF NOT EXISTS routes")

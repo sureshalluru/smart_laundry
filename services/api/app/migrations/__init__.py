@@ -3,6 +3,7 @@ Database migrations module.
 Migrations are safe to run multiple times (idempotent).
 """
 import logging
+from app.migrations import create_base_schema
 from app.migrations import add_service_categories
 from app.migrations import add_auto_charge
 from app.migrations import add_subscription_discount
@@ -33,6 +34,9 @@ logger = logging.getLogger(__name__)
 def run_all():
     """Run all pending migrations."""
     logger.info("Running database migrations...")
+    # Base schema MUST run first — it creates the foundation schemas, enum
+    # types, and core tables that every subsequent add_* migration ALTERs.
+    create_base_schema.run()
     add_service_categories.run()
     add_auto_charge.run()
     add_subscription_discount.run()
