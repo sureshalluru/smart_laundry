@@ -1,4 +1,4 @@
-FROM node:18 AS frontend-build
+FROM node:20 AS frontend-build
 
 # Build args from Render env vars
 ARG REACT_APP_GOOGLE_MAPS_API_KEY=""
