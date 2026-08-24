@@ -25,9 +25,9 @@ Resources:
           DB_PORT: '5432'
           DB_USER: smart_laundry
           DB_NAME: smart_laundry
-          DB_HOST: smart-laundry.cpy626ke6rm6.us-east-1.rds.amazonaws.com
-          DB_PASSWORD: tNxSN6rX6eB0LTHlSDff
-          UBER_INTERNAL_API_KEY: NhqwtQAsaX8xam97xe76P5gtKjBRJrH1NUz3Y31h
+          DB_HOST: CHANGE_ME
+          DB_PASSWORD: CHANGE_ME
+          UBER_INTERNAL_API_KEY: CHANGE_ME
       EphemeralStorage:
         Size: 512
       Handler: lambda_function.lambda_handler

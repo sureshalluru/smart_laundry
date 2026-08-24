@@ -46,6 +46,7 @@ import { fetchLaundryInfo } from '../../Pages/LaundryInfoManagement';
 import { useAuth } from '../../Context/AuthContext';
 import { getUserRole, hasPermission, FEATURES } from '../../utils/permissions';
 import axios from 'axios';
+import DemoBanner from '../DemoBanner';
 
 // Unread badge for support chat
 const SupportUnreadBadge = ({ laundryId }) => {
@@ -222,6 +223,7 @@ const handleModalClose = () => {
     
     return (
         <Flex minH="100vh" flexDirection="column">
+            <DemoBanner laundryId={laundryId} />
             {/* Top Bar with Hamburger Menu */}
             <Flex
                 as="header"

@@ -41,6 +41,7 @@ const EmployeeLoginPage = lazy(() => import('./Pages/EmployeeLoginPage'));
 const PinEntryPage = lazy(() => import('./Pages/PinEntryPage'));
 const ReferralConfigPage = lazy(() => import('./Pages/ReferralConfigPage'));
 const ReferralAnalyticsPage = lazy(() => import('./Pages/ReferralAnalyticsPage'));
+const DemoAdminLogin = lazy(() => import('./Pages/DemoAdminLogin'));
 
 // Company pages (multi-location management)
 const CompanyLoginPage = lazy(() => import('./Pages/CompanyLoginPage'));
@@ -471,6 +472,13 @@ function App() {
                         </Suspense>
                     }/>
                 </Route>
+
+                {/* Demo login — bypasses auth for prospects */}
+                <Route path="/demo-admin" element={
+                    <Suspense fallback={<LoadingSpinner/>}>
+                        <DemoAdminLogin/>
+                    </Suspense>
+                }/>
 
                 {/* Bare /admin redirect — find user's laundry and redirect */}
                 <Route path="/admin" element={<AdminRedirect />} />

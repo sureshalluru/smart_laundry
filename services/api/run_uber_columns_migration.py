@@ -1,10 +1,13 @@
 """Add Uber/delivery service columns to orders table."""
+import os
 import psycopg2
 
 conn = psycopg2.connect(
-    host='smart-laundry.cpy626ke6rm6.us-east-1.rds.amazonaws.com',
-    port=5432, dbname='smart_laundry', user='smart_laundry',
-    password='tNxSN6rX6eB0LTHlSDff'
+    host=os.getenv("DB_HOST", "localhost"),
+    port=os.getenv("DB_PORT", "5432"),
+    dbname=os.getenv("DB_NAME", "smart_laundry"),
+    user=os.getenv("DB_USER", "postgres"),
+    password=os.getenv("DB_PASSWORD", ""),
 )
 conn.autocommit = False
 cur = conn.cursor()

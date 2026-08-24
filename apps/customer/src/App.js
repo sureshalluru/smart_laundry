@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { Suspense } from 'react';
 import './App.css';
 import { ChakraProvider } from '@chakra-ui/react';
 import { HelmetProvider } from 'react-helmet-async';
@@ -25,11 +25,15 @@ import SareeRollingPage from './Pages/SareeRollingPage';
 import ItemTrackingUpload from './Pages/ItemTrackingUpload';
 import OrderTrackingPhotos from './Pages/OrderTrackingPhotos';
 import TrackingPage from './Pages/TrackingPage';
+import DemoCustomerLogin from './Pages/DemoCustomerLogin';
 import FAQIndexPage from './Pages/FAQIndexPage';
 import FAQDetailPage from './Pages/FAQDetailPage';
 import CityPickupDeliveryPage from './Pages/CityPickupDeliveryPage';
 import { Navigate, useParams } from 'react-router-dom';
 import theme from './theme';
+
+// Lazy-loaded Demo Shell for code splitting (Requirement 15.4)
+const DemoShell = React.lazy(() => import('./Components/Demo/DemoShell'));
 
 // Payment link redirect — converts /user/pay/:orderId to /user/my-orders/?order_id=X&is_open=true
 function PayRedirect() {
@@ -94,6 +98,7 @@ function App() {
                         <Route path="/invalid" element={<Navigate to="/" replace />} />
                         <Route path="/platform-admin" element={<PlatformAdminPage />} />
                         <Route path="/onboard" element={<OnboardingPage />} />
+                        <Route path="/demo-customer" element={<DemoCustomerLogin />} />
                         <Route path="/show" element={<ShowLandingPage />} />
                         <Route path="/cla" element={<ShowLandingPage />} />
                         <Route path="/saree-rolling" element={<SareeRollingPage />} />
@@ -133,6 +138,11 @@ function App() {
                         <Route path="/LearnMore" element={<LearnMore />} />
                         <Route path="/BookDemo" element={<BookDemo />} />
                         <Route path="/GetStarted" element={<GetStarted />} />
+                        <Route path="/slb/demo/*" element={
+                            <Suspense fallback={<div>Loading demo...</div>}>
+                                <DemoShell />
+                            </Suspense>
+                        } />
                         <Route path="/slb" element={<ProductWebsite />} />
                         <Route path="*" element={<Navigate to="/" replace />} />
                     </Routes>

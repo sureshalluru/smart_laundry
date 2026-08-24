@@ -5,6 +5,7 @@ services:
     buildCommand: |
       cd apps/admin && npm install && REACT_APP_AWS_API_URL= REACT_APP_GOOGLE_MAPS_API_KEY=$REACT_APP_GOOGLE_MAPS_API_KEY npm run build &&
       cd ../../apps/customer && npm install && REACT_APP_AWS_API_URL= REACT_APP_GOOGLE_MAPS_API_KEY=$REACT_APP_GOOGLE_MAPS_API_KEY npm run build &&
+      cd ../../apps/garment-counter && npm install && npm run build &&
       cd ../../services/api && pip install -r requirements.txt
     startCommand: cd services/api && uvicorn app.main:app --host 0.0.0.0 --port $PORT
     envVars:

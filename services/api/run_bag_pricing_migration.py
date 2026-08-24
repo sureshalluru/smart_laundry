@@ -6,12 +6,12 @@ import os
 import sys
 import psycopg2
 
-# Load from environment or fallback to .env values
-DB_HOST = os.getenv("DB_HOST", "smart-laundry.cpy626ke6rm6.us-east-1.rds.amazonaws.com")
+# Load from environment; safe local defaults (never hardcode production creds)
+DB_HOST = os.getenv("DB_HOST", "localhost")
 DB_PORT = os.getenv("DB_PORT", "5432")
 DB_NAME = os.getenv("DB_NAME", "smart_laundry")
-DB_USER = os.getenv("DB_USER", "smart_laundry")
-DB_PASSWORD = os.getenv("DB_PASSWORD", "tNxSN6rX6eB0LTHlSDff")
+DB_USER = os.getenv("DB_USER", "postgres")
+DB_PASSWORD = os.getenv("DB_PASSWORD", "")
 
 
 def run_migration():

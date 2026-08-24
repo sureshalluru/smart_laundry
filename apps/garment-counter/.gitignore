@@ -1,0 +1,8 @@
+node_modules
+dist
+dist-ssr
+dist-tsnode
+tsconfig.node.tsbuildinfo
+*.local
+.DS_Store
+dev-dist

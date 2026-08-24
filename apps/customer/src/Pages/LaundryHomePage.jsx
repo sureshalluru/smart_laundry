@@ -31,6 +31,7 @@ import {LaundryContext} from "../Components/Contexts/LaundryContext";
 import PaymentMethods from "../Components/LaundryHome/PaymentMethods";
 import ChatWidget from "../Components/Chat/ChatWidget";
 import ReferralDashboardPage from "./ReferralDashboardPage";
+import DemoBanner from "../Components/DemoBanner";
 const LaundryHomePage = ({laundryId, customerId, customerPaymentId: initialCustomerPaymentId = '', specialInstructions: initialSpecialInstructions=''}) => {
     const [isCollapsed, setIsCollapsed] = useState(false);
     const [customerPaymentId, setCustomerPaymentId] = useState(initialCustomerPaymentId); // State for Customer Payment Intent Id
@@ -80,6 +81,7 @@ const LaundryHomePage = ({laundryId, customerId, customerPaymentId: initialCusto
 
     return (
         <Box bg={pageBg} minHeight="100vh">
+            <DemoBanner laundryId={laundryId} />
             <Flex minHeight="100vh" flexDirection={{base: "column", md: "row"}} bg={pageBg}>
                 {isSmallScreen ? (
                     // On small screens, just a minimal top bar with menu icon

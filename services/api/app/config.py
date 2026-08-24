@@ -65,6 +65,11 @@ class Settings(BaseSettings):
     skip_scheduler: bool = False
     skip_migrations: bool = False
 
+    # Demo: expose an in-memory mock of the Jetson + EC2 garment-counter API
+    # under /mockapi so the counter PWA can be demoed without real hardware.
+    # OFF by default — never serve fake data unless explicitly enabled.
+    enable_demo_counter: bool = False
+
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"

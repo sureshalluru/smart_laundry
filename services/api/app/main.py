@@ -88,6 +88,8 @@ from app.routes import (
     sitemap,
     admin_integrations,
     referrals,
+    demo,
+    counter_mock,
 )
 
 app = FastAPI(
@@ -170,6 +172,14 @@ app.include_router(faq_admin.router, prefix="/api/admin/faq", tags=["FAQ Admin"]
 app.include_router(city_pages.router, prefix="/api/city-pages", tags=["City SEO Pages"])
 app.include_router(sitemap.router, prefix="/api", tags=["SEO Sitemap"])
 app.include_router(referrals.router, prefix="/api/referrals", tags=["Referrals"])
+app.include_router(demo.router, prefix="/api/demo", tags=["Demo Mode"])
+
+# Garment-counter demo mock (Jetson + EC2). Mounted only when explicitly
+# enabled so it never serves fabricated data in a real environment. Point the
+# counter PWA's Camera and Cloud URLs at <origin>/mockapi to demo it.
+if settings.enable_demo_counter:
+    app.include_router(counter_mock.router, prefix="/mockapi", tags=["Counter Mock (DEMO)"])
+    logger.warning("Garment-counter DEMO mock enabled at /mockapi — serving fabricated data.")
 
 
 # Block bot scanners probing for PHP/WordPress/exploit files
@@ -221,6 +231,9 @@ async def health_check():
 BASE_DIR = Path(__file__).resolve().parent.parent.parent.parent  # smart-laundry/
 ADMIN_BUILD = BASE_DIR / "apps" / "admin" / "build"
 CUSTOMER_BUILD = BASE_DIR / "apps" / "customer" / "build"
+# Garment counter is a Vite app: builds to dist/ (not build/) and hashed
+# assets live under assets/ (not static/).
+COUNTER_BUILD = BASE_DIR / "apps" / "garment-counter" / "dist"
 
 # Static file serving — DON'T use app.mount (can only serve one directory)
 # Instead, handle /static requests in the catch-all by checking both builds
@@ -249,6 +262,33 @@ async def serve_admin(request: Request, full_path: str = ""):
             "Expires": "0",
         })
     return {"error": "Admin app not built. Run: cd apps/admin && npm run build"}
+
+
+# Garment Counter SPA catch-all: /counter/* → garment-counter/dist/index.html
+# (Vite app — hashed assets under assets/, plus PWA files at the root.)
+@app.get("/counter")
+@app.get("/counter/{full_path:path}")
+async def serve_counter(request: Request, full_path: str = ""):
+    """Serve the garment-counter Vite PWA for all /counter/* routes."""
+    if full_path:
+        file_path = COUNTER_BUILD / full_path
+        if file_path.is_file():
+            # Hashed asset bundles — cache forever; everything else no-cache.
+            if full_path.startswith("assets/"):
+                return FileResponse(file_path, headers={
+                    "Cache-Control": "public, max-age=31536000, immutable",
+                })
+            return FileResponse(file_path, headers={
+                "Cache-Control": "no-cache, no-store, must-revalidate",
+            })
+    index = COUNTER_BUILD / "index.html"
+    if index.exists():
+        return FileResponse(index, headers={
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            "Pragma": "no-cache",
+            "Expires": "0",
+        })
+    return {"error": "Counter app not built. Run: cd apps/garment-counter && npm run build"}
 
 
 # Customer SPA catch-all: /* → customer/build/index.html
