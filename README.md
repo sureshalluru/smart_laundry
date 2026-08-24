@@ -103,14 +103,17 @@ GOOGLE_MAPS_API_KEY=AIza...
 ### 4. Build & Run
 
 ```bash
-# Build both React apps
-cd apps/admin && npm run build && cd ../..
-cd apps/customer && npm run build && cd ../..
+# Build all three frontend apps (admin, customer, garment-counter)
+npm run build:all
 
 # Start the server
 cd services/api
 uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
+
+`npm run build:all` builds the admin and customer React apps plus the
+garment-counter PWA (served at `/counter`). To build just one, use
+`npm run build:admin`, `build:customer`, or `build:counter`.
 
 Open http://localhost:8000 — that's it. Everything runs on one port.
 
@@ -161,6 +164,7 @@ cd ..\..
 # Frontends
 cd apps\admin && npm install && cd ..\..
 cd apps\customer && npm install && cd ..\..
+cd apps\garment-counter && npm install && cd ..\..
 ```
 
 ### Step 4 — Configure the backend `.env`
@@ -204,6 +208,9 @@ From the repo root:
 npm run build:all
 ```
 
+This builds all three frontend apps: admin, customer, and the garment-counter
+PWA (served at `/counter`).
+
 ### Step 6 — Start the server (this creates the tables)
 
 ```powershell
@@ -245,6 +252,7 @@ credentials (employee ID + passcode).
 | `http://localhost:8000/` | Customer booking portal |
 | `http://localhost:8000/{yourLaundryId}/site` | Your laundry's public page |
 | `http://localhost:8000/{yourLaundryId}/admin` | Your admin/POS dashboard |
+| `http://localhost:8000/counter` | Garment-counter PWA (iPad kiosk) |
 | `http://localhost:8000/onboard` | Create another laundry |
 
 ### Where do the tables get created?
@@ -275,6 +283,7 @@ After Step 6 the tables are all present.
 |-----|---------------|
 | `http://localhost:8000/` | Customer booking portal |
 | `http://localhost:8000/admin/` | Admin/POS dashboard |
+| `http://localhost:8000/counter` | Garment-counter PWA (iPad kiosk) |
 | `http://localhost:8000/api/` | Backend API |
 
 ---

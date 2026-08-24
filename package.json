@@ -5,9 +5,11 @@
   "scripts": {
     "build:admin": "cd apps/admin && npm install && npm run build",
     "build:customer": "cd apps/customer && npm install && npm run build",
-    "build:all": "npm run build:admin && npm run build:customer",
+    "build:counter": "cd apps/garment-counter && npm install && npm run build",
+    "build:all": "npm run build:admin && npm run build:customer && npm run build:counter",
     "dev:admin": "cd apps/admin && npm start",
     "dev:customer": "cd apps/customer && set PORT=3001 && npm start",
+    "dev:counter": "cd apps/garment-counter && npm run dev",
     "dev:api": "cd services/api && uvicorn app.main:app --reload --port 8000",
     "start": "cd services/api && uvicorn app.main:app --host 0.0.0.0 --port 8000"
   }

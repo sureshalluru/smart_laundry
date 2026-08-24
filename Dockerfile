@@ -21,6 +21,13 @@ ENV REACT_APP_AWS_API_URL=""
 ENV REACT_APP_GOOGLE_MAPS_API_KEY=$REACT_APP_GOOGLE_MAPS_API_KEY
 RUN npm run build
 
+# Build garment-counter app (Vite PWA → dist/, served at /counter)
+WORKDIR /app/apps/garment-counter
+COPY apps/garment-counter/package*.json ./
+RUN npm install
+COPY apps/garment-counter/ ./
+RUN npm run build
+
 # Python runtime
 FROM python:3.11-slim
 
@@ -29,6 +36,7 @@ WORKDIR /app
 # Copy built React apps
 COPY --from=frontend-build /app/apps/admin/build /app/apps/admin/build
 COPY --from=frontend-build /app/apps/customer/build /app/apps/customer/build
+COPY --from=frontend-build /app/apps/garment-counter/dist /app/apps/garment-counter/dist
 
 # Install Python dependencies
 COPY services/api/requirements.txt /app/services/api/
