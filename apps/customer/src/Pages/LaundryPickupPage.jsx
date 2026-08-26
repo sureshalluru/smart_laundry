@@ -20,7 +20,7 @@ import UnifiedReviewPage from '../Components/LaundryPickup/UnifiedReviewPage';
 import OrderTypeSelection from '../Components/LaundryPickup/OrderTypeSelection';
 import cartReducer, { initialCartState } from '../Components/LaundryPickup/cartReducer';
 import { buildOrderPayload, getCartSubtotal } from '../Components/LaundryPickup/cartUtils';
-import {useNavigate} from "react-router-dom";
+import {useNavigate, useSearchParams} from "react-router-dom";
 import { Elements } from '@stripe/react-stripe-js';
 import { loadStripe } from '@stripe/stripe-js';
 import axios from "axios";
@@ -61,6 +61,7 @@ export default function LaundryPickupPage({laundryId,customerId,customerPaymentI
     const {activeStep, setActiveStep} = useSteps({index: 0});
     const [isPaymentStepValid,setIsPaymentStepValid] = useState(false);
     const navigate = useNavigate();
+    const [searchParams] = useSearchParams();
     const toast = useToast();
     const authToken = localStorage.getItem('idToken');
     const [isAddressValidating,setIsAddressValidating] = useState(false);
@@ -350,7 +351,14 @@ export default function LaundryPickupPage({laundryId,customerId,customerPaymentI
                 navigate(`/${laundryId}/user/order-success`);
                 return true;
             } else {
-                toast({ title: "Order Failed", description: response.data.message || "Failed.", status: "error", duration: 3000, isClosable: true });
+                // Check if card was declined — send customer to Payment step to update card
+                if (response.data.code === 'CARD_DECLINED') {
+                    toast({ title: "Card Declined", description: response.data.message || "Please update your payment method.", status: "warning", duration: 5000, isClosable: true });
+                    setIsPaymentStepValid(false);
+                    setActiveStep(3); // Send back to Payment step
+                } else {
+                    toast({ title: "Order Failed", description: response.data.message || "Failed.", status: "error", duration: 3000, isClosable: true });
+                }
                 setOrderProcessing(false);
                 return false;
             }
@@ -443,6 +451,76 @@ export default function LaundryPickupPage({laundryId,customerId,customerPaymentI
             setAddress(place.formatted_address);
         }
     };
+
+    // Smart Defaults: advance step with payment skip logic
+    const advanceStep = (fromStep) => {
+        if (fromStep === 2) {
+            // Skip payment step ONLY when we're confident payment is covered:
+            // 1. No Stripe configured → pay at pickup (always safe)
+            // 2. Commercial account → pay by invoice (always safe)
+            // 3. Reorder path (card was already validated on a prior order)
+            // For normal flow with card on file, still go through payment step
+            // so the $1 hold can verify the card is valid.
+            const isReorder = !!searchParams.get('reorder');
+            const canSkipPayment = !stripePromise || isCommercialCustomer || (!!customerPaymentId && isReorder);
+
+            if (canSkipPayment) {
+                setIsPaymentStepValid(true);
+                if (!stripePromise && !customerPaymentId) {
+                    setPayByInvoice(true);
+                }
+                setActiveStep(4);
+                return;
+            }
+        }
+        setActiveStep(fromStep + 1);
+    };
+
+    // Quick Reorder: handle ?reorder=orderId query param
+    useEffect(() => {
+        const reorderOrderId = searchParams.get('reorder');
+        if (!reorderOrderId || !servicesLoaded || !authToken) return;
+
+        axios.get(`${process.env.REACT_APP_AWS_API_URL}/api/customer/get-order-id-info`, {
+            params: { operation: 'getCustomerOrderInfo', orderId: reorderOrderId, laundryId },
+            headers: { 'x-api-key': authToken },
+        }).then(res => {
+            const order = res.data?.body?.data || res.data?.order || res.data;
+            if (!order || !order.services) return;
+
+            // Pre-fill cart from previous order
+            dispatch({ type: 'CLEAR_CART' });
+            (order.services || []).forEach(svc => {
+                dispatch({
+                    type: 'ADD_ITEM',
+                    payload: {
+                        serviceId: svc.serviceName,
+                        serviceName: svc.serviceName,
+                        categoryId: 'reorder',
+                        categoryName: 'Reorder',
+                        price: parseFloat(svc.servicePrice || 0),
+                        inputWeight: parseFloat(svc.weightOrCount || 0) > 0 && parseFloat(svc.weightOrCount) !== 1,
+                        quantity: parseFloat(svc.weightOrCount || 1),
+                    },
+                });
+            });
+
+            // Set order type to one-time for reorders
+            setOrderType('one-time');
+
+            // Auto-validate payment if possible
+            if (customerPaymentId || !stripePromise) {
+                setIsPaymentStepValid(true);
+                if (!stripePromise) setPayByInvoice(true);
+            }
+
+            // Jump directly to Review step
+            setActiveStep(4);
+        }).catch(err => {
+            console.error('Reorder fetch failed:', err);
+            // Fall back to normal flow on error
+        });
+    }, [servicesLoaded, searchParams, authToken]); // eslint-disable-line react-hooks/exhaustive-deps
 
     const themeGradient = (() => {
         const gradientMap = {
@@ -669,7 +747,7 @@ export default function LaundryPickupPage({laundryId,customerId,customerPaymentI
                                     uberPickupFrequency={uberPickupFrequency} setUberPickupFrequency={setUberPickupFrequency}
                                     uberDropoffFrequency={uberDropoffFrequency} setUberDropoffFrequency={setUberDropoffFrequency}
                                     laundryId={laundryId}
-                                    onContinue={() => setActiveStep(3)}
+                                    onContinue={() => advanceStep(2)}
                                     onBack={() => setActiveStep(1)}
                                 />
                             )}

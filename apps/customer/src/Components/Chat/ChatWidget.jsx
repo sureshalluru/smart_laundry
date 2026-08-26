@@ -8,13 +8,18 @@ import {
     Input,
     Flex,
     Badge,
+    Link,
 } from '@chakra-ui/react';
 import { FiMessageCircle, FiX, FiSend } from 'react-icons/fi';
 import axios from 'axios';
 
 /**
  * ChatWidget — Floating chat bubble for customers.
- * Multi-tenant: uses customerId + laundryId to scope conversations.
+ * Multi-tenant: uses laundryId to scope conversations.
+ * Supports both logged-in and logged-out users.
+ *
+ * Mode: 'ai' — AI answers using tenant-specific data (no auth needed)
+ * Mode: 'human' — Escalated to real admin chat (requires customerId)
  */
 export default function ChatWidget({ customerId, laundryId, customerName, customerPhone }) {
     const [isOpen, setIsOpen] = useState(false);
@@ -22,6 +27,8 @@ export default function ChatWidget({ customerId, laundryId, customerName, custom
     const [newMessage, setNewMessage] = useState('');
     const [sending, setSending] = useState(false);
     const [unreadCount, setUnreadCount] = useState(0);
+    const [mode, setMode] = useState('ai');
+    const [aiMessages, setAiMessages] = useState([]);
     const messagesEndRef = useRef(null);
     const pollRef = useRef(null);
 
@@ -29,7 +36,7 @@ export default function ChatWidget({ customerId, laundryId, customerName, custom
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     };
 
-    // Fetch messages
+    // Fetch messages (human mode only)
     const fetchMessages = async () => {
         if (!customerId || !laundryId) return;
         try {
@@ -52,19 +59,32 @@ export default function ChatWidget({ customerId, laundryId, customerName, custom
         }
     };
 
-    // Poll for new messages every 5 seconds
+    // Poll for new messages every 5 seconds (human mode only)
     useEffect(() => {
-        if (customerId && laundryId) {
+        if (mode === 'human' && customerId && laundryId) {
             fetchMessages();
             pollRef.current = setInterval(fetchMessages, 5000);
             return () => clearInterval(pollRef.current);
         }
-    }, [customerId, laundryId]);
+        return () => {
+            if (pollRef.current) clearInterval(pollRef.current);
+        };
+    }, [customerId, laundryId, mode]);
 
     // Scroll to bottom when messages change or chat opens
     useEffect(() => {
         if (isOpen) scrollToBottom();
-    }, [messages, isOpen]);
+    }, [messages, aiMessages, isOpen]);
+
+    // Add AI greeting when chat opens
+    useEffect(() => {
+        if (isOpen && mode === 'ai' && aiMessages.length === 0) {
+            setAiMessages([{
+                role: 'assistant',
+                content: 'Hi! I can help you with information about our services, pricing, hours, and delivery. What would you like to know?',
+            }]);
+        }
+    }, [isOpen]);
 
     // Clear unread when opening
     const handleOpen = () => {
@@ -75,22 +95,83 @@ export default function ChatWidget({ customerId, laundryId, customerName, custom
     // Send message
     const handleSend = async () => {
         if (!newMessage.trim() || sending) return;
+        const msg = newMessage.trim();
         setSending(true);
-        try {
-            await axios.post(`${process.env.REACT_APP_AWS_API_URL}/api/chat/send`, {
-                customerId,
-                laundryId,
-                message: newMessage.trim(),
-                customerName,
-                customerPhone,
-            });
+
+        if (mode === 'ai') {
+            // Add user message to local AI conversation
+            const updatedMessages = [...aiMessages, { role: 'user', content: msg }];
+            setAiMessages(updatedMessages);
             setNewMessage('');
-            await fetchMessages();
-        } catch (err) {
-            // silent
-        } finally {
-            setSending(false);
+
+            try {
+                const res = await axios.post(`${process.env.REACT_APP_AWS_API_URL}/api/chat/ai`, {
+                    laundryId,
+                    message: msg,
+                    history: aiMessages, // Send previous history (before this message)
+                });
+
+                if (res.data.status === 'success') {
+                    // If AI is not configured, fall back to human chat gracefully
+                    if (res.data.noAi) {
+                        setAiMessages(prev => [...prev, {
+                            role: 'assistant',
+                            content: "Hi! Our team typically replies within minutes. Send us your question and we'll get back to you shortly!",
+                        }]);
+                        setMode('human');
+                        if (customerId) fetchMessages();
+                    } else {
+                        setAiMessages(prev => [...prev, { role: 'assistant', content: res.data.reply }]);
+
+                        // Handle escalation
+                        if (res.data.escalate) {
+                            setAiMessages(prev => [...prev, {
+                                role: 'system',
+                                content: 'Connecting you with a team member...',
+                            }]);
+                            setMode('human');
+
+                            // If logged in, start the human chat flow
+                            if (customerId) {
+                                fetchMessages();
+                            }
+                        }
+                    }
+                }
+            } catch (err) {
+                setAiMessages(prev => [...prev, {
+                    role: 'assistant',
+                    content: "I'm having trouble right now. Please try again in a moment.",
+                }]);
+            }
+        } else {
+            // Human mode — requires customerId
+            if (!customerId) {
+                setAiMessages(prev => [...prev, {
+                    role: 'system',
+                    content: 'Please log in to chat with our team.',
+                }]);
+                setSending(false);
+                setNewMessage('');
+                return;
+            }
+
+            try {
+                await axios.post(`${process.env.REACT_APP_AWS_API_URL}/api/chat/send`, {
+                    customerId,
+                    laundryId,
+                    message: msg,
+                    customerName,
+                    customerPhone,
+                });
+                setNewMessage('');
+                await fetchMessages();
+            } catch (err) {
+                // silent
+            }
         }
+
+        setSending(false);
     };
 
     const handleKeyPress = (e) => {
@@ -100,7 +181,13 @@ export default function ChatWidget({ customerId, laundryId, customerName, custom
         }
     };
 
-    if (!customerId || !laundryId) return null;
+    // Widget requires at least laundryId to render (AI mode works without customerId)
+    if (!laundryId) return null;
+
+    // Determine which messages to display
+    const displayMessages = mode === 'ai' || (mode === 'human' && !customerId)
+        ? aiMessages
+        : messages;
 
     return (
         <>
@@ -132,8 +219,12 @@ export default function ChatWidget({ customerId, laundryId, customerName, custom
                         justify="space-between"
                     >
                         <VStack align="flex-start" spacing={0}>
-                            <Text fontWeight="bold" fontSize="sm">Chat with us</Text>
-                            <Text fontSize="xs" opacity={0.8}>We typically reply in minutes</Text>
+                            <Text fontWeight="bold" fontSize="sm">
+                                {mode === 'ai' ? 'AI Assistant' : 'Chat with us'}
+                            </Text>
+                            <Text fontSize="xs" opacity={0.8}>
+                                {mode === 'ai' ? 'Ask about services, pricing & more' : 'We typically reply in minutes'}
+                            </Text>
                         </VStack>
                         <IconButton
                             icon={<FiX />}
@@ -156,12 +247,48 @@ export default function ChatWidget({ customerId, laundryId, customerName, custom
                         align="stretch"
                         bg="gray.50"
                     >
-                        {messages.length === 0 && (
+                        {displayMessages.length === 0 && (
                             <Text textAlign="center" color="gray.400" fontSize="sm" py={8}>
                                 Send us a message and we'll get back to you shortly!
                             </Text>
                         )}
-                        {messages.map((msg) => (
+
+                        {/* AI mode messages */}
+                        {(mode === 'ai' || (mode === 'human' && !customerId)) && aiMessages.map((msg, idx) => (
+                            <Flex
+                                key={idx}
+                                justify={msg.role === 'user' ? 'flex-end' : 'flex-start'}
+                            >
+                                <Box
+                                    maxW="80%"
+                                    bg={msg.role === 'user' ? 'blue.500' : msg.role === 'system' ? 'orange.100' : 'white'}
+                                    color={msg.role === 'user' ? 'white' : msg.role === 'system' ? 'orange.800' : 'gray.800'}
+                                    px={3}
+                                    py={2}
+                                    borderRadius="lg"
+                                    boxShadow="sm"
+                                    border={msg.role !== 'user' ? '1px solid' : 'none'}
+                                    borderColor={msg.role === 'system' ? 'orange.200' : 'gray.200'}
+                                >
+                                    <Text fontSize="sm" whiteSpace="pre-wrap">{msg.content}</Text>
+                                    {msg.role === 'system' && !customerId && mode === 'human' && (
+                                        <Link
+                                            href="/login"
+                                            color="blue.600"
+                                            fontSize="xs"
+                                            fontWeight="bold"
+                                            mt={1}
+                                            display="block"
+                                        >
+                                            Log in to continue →
+                                        </Link>
+                                    )}
+                                </Box>
+                            </Flex>
+                        ))}
+
+                        {/* Human mode messages (from DB) */}
+                        {mode === 'human' && customerId && messages.map((msg) => (
                             <Flex
                                 key={msg.messageId}
                                 justify={msg.senderType === 'customer' ? 'flex-end' : 'flex-start'}
@@ -198,7 +325,7 @@ export default function ChatWidget({ customerId, laundryId, customerName, custom
                             value={newMessage}
                             onChange={(e) => setNewMessage(e.target.value)}
                             onKeyPress={handleKeyPress}
-                            placeholder="Type a message..."
+                            placeholder={mode === 'ai' ? 'Ask a question...' : 'Type a message...'}
                             size="sm"
                             borderRadius="full"
                             flex="1"

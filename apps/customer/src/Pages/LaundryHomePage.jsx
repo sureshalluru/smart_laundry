@@ -1,4 +1,4 @@
-import React, {useContext, useState} from 'react';
+import React, {useContext, useEffect, useState} from 'react';
 import {
     Box,
     Flex,
@@ -19,10 +19,12 @@ import {FiMenu, FiCalendar, FiList, FiUser, FiLogOut, FiHelpCircle, FiGift} from
 import {FaWallet} from "react-icons/fa";
 import {useAuthenticator} from "../Context/AuthContext";
 import {useNavigate, Routes, Route, useLocation} from "react-router-dom";
+import axios from "axios";
 import LaundryPickupPage from "./LaundryPickupPage";
 import MyOrders from "../Components/LaundryHome/MyOrders";
 import Account from "../Components/LaundryHome/Account";
 import OrderSuccess from "../Components/LaundryHome/OrderSuccess";
+import ReorderCard from "../Components/LaundryHome/ReorderCard";
 import NoPage from "./NoPage";
 import FAQPage from "./FAQPage";
 import {Elements} from "@stripe/react-stripe-js";
@@ -46,6 +48,22 @@ const LaundryHomePage = ({laundryId, customerId, customerPaymentId: initialCusto
     const { laundryData } = useContext(LaundryContext);
     const isSmallScreen = useBreakpointValue({base: true, md: false});
     const {isOpen, onOpen, onClose} = useDisclosure();
+
+    // Quick Reorder: fetch last completed order
+    const [lastCompletedOrder, setLastCompletedOrder] = useState(null);
+    useEffect(() => {
+        if (!customerId || !laundryId) return;
+        const authToken = localStorage.getItem('idToken');
+        if (!authToken) return;
+        axios.get(`${process.env.REACT_APP_AWS_API_URL}/api/customer/get-orders-info`, {
+            params: { operation: 'getCustomerOrders', customerId, laundryId },
+            headers: { 'x-api-key': authToken },
+        }).then(res => {
+            const orders = res.data?.body?.data || res.data?.body?.orders || [];
+            const completed = orders.find(o => o.orderStatus === 'Delivered' || o.orderStatus === 'OrderPickedUp');
+            if (completed) setLastCompletedOrder(completed);
+        }).catch(() => {});
+    }, [customerId, laundryId]);
     // Toggle sidebar collapse (used on larger screens)
     const toggleSidebar = () => {
         setIsCollapsed(!isCollapsed);
@@ -231,6 +249,16 @@ const LaundryHomePage = ({laundryId, customerId, customerPaymentId: initialCusto
 
                 {/* Main Content */}
                 <Box flex="1" bg="gray.50" overflow="auto" pt={[ "50px", "0" ]}>
+                    {/* Quick Reorder Card for returning customers */}
+                    {lastCompletedOrder && (
+                        <Box px={[3, 4, 6]} pt={[3, 4]}>
+                            <ReorderCard
+                                lastOrder={lastCompletedOrder}
+                                onReorder={() => navigate(`/${laundryId}/user/schedule-order?reorder=${lastCompletedOrder.orderId}`)}
+                                themeColor={themeColor}
+                            />
+                        </Box>
+                    )}
                     <Routes>
                         <Route
                             index

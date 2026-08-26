@@ -11,6 +11,32 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+# ── AI-powered chat (no auth — works for logged-out users) ────────────────────
+
+@router.post("/ai")
+async def ai_chat(body: dict = Body(...)):
+    """AI-powered chat for tenant customers. No auth required."""
+    laundry_id = body.get("laundryId")
+    message = body.get("message", "").strip()
+    history = body.get("history", [])  # [{role: 'user'|'assistant', content: '...'}]
+
+    if not laundry_id or not message:
+        return {"status": "error", "message": "Missing laundryId or message"}
+
+    try:
+        from app.services.chat_ai_service import get_ai_response
+        result = get_ai_response(laundry_id, message, history)
+        return {
+            "status": "success",
+            "reply": result["reply"],
+            "escalate": result["escalate"],
+            "noAi": result.get("no_ai", False),
+        }
+    except Exception as e:
+        logger.error(f"AI chat error for laundry {laundry_id}: {e}")
+        return {"status": "success", "reply": "", "escalate": True, "noAi": True}
+
+
 # ── Customer-facing endpoints (no auth for now, uses customer_id) ─────────────
 
 @router.post("/send")

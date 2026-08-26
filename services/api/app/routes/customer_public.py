@@ -380,10 +380,23 @@ async def customer_place_order(
                             ON CONFLICT DO NOTHING
                         """, (order_id, hold_result["paymentIntentId"], 1.00))
                 else:
+                    # Card declined/expired — cancel the order and tell customer to update card
                     logger.warning(f"$1 hold failed for order {order_id}: {hold_result.get('message')}")
+                    with get_db() as conn_cancel:
+                        cur_cancel = get_cursor(conn_cancel)
+                        cur_cancel.execute(
+                            "UPDATE orders.orders SET order_status = 'OrderCanceled', status_category = 'Cancelled', cancel_reason = 'Card verification failed' WHERE order_id = %s",
+                            (order_id,))
+                    return {"status": "error", "code": "CARD_DECLINED", "message": "Your card could not be verified. Please update your payment method and try again."}
             except Exception as hold_err:
                 logger.warning(f"$1 hold error for order {order_id}: {hold_err}")
-                # Don't fail the order if hold fails — just log it
+                # Card verification failed — cancel order and return error
+                with get_db() as conn_cancel:
+                    cur_cancel = get_cursor(conn_cancel)
+                    cur_cancel.execute(
+                        "UPDATE orders.orders SET order_status = 'OrderCanceled', status_category = 'Cancelled', cancel_reason = 'Card verification error' WHERE order_id = %s",
+                        (order_id,))
+                return {"status": "error", "code": "CARD_DECLINED", "message": "We couldn't verify your card. Please update your payment method and try again."}
 
         # Schedule Uber pickup/dropoff if selected
         if pickup_service == "Uber" or dropoff_service == "Uber":
