@@ -24,7 +24,7 @@ import {
   NumberInput,
   NumberInputField,
 } from '@chakra-ui/react';
-import { PhoneIcon, ExternalLinkIcon } from '@chakra-ui/icons';
+import { PhoneIcon, ExternalLinkIcon, CheckCircleIcon } from '@chakra-ui/icons';
 import { format, addDays, subDays } from 'date-fns';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
@@ -394,6 +394,15 @@ const DriverHome = ({ laundryId }) => {
         }
 
         setOrders(finalOrders);
+        // Mark orders that already have a captured photo so the driver sees it
+        // was received (button shows "Retake" and the thumbnail renders).
+        setPhotoUploaded((prev) => {
+          const next = { ...prev };
+          finalOrders.forEach((o) => {
+            if (o.imageUrl) next[o.orderId] = true;
+          });
+          return next;
+        });
         setHasMore(finalOrders.length > pageSize * currentPage);
       } catch (err) {
         console.error(err);
@@ -1000,16 +1009,25 @@ const DriverHome = ({ laundryId }) => {
                     </Box>
                   </SimpleGrid>
 
-                  {/* Photo */}
+                  {/* Captured photo — confirms to the driver the picture was received */}
                   {(order.selectedFilePreview || order.imageUrl) && (
-                    <Image
-                      src={order.selectedFilePreview || order.imageUrl}
-                      alt="Evidence"
-                      boxSize="140px"
-                      objectFit="cover"
-                      borderRadius="md"
-                      mt={2}
-                    />
+                    <Box mt={3}>
+                      <HStack spacing={1} mb={1}>
+                        <CheckCircleIcon color="green.500" boxSize={3.5} />
+                        <Text fontSize="sm" fontWeight="semibold" color="green.600">
+                          Photo captured
+                        </Text>
+                      </HStack>
+                      <Image
+                        src={order.selectedFilePreview || order.imageUrl}
+                        alt="Delivery/pickup photo"
+                        boxSize="140px"
+                        objectFit="cover"
+                        borderRadius="md"
+                        border="1px solid"
+                        borderColor="gray.200"
+                      />
+                    </Box>
                   )}
                 </Box>
               );

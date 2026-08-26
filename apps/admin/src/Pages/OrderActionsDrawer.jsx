@@ -336,7 +336,7 @@ const OrderActionsDrawer = ({ isOpen, onClose, order, handleOrderHistory, handle
                             </Tooltip>
 
                             {/* Order Photos Section */}
-                            {(order.weightImageUrl || order.processingImageUrl || order.foldImageUrl || order.washingImageUrl || order.dryingImageUrl) && (
+                            {(order.imageUrl || order.weightImageUrl || order.processingImageUrl || order.foldImageUrl || order.washingImageUrl || order.dryingImageUrl) && (
                                 <Box
                                     mt={3}
                                     p={2}
@@ -349,6 +349,18 @@ const OrderActionsDrawer = ({ isOpen, onClose, order, handleOrderHistory, handle
                                         Order Photos
                                     </Text>
                                     <HStack spacing={2} justify="center" wrap="wrap">
+                                        {order.imageUrl && order.imageUrl.split('|||').map((url, idx) => (
+                                            <VStack spacing={1} key={`pickup-${idx}`}>
+                                                <Image
+                                                    src={url.trim()}
+                                                    alt={`Pickup/Delivery photo ${idx + 1}`}
+                                                    boxSize="60px"
+                                                    objectFit="cover"
+                                                    borderRadius="md"
+                                                />
+                                                <Text fontSize="2xs" color="gray.600">Pickup/Delivery</Text>
+                                            </VStack>
+                                        ))}
                                         {order.weightImageUrl && order.weightImageUrl.split('|||').map((url, idx) => (
                                             <VStack spacing={1} key={`weight-${idx}`}>
                                                 <Image

@@ -27,6 +27,7 @@ from app.migrations import add_tenant_api_keys
 from app.migrations import add_referral_system
 from app.migrations import add_google_review_url
 from app.migrations import add_notification_queue
+from app.migrations import backfill_customer_stats
 
 logger = logging.getLogger(__name__)
 
@@ -60,4 +61,5 @@ def run_all():
     add_referral_system.run()
     add_google_review_url.run()
     add_notification_queue.run()
+    backfill_customer_stats.run()
     logger.info("All migrations complete.")

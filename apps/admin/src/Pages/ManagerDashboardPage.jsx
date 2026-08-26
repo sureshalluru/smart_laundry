@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import {
     Accordion,
     Wrap,
@@ -794,20 +794,41 @@ const ManagerDashboardPage = () => {
 
    /* ---------- SEARCH ---------- */
     const [searchTerm, setSearchTerm] = useState("");
+    const [debouncedSearch, setDebouncedSearch] = useState("");
+    const [customerDisplayLimit, setCustomerDisplayLimit] = useState(50);
+    const debounceRef = useRef(null);
+
+    // Debounce: update debouncedSearch 300ms after the user stops typing
+    const handleSearchChange = useCallback((e) => {
+        const val = e.target.value;
+        setSearchTerm(val);
+        if (debounceRef.current) clearTimeout(debounceRef.current);
+        debounceRef.current = setTimeout(() => {
+            setDebouncedSearch(val);
+            setCustomerDisplayLimit(50); // reset pagination on new search
+        }, 300);
+    }, []);
+
+    const handleClearSearch = useCallback(() => {
+        setSearchTerm("");
+        setDebouncedSearch("");
+        setCustomerDisplayLimit(50);
+        if (debounceRef.current) clearTimeout(debounceRef.current);
+    }, []);
 
     const normalize = (v = "") => v.toString().toLowerCase();
     const filteredEmployees = useMemo(() => {
-        if (!searchTerm.trim()) return employees;
-        const q = normalize(searchTerm);
+        if (!debouncedSearch.trim()) return employees;
+        const q = normalize(debouncedSearch);
         return employees.filter((emp) =>
             [emp.fullName, emp.contact?.phone, emp.contact?.email]
             .some((field) => normalize(field).includes(q))
         );
-        }, [employees, searchTerm]);
+        }, [employees, debouncedSearch]);
 
     const filteredCustomers = useMemo(() => {
-    if (!searchTerm.trim()) return customers;
-    const q = normalize(searchTerm);
+    if (!debouncedSearch.trim()) return customers;
+    const q = normalize(debouncedSearch);
     return customers.filter((c) =>
         [
         `${c.firstName} ${c.lastName}`,
@@ -815,7 +836,12 @@ const ManagerDashboardPage = () => {
         c.email,
         ].some((field) => normalize(field).includes(q))
     );
-    }, [customers, searchTerm]);
+    }, [customers, debouncedSearch]);
+
+    // Only render up to customerDisplayLimit items to avoid DOM thrashing
+    const visibleCustomers = useMemo(() =>
+        filteredCustomers.slice(0, customerDisplayLimit),
+    [filteredCustomers, customerDisplayLimit]);
 
     return (
         <Box p={4}>
@@ -867,7 +893,7 @@ const ManagerDashboardPage = () => {
                     <Input
                         placeholder="name, phone, or email…"
                         value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
+                        onChange={handleSearchChange}
                         bg="white"
                         borderRadius="full"
                         _focus={{ ring: 1, ringColor: "teal.400" }}
@@ -879,7 +905,7 @@ const ManagerDashboardPage = () => {
                             icon={<CloseIcon fontSize="xs" />}
                             size="xs"
                             variant="ghost"
-                            onClick={() => setSearchTerm("")}
+                            onClick={handleClearSearch}
                         />
                         </InputRightElement>
                     )}
@@ -1301,7 +1327,7 @@ const ManagerDashboardPage = () => {
                     ) : (
                         <>
                             <Accordion allowMultiple>
-                                {filteredCustomers.map((cust) => (
+                                {visibleCustomers.map((cust) => (
                                     <AccordionItem key={cust.customerId}>
                                         <h2>
                                             <AccordionButton>
@@ -1504,7 +1530,21 @@ const ManagerDashboardPage = () => {
                                 ))}
                             </Accordion>
 
-                            {/* Pagination Controls */}
+                            {/* UI-level pagination: show more from already-loaded results */}
+                            {visibleCustomers.length < filteredCustomers.length && (
+                                <Box mt={4} textAlign="center">
+                                    <Button
+                                        size="sm"
+                                        variant="outline"
+                                        colorScheme="teal"
+                                        onClick={() => setCustomerDisplayLimit(prev => prev + 50)}
+                                    >
+                                        Show More ({filteredCustomers.length - visibleCustomers.length} remaining)
+                                    </Button>
+                                </Box>
+                            )}
+
+                            {/* Server-side pagination: fetch next batch from API */}
                             <Box mt={6} textAlign="center">
                                 {hasMore ? (
                                     <Button

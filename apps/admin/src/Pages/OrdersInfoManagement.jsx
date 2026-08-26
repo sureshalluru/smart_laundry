@@ -4100,12 +4100,17 @@ const handleAssignLaundryDriver = async (customAddress) => {
                             { label: 'Ready', statuses: ['ReadyForDelivery', 'EnRouteToDelivery'] },
                         ];
 
-                        // Filter orders by the active tab first (Online/In-Store/All/Commercial)
+                        // Filter orders by the active tab first (Online/In-Store/All/Commercial).
+                        // IMPORTANT: this MUST match the row-level `matchesTab` logic in the
+                        // filter useEffect, otherwise the chip counts won't equal the rows
+                        // actually shown. In particular the 'all' tab excludes IO- (instant)
+                        // orders, so the count must exclude them too.
                         const tabFilteredOrders = orders.filter((o) =>
-                            orderTab === 'all' ||
+                            orderTab === 'all' ? !o.orderId?.startsWith('IO-') :
                             (orderTab === 'instore' && o.orderId?.startsWith('IS-')) ||
                             (orderTab === 'online' && o.orderId?.startsWith('O-')) ||
-                            (orderTab === 'commercial' && o.orderId?.startsWith('CL-'))
+                            (orderTab === 'commercial' && o.orderId?.startsWith('CL-')) ||
+                            (orderTab === 'instant' && o.orderId?.startsWith('IO-'))
                         );
 
                         return statusChips.map((chip) => {

@@ -5,6 +5,7 @@ import {
   Flex,
   Text,
   Spinner,
+  Image,
   Alert,
   AlertIcon,
   AlertDescription,
@@ -482,6 +483,28 @@ export default function TrackingPage() {
                 <Text color="gray.600">Order ID</Text>
                 <Text fontWeight="600">{orderDetails.orderId || orderId}</Text>
               </Flex>
+              {orderDetails.imageUrl && (
+                <Box pt={1}>
+                  <Text color="gray.600" mb={1}>
+                    {orderStatus === 'EnRouteToDelivery' || orderStatus === 'Delivered' || orderStatus === 'OrderPickedUp'
+                      ? 'Delivery Photo'
+                      : 'Pickup Photo'}
+                  </Text>
+                  <Image
+                    src={
+                      orderDetails.imageUrl.startsWith('data:') || orderDetails.imageUrl.startsWith('http')
+                        ? orderDetails.imageUrl
+                        : `data:image/jpeg;base64,${orderDetails.imageUrl}`
+                    }
+                    alt="Order photo"
+                    maxH="180px"
+                    borderRadius="md"
+                    objectFit="cover"
+                    border="1px solid"
+                    borderColor="gray.200"
+                  />
+                </Box>
+              )}
               {orderDetails.services && orderDetails.services.length > 0 && (
                 <Box>
                   <Text color="gray.600" mb={1}>Services</Text>

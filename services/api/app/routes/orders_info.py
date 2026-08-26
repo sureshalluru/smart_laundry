@@ -863,6 +863,21 @@ async def update_order_endpoint(
                             logger.info(f"Referral reward result for order {orderId}, customer {cust_id}, laundry {laundryId}: {result}")
                     except Exception as referral_err:
                         logger.warning(f"Referral reward processing error for order {orderId}: {referral_err}")
+                    # Update customer_laundry_stats with order totals
+                    try:
+                        cust_id = current_order.get("customer_id")
+                        order_total = float(current_order.get("grand_total") or 0)
+                        if cust_id:
+                            cur.execute("""
+                                UPDATE shop.customer_laundry_stats
+                                SET total_orders_placed = total_orders_placed + 1,
+                                    total_order_value = total_order_value + %s,
+                                    last_completed_order_id = %s,
+                                    last_completed_at = NOW()
+                                WHERE customer_id = %s AND laundry_id = %s
+                            """, (order_total, orderId, cust_id, laundryId))
+                    except Exception as stats_err:
+                        logger.warning(f"customer_laundry_stats update failed for order {orderId}: {stats_err}")
                 elif order_status in cancelled_statuses:
                     update_fields["status_category"] = "Cancelled"
 
