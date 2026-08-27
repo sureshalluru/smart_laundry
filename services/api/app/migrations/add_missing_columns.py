@@ -39,8 +39,54 @@ def run():
                 "ALTER TABLE orders.laundry_frequency ADD COLUMN IF NOT EXISTS tip_type TEXT",
                 "ALTER TABLE orders.laundry_frequency ADD COLUMN IF NOT EXISTS tip_method TEXT",
                 "ALTER TABLE orders.laundry_frequency ADD COLUMN IF NOT EXISTS is_commercial BOOLEAN NOT NULL DEFAULT FALSE",
+                "ALTER TABLE orders.laundry_frequency ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW()",
             ]
             for sql in frequency_columns:
+                cur.execute(sql)
+
+            # ── shop.customers: commercial account columns ─────────────────
+            customer_columns = [
+                "ALTER TABLE shop.customers ADD COLUMN IF NOT EXISTS is_commercial BOOLEAN NOT NULL DEFAULT FALSE",
+                "ALTER TABLE shop.customers ADD COLUMN IF NOT EXISTS billing_email VARCHAR(255)",
+            ]
+            for sql in customer_columns:
+                cur.execute(sql)
+
+            # ── orders.orders: columns from standalone migration scripts ───
+            order_columns = [
+                "ALTER TABLE orders.orders ADD COLUMN IF NOT EXISTS pricing_type VARCHAR(20) DEFAULT 'per_pound'",
+                "ALTER TABLE orders.orders ADD COLUMN IF NOT EXISTS weight_image_url TEXT",
+                "ALTER TABLE orders.orders ADD COLUMN IF NOT EXISTS image_url TEXT",
+                "ALTER TABLE orders.orders ADD COLUMN IF NOT EXISTS washing_image_url TEXT",
+                "ALTER TABLE orders.orders ADD COLUMN IF NOT EXISTS drying_image_url TEXT",
+                "ALTER TABLE orders.orders ADD COLUMN IF NOT EXISTS processing_image_url TEXT",
+                "ALTER TABLE orders.orders ADD COLUMN IF NOT EXISTS fold_image_url TEXT",
+                "ALTER TABLE orders.orders ADD COLUMN IF NOT EXISTS uber_pickup_fee NUMERIC(10,2)",
+                "ALTER TABLE orders.orders ADD COLUMN IF NOT EXISTS uber_dropoff_fee NUMERIC(10,2)",
+                "ALTER TABLE orders.orders ADD COLUMN IF NOT EXISTS pickup_tracking_url TEXT",
+                "ALTER TABLE orders.orders ADD COLUMN IF NOT EXISTS dropoff_tracking_url TEXT",
+                "ALTER TABLE orders.orders ADD COLUMN IF NOT EXISTS pickup_status VARCHAR(50)",
+                "ALTER TABLE orders.orders ADD COLUMN IF NOT EXISTS dropoff_status VARCHAR(50)",
+                "ALTER TABLE orders.orders ADD COLUMN IF NOT EXISTS uber_info JSONB",
+                "ALTER TABLE orders.orders ADD COLUMN IF NOT EXISTS total_weight NUMERIC(10,2)",
+                "ALTER TABLE orders.orders ADD COLUMN IF NOT EXISTS bag_price NUMERIC(10,2)",
+                "ALTER TABLE orders.orders ADD COLUMN IF NOT EXISTS frequency TEXT",
+            ]
+            for sql in order_columns:
+                cur.execute(sql)
+
+            # ── shop.laundry_shops: columns from standalone scripts ────────
+            shop_columns = [
+                "ALTER TABLE shop.laundry_shops ADD COLUMN IF NOT EXISTS bag_price NUMERIC(10,2) DEFAULT 30.00",
+                "ALTER TABLE shop.laundry_shops ADD COLUMN IF NOT EXISTS site_content JSONB DEFAULT '{}'::jsonb",
+                "ALTER TABLE shop.laundry_shops ADD COLUMN IF NOT EXISTS subscription_discount NUMERIC(5,2) DEFAULT 5",
+                "ALTER TABLE shop.laundry_shops ADD COLUMN IF NOT EXISTS subscription_cutoff_hours INTEGER DEFAULT 12",
+                "ALTER TABLE shop.laundry_shops ADD COLUMN IF NOT EXISTS sms_enabled BOOLEAN DEFAULT FALSE",
+                "ALTER TABLE shop.laundry_shops ADD COLUMN IF NOT EXISTS sms_count INTEGER DEFAULT 0",
+                "ALTER TABLE shop.laundry_shops ADD COLUMN IF NOT EXISTS laundry_logo TEXT",
+                "ALTER TABLE shop.laundry_shops ADD COLUMN IF NOT EXISTS operating_hours TEXT",
+            ]
+            for sql in shop_columns:
                 cur.execute(sql)
 
             # ── shop.engagement_config ─────────────────────────────────────
