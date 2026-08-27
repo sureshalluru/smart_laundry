@@ -3,6 +3,8 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
+    "prebuild:admin": "node -e \"const fs=require('fs'),p='apps/admin/.env';if(!fs.existsSync(p))fs.writeFileSync(p,'REACT_APP_AWS_API_URL=\\n')\"",
+    "prebuild:customer": "node -e \"const fs=require('fs'),p='apps/customer/.env';if(!fs.existsSync(p))fs.writeFileSync(p,'REACT_APP_AWS_API_URL=\\n')\"",
     "build:admin": "cd apps/admin && npm install && npm run build",
     "build:customer": "cd apps/customer && npm install && npm run build",
     "build:counter": "cd apps/garment-counter && npm install && npm run build",
