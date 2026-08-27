@@ -93,6 +93,7 @@ def company_verify(body: dict = Body(...)):
 
     # Log code to console for local development
     logger.info(f"📧 Company join verification code for {contact_email}: {code} (use this if email delivery is not configured)")
+    print(f"\n📧 COMPANY JOIN CODE for {contact_email}: {code}\n")
 
     # Send code to company's contact email
     html_body = f"""

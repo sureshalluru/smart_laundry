@@ -50,6 +50,7 @@ async def verify_email(body: dict = Body(...)):
 
     # Log code to console for local development (when email service isn't configured)
     logger.info(f"📧 Email verification code for {email}: {code} (use this if email delivery is not configured)")
+    print(f"\n📧 EMAIL VERIFICATION CODE for {email}: {code}\n")
 
     # Send code via email
     html_body = f"""
