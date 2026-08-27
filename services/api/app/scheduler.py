@@ -439,12 +439,12 @@ def start_scheduler():
         misfire_grace_time=7200,  # 2 hours grace period
     )
 
-    # Abandoned cart / missed pickup SMS: daily at 11:00 AM Central Time
+    # Abandoned cart / missed pickup SMS: every 2 hours
     scheduler.add_job(
         run_abandoned_cart_processor,
-        CronTrigger(hour=11, minute=0, timezone=CT),
+        IntervalTrigger(hours=2),
         id="abandoned_cart_processor",
-        name="Abandoned cart SMS recovery (11 AM CT)",
+        name="Abandoned cart SMS recovery (every 2 hours)",
         replace_existing=True,
         misfire_grace_time=7200,  # 2 hours grace period
     )

@@ -95,5 +95,47 @@ def process_abandoned_carts():
                 except Exception as e:
                     logger.warning(f"Missed pickup SMS failed for {cust['customer_id']}: {e}")
 
+            # Segment 3: Customers who started the order flow 2+ hours ago but have no order since then
+            cur.execute("""
+                SELECT cr.customer_id, c.first_name, c.phone_number
+                FROM shop.customer_reminders cr
+                JOIN shop.customers c ON c.customer_id = cr.customer_id
+                WHERE cr.laundry_id = %s
+                  AND cr.reminder_type = 'cart_started'
+                  AND cr.created_at < NOW() - INTERVAL '2 hours'
+                  AND cr.created_at > NOW() - INTERVAL '24 hours'
+                  AND c.phone_number IS NOT NULL AND c.phone_number != ''
+                  AND NOT EXISTS (
+                    SELECT 1 FROM orders.orders o
+                    WHERE o.customer_id = cr.customer_id AND o.laundry_id = %s
+                      AND o.created_at > cr.created_at
+                  )
+                  AND NOT EXISTS (
+                    SELECT 1 FROM shop.customer_reminders cr2
+                    WHERE cr2.customer_id = cr.customer_id AND cr2.laundry_id = %s
+                      AND cr2.reminder_type = 'abandoned_cart_realtime'
+                      AND cr2.created_at > NOW() - INTERVAL '24 hours'
+                  )
+                LIMIT 50
+            """, (lid, lid, lid))
+            cart_abandoned = cur.fetchall()
+
+            for cust in cart_abandoned:
+                msg = f"Hi {cust['first_name'] or 'there'}! Looks like you didn't finish your order. We saved your spot \u2014 complete it now: https://{domain}/{lid}/site \u2014 {name}"
+                try:
+                    send_sms_for_tenant(cust["phone_number"], msg, lid)
+                    cur.execute("""
+                        INSERT INTO shop.customer_reminders (customer_id, laundry_id, reminder_type)
+                        VALUES (%s, %s, 'abandoned_cart_realtime')
+                    """, (cust["customer_id"], lid))
+                    # Clean up the cart_started record
+                    cur.execute("""
+                        DELETE FROM shop.customer_reminders
+                        WHERE customer_id = %s AND laundry_id = %s AND reminder_type = 'cart_started'
+                    """, (cust["customer_id"], lid))
+                    total_sent += 1
+                except Exception as e:
+                    logger.warning(f"Abandoned cart realtime SMS failed for {cust['customer_id']}: {e}")
+
     logger.info(f"Abandoned cart processor complete: {total_sent} SMS sent")
     return {"sent": total_sent}

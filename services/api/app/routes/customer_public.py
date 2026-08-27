@@ -11,6 +11,33 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+@router.post("/cart-started")
+async def record_cart_started(body: dict = Body(...)):
+    """Record that a customer started the order flow (for abandoned cart tracking)."""
+    customer_id = body.get("customerId")
+    laundry_id = body.get("laundryId")
+
+    if not customer_id or not laundry_id:
+        return {"status": "ok"}  # Silent no-op if missing data
+
+    try:
+        with get_db() as conn:
+            cur = get_cursor(conn)
+            # Remove any existing cart_started for this customer+laundry, then insert fresh
+            cur.execute("""
+                DELETE FROM shop.customer_reminders
+                WHERE customer_id = %s AND laundry_id = %s AND reminder_type = 'cart_started'
+            """, (customer_id, laundry_id))
+            cur.execute("""
+                INSERT INTO shop.customer_reminders (customer_id, laundry_id, reminder_type)
+                VALUES (%s, %s, 'cart_started')
+            """, (customer_id, laundry_id))
+    except Exception as e:
+        logger.warning(f"cart-started tracking failed: {e}")
+
+    return {"status": "ok"}
+
+
 @router.get("/check-phone")
 async def check_phone(
     operation: str = Query(...),

@@ -499,6 +499,7 @@ function App() {
  */
 function AdminAuthGate({ children }) {
     const auth = useAuth();
+    const { laundryId } = useParams();
 
     // Check if a valid company token exists (company admin navigating into a laundry)
     const companyStored = localStorage.getItem('companyToken');
@@ -508,12 +509,47 @@ function AdminAuthGate({ children }) {
             const parsed = JSON.parse(companyStored);
             const payload = JSON.parse(atob(parsed.accessToken.split('.')[1]));
             if (payload.exp * 1000 > Date.now() && payload.role === 'company_admin') {
-                hasValidCompanyToken = true;
+                // Company admins can access any of their laundries
+                const laundryIds = payload.laundry_ids || [];
+                hasValidCompanyToken = laundryIds.includes(String(laundryId));
             }
         } catch (e) { /* invalid token, ignore */ }
     }
 
-    if (!auth.isAuthenticated && !hasValidCompanyToken) {
+    // Check store-level auth is scoped to this specific laundry
+    let isAuthForThisLaundry = false;
+    if (auth.isAuthenticated) {
+        // Check EmployeeAuthContext session (empSession — PIN login)
+        try {
+            const sessionStr = sessionStorage.getItem('empSession');
+            if (sessionStr) {
+                const session = JSON.parse(sessionStr);
+                isAuthForThisLaundry = String(session.laundryId) === String(laundryId);
+            }
+        } catch (e) { /* parse error */ }
+        // Check useAdminSession (adminSession — credential validation)
+        if (!isAuthForThisLaundry) {
+            try {
+                const adminStr = sessionStorage.getItem('adminSession');
+                if (adminStr) {
+                    const session = JSON.parse(adminStr);
+                    isAuthForThisLaundry = String(session.laundryId) === String(laundryId);
+                }
+            } catch (e) { /* parse error */ }
+        }
+        // Fallback: check the JWT token's laundry claim
+        if (!isAuthForThisLaundry) {
+            try {
+                const token = localStorage.getItem('idToken');
+                if (token) {
+                    const payload = JSON.parse(atob(token.split('.')[1]));
+                    isAuthForThisLaundry = String(payload.laundry_id || payload.laundryId || '') === String(laundryId);
+                }
+            } catch (e) { /* parse error */ }
+        }
+    }
+
+    if (!isAuthForThisLaundry && !hasValidCompanyToken) {
         return (
             <Suspense fallback={<LoadingSpinner/>}>
                 <StoreAdminLogin/>

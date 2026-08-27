@@ -228,6 +228,16 @@ export default function LaundryPickupPage({laundryId,customerId,customerPaymentI
         }
     }, [laundryTimeZone,pickupDate,dropoffDate,isAddressValidated]);
 
+    // Track cart-started for abandoned cart SMS recovery
+    useEffect(() => {
+        if (servicesLoaded && customerId && laundryId) {
+            axios.post(`${process.env.REACT_APP_AWS_API_URL}/api/customer/cart-started`, {
+                customerId,
+                laundryId,
+            }).catch(() => {}); // Silent — never block the order flow
+        }
+    }, [servicesLoaded, customerId, laundryId]);
+
     // Task 5.5: Single-service auto-add logic (no auto-skip)
     // If only 1 service exists, auto-add it to cart but let customer stay on step 1
     // so they can optionally enter weight before continuing

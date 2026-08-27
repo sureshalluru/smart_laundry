@@ -124,3 +124,19 @@ async def get_segment_counts(
             segments[seg] = cur.fetchone()["cnt"]
 
     return {"status": "success", "segments": segments}
+
+
+@router.post("/trigger-abandoned-cart")
+async def trigger_abandoned_cart(
+    current_user: dict = Depends(get_current_user),
+):
+    """
+    Manually trigger the abandoned cart SMS processor (for testing).
+    Normally runs every 2 hours via scheduler.
+    """
+    try:
+        from app.services.abandoned_cart_service import process_abandoned_carts
+        result = process_abandoned_carts()
+        return {"status": "success", "result": result}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
