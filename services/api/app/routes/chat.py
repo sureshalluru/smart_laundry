@@ -34,7 +34,7 @@ async def ai_chat(body: dict = Body(...)):
         }
     except Exception as e:
         logger.error(f"AI chat error for laundry {laundry_id}: {e}")
-        return {"status": "success", "reply": "", "escalate": True, "noAi": True}
+        return {"status": "success", "reply": "", "escalate": True, "noAi": True, "debug": str(e)}
 
 
 @router.get("/ai-status")

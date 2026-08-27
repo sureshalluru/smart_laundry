@@ -175,3 +175,11 @@ def get_ai_response(
             "reply": "I'm having trouble right now. Please try again or contact us directly.",
             "escalate": False,
         }
+    except Exception as e:
+        logger.error(f"AI chat unexpected error for laundry {laundry_id}: {type(e).__name__}: {e}")
+        return {
+            "reply": "",
+            "escalate": True,
+            "no_ai": True,
+            "debug": f"{type(e).__name__}: {e}",
+        }
