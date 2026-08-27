@@ -91,6 +91,9 @@ def company_verify(body: dict = Body(...)):
     code = f"{random.randint(0, 999999):06d}"
     verification_store.store_code(f"company_join:{company_id}", code)
 
+    # Log code to console for local development
+    logger.info(f"📧 Company join verification code for {contact_email}: {code} (use this if email delivery is not configured)")
+
     # Send code to company's contact email
     html_body = f"""
     <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 32px;">

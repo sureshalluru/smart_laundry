@@ -48,6 +48,9 @@ async def verify_email(body: dict = Body(...)):
     code = f"{random.randint(0, 999999):06d}"
     verification_store.store_code(email, code)
 
+    # Log code to console for local development (when email service isn't configured)
+    logger.info(f"📧 Email verification code for {email}: {code} (use this if email delivery is not configured)")
+
     # Send code via email
     html_body = f"""
     <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 32px;">
