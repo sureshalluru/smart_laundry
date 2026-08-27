@@ -90,6 +90,8 @@ from app.routes import (
     referrals,
     demo,
     counter_mock,
+    sms_marketing,
+    sms_webhook,
 )
 
 app = FastAPI(
@@ -173,6 +175,8 @@ app.include_router(city_pages.router, prefix="/api/city-pages", tags=["City SEO 
 app.include_router(sitemap.router, prefix="/api", tags=["SEO Sitemap"])
 app.include_router(referrals.router, prefix="/api/referrals", tags=["Referrals"])
 app.include_router(demo.router, prefix="/api/demo", tags=["Demo Mode"])
+app.include_router(sms_marketing.router, prefix="/api/admin/sms", tags=["SMS Marketing"])
+app.include_router(sms_webhook.router, prefix="/api/sms", tags=["SMS Webhook"])
 
 # Garment-counter demo mock (Jetson + EC2). Mounted only when explicitly
 # enabled so it never serves fabricated data in a real environment. Point the

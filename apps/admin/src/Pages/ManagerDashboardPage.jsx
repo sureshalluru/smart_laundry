@@ -52,6 +52,7 @@ import {
     SimpleGrid
 } from "@chakra-ui/react";
 import EmployeeTipTab from "./EmployeeTipTab";
+import SMSMarketingTab from '../Components/AdminHome/SMSMarketingTab';
 import { GoogleMap, LoadScript, Marker, Autocomplete } from '@react-google-maps/api';
 import { DeleteIcon, EditIcon, CheckIcon, SearchIcon, CloseIcon, EmailIcon, ChevronDownIcon, RepeatIcon, PhoneIcon} from "@chakra-ui/icons";
 import axios from "axios";
@@ -864,6 +865,7 @@ const ManagerDashboardPage = () => {
                     { id: "customer", label: "Customer Management" },
                     { id: "employeeTips", label: "Monthly Employee Tips" },
                     { id: "upcoming", label: "Upcoming" },
+                    { id: "sms", label: "SMS Marketing" },
                 ].map(({ id, label }) => (
                     <WrapItem key={id}>
                     <Button
@@ -1668,6 +1670,11 @@ const ManagerDashboardPage = () => {
                         </VStack>
                     )}
                 </Box>
+            )}
+
+            {/* SMS MARKETING SECTION */}
+            {activeTab === "sms" && (
+                <SMSMarketingTab laundryId={laundryId} authToken={authToken} />
             )}
 
             {/* Custom Pricing Modal */}

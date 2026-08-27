@@ -5,6 +5,7 @@ No dependency on Render cron jobs or external HTTP calls.
 Jobs:
 - Frequency processor: daily at 6 AM CT (creates recurring orders)
 - Engagement processor: daily at 10 AM CT (sends customer reminders)
+- Abandoned cart processor: daily at 11 AM CT (missed pickup / never-ordered SMS)
 - Community board refresh: every 5 minutes (referral community board cache)
 - Credit expiration: daily at 2 AM CT (expire old credits, send reminders)
 
@@ -261,6 +262,17 @@ def flush_notification_queue():
         logger.exception(f"⏰ Notification queue flush failed: {e}")
 
 
+def run_abandoned_cart_processor():
+    """Process abandoned cart / missed pickup SMS."""
+    logger.info("⏰ Scheduler: Running abandoned cart processor...")
+    try:
+        from app.services.abandoned_cart_service import process_abandoned_carts
+        result = process_abandoned_carts()
+        logger.info(f"⏰ Abandoned cart processor result: {result}")
+    except Exception as e:
+        logger.exception(f"⏰ Abandoned cart processor failed: {e}")
+
+
 def run_credit_expiration():
     """Process credit expiration and send reminder notifications.
 
@@ -423,6 +435,16 @@ def start_scheduler():
         CronTrigger(hour=2, minute=0, timezone=CT),
         id="credit_expiration",
         name="Credit expiration + reminders (2 AM CT)",
+        replace_existing=True,
+        misfire_grace_time=7200,  # 2 hours grace period
+    )
+
+    # Abandoned cart / missed pickup SMS: daily at 11:00 AM Central Time
+    scheduler.add_job(
+        run_abandoned_cart_processor,
+        CronTrigger(hour=11, minute=0, timezone=CT),
+        id="abandoned_cart_processor",
+        name="Abandoned cart SMS recovery (11 AM CT)",
         replace_existing=True,
         misfire_grace_time=7200,  # 2 hours grace period
     )
