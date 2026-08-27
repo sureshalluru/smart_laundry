@@ -37,6 +37,17 @@ async def ai_chat(body: dict = Body(...)):
         return {"status": "success", "reply": "", "escalate": True, "noAi": True}
 
 
+@router.get("/ai-status")
+async def ai_status():
+    """Diagnostic: check if AI chat is configured (does not expose the key)."""
+    from app.config import settings
+    key = settings.anthropic_api_key
+    return {
+        "configured": bool(key),
+        "keyPrefix": key[:10] + "..." if key and len(key) > 10 else "(empty)",
+    }
+
+
 # ── Customer-facing endpoints (no auth for now, uses customer_id) ─────────────
 
 @router.post("/send")
