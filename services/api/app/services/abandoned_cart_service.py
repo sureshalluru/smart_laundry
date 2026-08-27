@@ -63,15 +63,15 @@ def process_abandoned_carts():
 
             # Segment 2: Active subscribers who missed their pickup (future_pickup_date passed 7+ days)
             cur.execute("""
-                SELECT lf.customer_id, c.first_name, c.phone_number
+                SELECT lf.customer_id::text AS customer_id, c.first_name, c.phone_number
                 FROM orders.laundry_frequency lf
-                JOIN shop.customers c ON c.customer_id = lf.customer_id
+                JOIN shop.customers c ON c.customer_id = lf.customer_id::text
                 WHERE lf.laundry_id = %s AND lf.is_active = TRUE
                   AND lf.future_pickup_date < NOW()::date - INTERVAL '7 days'
                   AND c.phone_number IS NOT NULL AND c.phone_number != ''
                   AND NOT EXISTS (
                     SELECT 1 FROM shop.customer_reminders cr
-                    WHERE cr.customer_id = lf.customer_id AND cr.laundry_id = %s
+                    WHERE cr.customer_id = lf.customer_id::text AND cr.laundry_id = %s
                       AND cr.reminder_type = 'missed_pickup'
                       AND cr.created_at > NOW() - INTERVAL '7 days'
                   )
