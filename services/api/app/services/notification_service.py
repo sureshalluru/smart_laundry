@@ -169,6 +169,12 @@ def send_sms(to_phone: str, message: str):
         logger.info("SMS sent to %s", to_phone)
         return True
     except Exception as e:
+        error_str = str(e).lower()
+        # Twilio returns 400 "unsubscribed recipient" when customer texted STOP.
+        # This is normal opt-out behavior — log quietly and skip, don't crash.
+        if "unsubscribed" in error_str or "21610" in str(e):
+            logger.info(f"SMS skipped (recipient opted out): {to_phone}")
+            return False
         logger.exception("Failed to send SMS to %s", to_phone)
         return False
 
@@ -205,8 +211,13 @@ def send_sms_for_tenant(to_phone: str, message: str, laundry_id: str):
     # Tenant has SMS enabled — send it
     result = send_sms(to_phone, message)
 
-    # Track SMS usage for billing
+    # Track SMS usage for billing + record outbound context for reply routing
     if result:
+        try:
+            from app.routes.sms_webhook import record_outbound_sms
+            record_outbound_sms(to_phone, laundry_id)
+        except Exception:
+            pass  # Non-critical — don't break SMS flow if tracking fails
         try:
             from app.database import get_db, get_cursor
             with get_db() as conn:

@@ -4,16 +4,62 @@ from fastapi.responses import Response
 from app.database import get_db, get_cursor
 from app.services.chat_ai_service import get_ai_response
 import logging
+import time
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
+# Track which laundry last sent an outbound SMS to each phone number.
+# Key: normalized phone (last 10 digits), Value: (laundry_id, timestamp)
+# Used to route inbound replies to the correct laundry context.
+# In-memory — resets on restart, which is acceptable for a 24h reply window.
+_outbound_context: dict[str, tuple[str, float]] = {}
+_CONTEXT_TTL_SECONDS = 24 * 60 * 60  # 24 hours
+
+
+def record_outbound_sms(to_phone: str, laundry_id: str):
+    """Called after sending an outbound SMS to track reply context."""
+    normalized = to_phone.replace("+1", "").replace("+", "").strip()[-10:]
+    _outbound_context[normalized] = (laundry_id, time.time())
+
+
+def _get_reply_context(from_phone: str) -> str | None:
+    """Check if this phone recently received an outbound SMS from a specific laundry."""
+    normalized = from_phone.replace("+1", "").replace("+", "").strip()[-10:]
+    entry = _outbound_context.get(normalized)
+    if entry:
+        laundry_id, ts = entry
+        if time.time() - ts < _CONTEXT_TTL_SECONDS:
+            return laundry_id
+        # Expired — clean up
+        del _outbound_context[normalized]
+    return None
+
 
 def _find_laundry_for_phone(from_phone: str):
-    """Find which laundry a customer belongs to based on their phone number."""
+    """Find which laundry a customer belongs to based on their phone number.
+    Priority: 1) recent outbound context, 2) most recent order."""
+    # First check reply context (did we recently text them from a specific laundry?)
+    context_laundry = _get_reply_context(from_phone)
+
     with get_db() as conn:
         cur = get_cursor(conn)
         normalized = from_phone.replace("+1", "").strip()
+
+        if context_laundry:
+            # We know which laundry recently texted them — use that context
+            cur.execute("""
+                SELECT c.customer_id, c.first_name
+                FROM shop.customers c
+                JOIN shop.customer_laundry_stats cls ON cls.customer_id = c.customer_id AND cls.laundry_id = %s
+                WHERE c.phone_number LIKE %s
+                LIMIT 1
+            """, (context_laundry, f"%{normalized}%"))
+            row = cur.fetchone()
+            if row:
+                return {"laundry_id": context_laundry, "customer_id": row["customer_id"], "first_name": row["first_name"]}
+
+        # Fallback: most recent completed order
         cur.execute("""
             SELECT cls.laundry_id, c.customer_id, c.first_name
             FROM shop.customers c
