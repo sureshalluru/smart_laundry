@@ -139,7 +139,7 @@ def get_ai_response(
     try:
         client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
         response = client.messages.create(
-            model="claude-3-5-sonnet-20241022",
+            model="claude-3-haiku-20240307",
             max_tokens=300,
             system=system_prompt,
             messages=messages,
