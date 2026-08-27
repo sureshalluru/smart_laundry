@@ -53,10 +53,11 @@ def _format_services(services: list) -> str:
 
         if price is not None:
             price_str = f"${float(price):.2f}"
-            if input_weight and input_weight.lower() in ("per_pound", "per pound", "lb"):
+            # input_weight is a boolean: True = per-pound, False = per-piece/flat-rate
+            if input_weight is True or str(input_weight).lower() in ("true", "per_pound", "per pound", "lb"):
                 price_str += "/lb"
-            elif input_weight and input_weight.lower() in ("per_piece", "per piece", "piece"):
-                price_str += "/piece"
+            else:
+                price_str += " (flat rate)"
             lines.append(f"- {name}: {price_str}")
         else:
             lines.append(f"- {name}: Contact us for pricing")

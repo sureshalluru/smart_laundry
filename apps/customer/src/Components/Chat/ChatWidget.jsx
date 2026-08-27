@@ -82,6 +82,7 @@ export default function ChatWidget({ customerId, laundryId, customerName, custom
             setAiMessages([{
                 role: 'assistant',
                 content: 'Hi! I can help you with information about our services, pricing, hours, and delivery. What would you like to know?',
+                createdAt: new Date().toISOString(),
             }]);
         }
     }, [isOpen]);
@@ -100,7 +101,7 @@ export default function ChatWidget({ customerId, laundryId, customerName, custom
 
         if (mode === 'ai') {
             // Add user message to local AI conversation
-            const updatedMessages = [...aiMessages, { role: 'user', content: msg }];
+            const updatedMessages = [...aiMessages, { role: 'user', content: msg, createdAt: new Date().toISOString() }];
             setAiMessages(updatedMessages);
             setNewMessage('');
 
@@ -117,17 +118,19 @@ export default function ChatWidget({ customerId, laundryId, customerName, custom
                         setAiMessages(prev => [...prev, {
                             role: 'assistant',
                             content: "Hi! Our team typically replies within minutes. Send us your question and we'll get back to you shortly!",
+                            createdAt: new Date().toISOString(),
                         }]);
                         setMode('human');
                         if (customerId) fetchMessages();
                     } else {
-                        setAiMessages(prev => [...prev, { role: 'assistant', content: res.data.reply }]);
+                        setAiMessages(prev => [...prev, { role: 'assistant', content: res.data.reply, createdAt: new Date().toISOString() }]);
 
                         // Handle escalation
                         if (res.data.escalate) {
                             setAiMessages(prev => [...prev, {
                                 role: 'system',
                                 content: 'Connecting you with a team member...',
+                                createdAt: new Date().toISOString(),
                             }]);
                             setMode('human');
 
@@ -142,6 +145,7 @@ export default function ChatWidget({ customerId, laundryId, customerName, custom
                 setAiMessages(prev => [...prev, {
                     role: 'assistant',
                     content: "I'm having trouble right now. Please try again in a moment.",
+                    createdAt: new Date().toISOString(),
                 }]);
             }
         } else {
@@ -150,6 +154,7 @@ export default function ChatWidget({ customerId, laundryId, customerName, custom
                 setAiMessages(prev => [...prev, {
                     role: 'system',
                     content: 'Please log in to chat with our team.',
+                    createdAt: new Date().toISOString(),
                 }]);
                 setSending(false);
                 setNewMessage('');
