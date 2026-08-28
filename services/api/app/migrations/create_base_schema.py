@@ -121,7 +121,8 @@ def run():
                     unread_admin      INT DEFAULT 0,
                     unread_customer   INT DEFAULT 0,
                     created_at        TIMESTAMP DEFAULT now(),
-                    updated_at        TIMESTAMP DEFAULT now()
+                    updated_at        TIMESTAMP DEFAULT now(),
+                    UNIQUE (laundry_id, customer_id)
                 )
             """)
 

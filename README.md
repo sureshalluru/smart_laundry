@@ -270,7 +270,12 @@ After Step 6 the tables are all present.
 
 - **Admin/owner login** works with no external services — use the employee ID
   and passcode from onboarding to explore the admin/POS side.
-- **Customer OTP login** needs Twilio keys to receive real SMS codes.
+- **Customer OTP login** does not require Twilio. When `TWILIO_ACCOUNT_SID` is
+  not set, the OTP code is printed to the server console/terminal instead of
+  being sent via SMS. Check your terminal output for a line like
+  `OTP for +1...: 123456` and enter that code in the app.
+- **Email notifications** (welcome emails, order updates) require Brevo keys.
+  Without them, emails are silently skipped but the app still functions.
 - **Address autocomplete** needs a Google Maps key at build time
   (`REACT_APP_GOOGLE_MAPS_API_KEY`); without it, address fields work as plain
   text.
