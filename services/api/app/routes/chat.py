@@ -24,8 +24,15 @@ async def verify_chat_admin(request: Request):
         token = auth_header[7:]
         if token == PLATFORM_ADMIN_KEY:
             return {"sub": "platform-admin", "role": "platform_admin"}
-    # Fall back to normal JWT auth
-    return await get_current_user(request)
+        # Try JWT decode
+        from app.auth import decode_token
+        try:
+            payload = decode_token(token)
+            if payload.get("type") == "access":
+                return payload
+        except Exception:
+            pass
+    raise HTTPException(status_code=401, detail="Not authenticated")
 
 
 # ── AI-powered chat (no auth — works for logged-out users) ────────────────────
