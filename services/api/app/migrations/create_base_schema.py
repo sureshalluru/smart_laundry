@@ -681,7 +681,7 @@ def run():
                     template_id    SERIAL NOT NULL PRIMARY KEY,
                     question       TEXT NOT NULL,
                     answer_template TEXT NOT NULL,
-                    slug           VARCHAR(200) NOT NULL,
+                    slug           VARCHAR(200) NOT NULL UNIQUE,
                     category       VARCHAR(100) NOT NULL,
                     display_order  INT DEFAULT 0 NOT NULL,
                     is_active      BOOLEAN DEFAULT true NOT NULL,
@@ -922,7 +922,7 @@ def run():
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS shop.service_catalog (
                     id            SERIAL NOT NULL PRIMARY KEY,
-                    title         TEXT NOT NULL,
+                    title         TEXT NOT NULL UNIQUE,
                     description   TEXT DEFAULT '' NOT NULL,
                     icon_key      TEXT DEFAULT 'package' NOT NULL,
                     color         TEXT DEFAULT 'blue' NOT NULL,
@@ -940,7 +940,8 @@ def run():
                     category_name   TEXT NOT NULL,
                     display_order   INT DEFAULT 0 NOT NULL,
                     is_active       BOOLEAN DEFAULT true NOT NULL,
-                    created_at      TIMESTAMP DEFAULT now()
+                    created_at      TIMESTAMP DEFAULT now(),
+                    UNIQUE (laundry_id, category_name)
                 )
             """)
 
@@ -955,7 +956,8 @@ def run():
                     display_order    INT DEFAULT 0 NOT NULL,
                     is_enabled       BOOLEAN DEFAULT true NOT NULL,
                     created_at       TIMESTAMP DEFAULT now(),
-                    updated_at       TIMESTAMP DEFAULT now()
+                    updated_at       TIMESTAMP DEFAULT now(),
+                    UNIQUE (laundry_id, slug)
                 )
             """)
 
@@ -1003,7 +1005,8 @@ def run():
                     acknowledgements  JSONB,
                     status            TEXT DEFAULT 'confirmed' NOT NULL,
                     confirmed_at      TIMESTAMP,
-                    created_at        TIMESTAMP DEFAULT now()
+                    created_at        TIMESTAMP DEFAULT now(),
+                    UNIQUE (order_id, laundry_id)
                 )
             """)
 
@@ -1018,7 +1021,8 @@ def run():
                     vision_results   JSONB,
                     status           TEXT DEFAULT 'confirmed' NOT NULL,
                     confirmed_at     TIMESTAMP,
-                    created_at       TIMESTAMP DEFAULT now()
+                    created_at       TIMESTAMP DEFAULT now(),
+                    UNIQUE (order_id, laundry_id)
                 )
             """)
 
@@ -1030,7 +1034,8 @@ def run():
                     display_order  INT DEFAULT 0 NOT NULL,
                     is_active      BOOLEAN DEFAULT true NOT NULL,
                     created_at     TIMESTAMP DEFAULT now(),
-                    updated_at     TIMESTAMP DEFAULT now()
+                    updated_at     TIMESTAMP DEFAULT now(),
+                    UNIQUE (laundry_id, name)
                 )
             """)
 
@@ -1046,7 +1051,8 @@ def run():
                     result_data    JSONB,
                     expires_at     TIMESTAMP NOT NULL,
                     confirmed_at   TIMESTAMP,
-                    created_at     TIMESTAMP DEFAULT now()
+                    created_at     TIMESTAMP DEFAULT now(),
+                    UNIQUE (order_id, laundry_id, phase)
                 )
             """)
 
