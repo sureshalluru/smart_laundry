@@ -2,7 +2,7 @@
 Platform Admin routes — super-admin for onboarding laundries.
 Protected by platform admin secret key.
 """
-from fastapi import APIRouter, Body, Header, HTTPException, Query
+from fastapi import APIRouter, Body, Header, HTTPException, Query, Request
 from app.database import get_db, get_cursor
 from app.services.verification_store import verification_store, normalize_address
 from app.services.join_code import generate_join_code_with_retry
@@ -13,6 +13,14 @@ import random
 import string
 
 logger = logging.getLogger(__name__)
+
+
+def _get_base_url(request: Request) -> str:
+    """Get the base URL from the incoming request (works for both local and production)."""
+    # Use X-Forwarded-Proto/Host if behind a reverse proxy (Render, nginx, etc.)
+    proto = request.headers.get("x-forwarded-proto", request.url.scheme)
+    host = request.headers.get("x-forwarded-host") or request.headers.get("host") or request.url.netloc
+    return f"{proto}://{host}"
 router = APIRouter()
 
 # Platform admin auth — simple secret key (set in env)
@@ -212,7 +220,7 @@ async def delete_laundry(laundry_id: str, x_platform_key: str = Header(None)):
 
 
 @router.post("/laundries")
-async def create_laundry(body: dict = Body(...), x_platform_key: str = Header(None)):
+async def create_laundry(request: Request, body: dict = Body(...), x_platform_key: str = Header(None)):
     """Create a new laundry + owner employee."""
     verify_platform_admin(x_platform_key)
 
@@ -294,8 +302,8 @@ async def create_laundry(body: dict = Body(...), x_platform_key: str = Header(No
             "laundryId": next_id,
             "laundryName": laundry_name,
             "deviceRegistrationCode": reg_code,
-            "adminUrl": f"https://smartlaundrybasket.ai/{next_id}/admin",
-            "customerUrl": f"https://smartlaundrybasket.ai/{next_id}/site",
+            "adminUrl": f"{_get_base_url(request)}/{next_id}/admin",
+            "customerUrl": f"{_get_base_url(request)}/{next_id}/site",
         },
         "owner": {
             "employeeId": owner_emp_id,
@@ -419,7 +427,7 @@ async def reset_registration_code(laundry_id: str, x_platform_key: str = Header(
 
 
 @router.post("/onboard")
-async def self_service_onboard(body: dict = Body(...)):
+async def self_service_onboard(request: Request, body: dict = Body(...)):
     """
     Self-service onboarding endpoint for new tenants.
     No auth required — creates a full laundry setup from the onboarding form.
