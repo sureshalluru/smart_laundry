@@ -1,7 +1,7 @@
 """
 Chat routes — multi-tenant real-time messaging between customers and admin.
 """
-from fastapi import APIRouter, Depends, Query, Body
+from fastapi import APIRouter, Depends, Query, Body, Header, HTTPException, Request
 from typing import Optional
 from app.database import get_db, get_cursor
 from app.auth import get_current_user
@@ -9,6 +9,23 @@ import logging
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+
+async def verify_chat_admin(request: Request):
+    """Verify admin access for chat endpoints. Accepts JWT or x-platform-key."""
+    from app.routes.platform_admin import PLATFORM_ADMIN_KEY
+    # Check x-platform-key header first (platform admin)
+    platform_key = request.headers.get("x-platform-key")
+    if platform_key == PLATFORM_ADMIN_KEY:
+        return {"sub": "platform-admin", "role": "platform_admin"}
+    # Check Authorization Bearer header
+    auth_header = request.headers.get("authorization", "")
+    if auth_header.startswith("Bearer "):
+        token = auth_header[7:]
+        if token == PLATFORM_ADMIN_KEY:
+            return {"sub": "platform-admin", "role": "platform_admin"}
+    # Fall back to normal JWT auth
+    return await get_current_user(request)
 
 
 # ── AI-powered chat (no auth — works for logged-out users) ────────────────────
@@ -192,7 +209,7 @@ async def get_messages(
 @router.get("/admin/conversations")
 async def get_admin_conversations(
     laundryId: str = Query(...),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(verify_chat_admin),
 ):
     """Get all conversations for a laundry (admin view)."""
     with get_db() as conn:
@@ -230,7 +247,7 @@ async def get_admin_messages(
     conversationId: str = Query(...),
     laundryId: str = Query(...),
     limit: int = Query(100),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(verify_chat_admin),
 ):
     """Get messages for a conversation (admin view)."""
     with get_db() as conn:
@@ -262,7 +279,7 @@ async def get_admin_messages(
 @router.post("/admin/send")
 async def admin_send_message(
     body: dict = Body(...),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(verify_chat_admin),
 ):
     """Admin sends a message to a customer."""
     conversation_id = body.get("conversationId")
@@ -300,7 +317,7 @@ async def admin_send_message(
 @router.put("/admin/close")
 async def close_conversation(
     body: dict = Body(...),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(verify_chat_admin),
 ):
     """Close a conversation."""
     conversation_id = body.get("conversationId")
