@@ -186,7 +186,7 @@ export default function PlatformAdminPage() {
                 // Filter to only prospect/visitor conversations (not laundry- prefixed)
                 const prospects = res.data.conversations.filter(c =>
                     !c.customerId?.startsWith('laundry-')
-                );
+                ).map(c => ({ ...c, unreadAdmin: c.unreadCount || 0 }));
                 setProspectConversations(prospects);
             }
         } catch (err) { /* ok */ }
