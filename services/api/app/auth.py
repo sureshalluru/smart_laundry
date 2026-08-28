@@ -12,7 +12,7 @@ from passlib.context import CryptContext
 from app.config import settings
 
 logger = logging.getLogger(__name__)
-security = HTTPBearer()
+security = HTTPBearer(auto_error=False)
 
 # Password hashing
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -62,21 +62,34 @@ def decode_token(token: str) -> dict:
 
 
 async def get_current_user(
+    request: Request,
     credentials: HTTPAuthorizationCredentials = Depends(security),
 ) -> dict:
-    """Validate Bearer token and return user claims. Also accepts platform admin key."""
-    token = credentials.credentials
-    # Allow platform admin key as a valid "token" for platform-level operations
+    """Validate Bearer token and return user claims. Also accepts platform admin key via header."""
     from app.routes.platform_admin import PLATFORM_ADMIN_KEY
-    if token == PLATFORM_ADMIN_KEY:
+
+    # Try Bearer token first
+    if credentials and credentials.credentials:
+        token = credentials.credentials
+        if token == PLATFORM_ADMIN_KEY:
+            return {"sub": "platform-admin", "type": "access", "role": "platform_admin"}
+        payload = decode_token(token)
+        if payload.get("type") != "access":
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid token type",
+            )
+        return payload
+
+    # Fallback: check x-platform-key header
+    platform_key = request.headers.get("x-platform-key")
+    if platform_key and platform_key == PLATFORM_ADMIN_KEY:
         return {"sub": "platform-admin", "type": "access", "role": "platform_admin"}
-    payload = decode_token(token)
-    if payload.get("type") != "access":
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid token type",
-        )
-    return payload
+
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Not authenticated",
+    )
 
 
 async def verify_laundry_access(

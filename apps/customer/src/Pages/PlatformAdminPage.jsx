@@ -180,7 +180,7 @@ export default function PlatformAdminPage() {
         try {
             const res = await axios.get(`${API_URL}/api/chat/admin/conversations`, {
                 params: { laundryId: 'platform' },
-                headers: { Authorization: `Bearer ${platformKey}` }
+                headers: { ...headers, Authorization: `Bearer ${platformKey}` }
             });
             if (res.data?.conversations) {
                 // Filter to only prospect/visitor conversations (not laundry- prefixed)
@@ -210,7 +210,7 @@ export default function PlatformAdminPage() {
         try {
             const res = await axios.get(`${API_URL}/api/chat/admin/messages`, {
                 params: { conversationId, laundryId: 'platform' },
-                headers: { Authorization: `Bearer ${platformKey}` }
+                headers: { ...headers, Authorization: `Bearer ${platformKey}` }
             });
             if (res.data?.messages) setProspectMessages(res.data.messages);
         } catch (err) { /* ok */ }
@@ -224,7 +224,7 @@ export default function PlatformAdminPage() {
                 conversationId: prospectChatConv.conversationId,
                 message: prospectInput.trim(),
                 senderName: 'Smart Laundry Basket',
-            }, { headers: { Authorization: `Bearer ${platformKey}` } });
+            }, { headers: { ...headers, Authorization: `Bearer ${platformKey}` } });
             setProspectInput('');
             setTimeout(() => fetchProspectMessages(prospectChatConv.conversationId), 500);
         } catch (err) {
