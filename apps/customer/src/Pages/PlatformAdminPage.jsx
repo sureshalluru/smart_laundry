@@ -604,9 +604,6 @@ export default function PlatformAdminPage() {
                 </ModalContent>
             </Modal>
 
-            {/* Support Chat Drawer (tenant owners) */}
-            <Drawer isOpen={chatOpen} onClose={closeChat} placement="right" size="md">
-
             {/* Prospect Chat Drawer (website visitors) */}
             <Drawer isOpen={prospectChatOpen} onClose={closeProspectChat} placement="right" size="md">
                 <DrawerOverlay />
@@ -694,6 +691,9 @@ export default function PlatformAdminPage() {
                     </ModalFooter>
                 </ModalContent>
             </Modal>
+
+            {/* Support Chat Drawer (tenant owners) */}
+            <Drawer isOpen={chatOpen} onClose={closeChat} placement="right" size="md">
                 <DrawerOverlay />
                 <DrawerContent>
                     <DrawerCloseButton />
