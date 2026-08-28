@@ -797,13 +797,16 @@ async def self_service_onboard(request: Request, body: dict = Body(...)):
         else:
             logger.warning(f"Agreement not signed for {laundry_name}, skipping email")
 
+        # Derive base URL from request so it works in dev (localhost) and prod
+        base_origin = str(request.base_url).rstrip("/")
+
         # Send welcome email to the new tenant owner
         if owner_email:
             try:
                 from app.services.notification_service import send_email
-                admin_url = f"https://smartlaundrybasket.ai/{next_id}/admin"
-                customer_url = f"https://smartlaundrybasket.ai/{next_id}/site"
-                schedule_pickup_url = f"https://www.smartlaundrybasket.ai/{next_id}"
+                admin_url = f"{base_origin}/{next_id}/admin"
+                customer_url = f"{base_origin}/{next_id}/site"
+                schedule_pickup_url = f"{base_origin}/{next_id}"
                 booking_url = "https://calendar.google.com/calendar/u/0/appointments/schedules/AcZssZ0VrdVjQuZ3xf_TFkqNK-C4oHkD0hgROG7ARrpInHo8ZB4q5X2lM5KTAfel88aCzzzpWbxtu1lR"
                 welcome_html = f"""
                 <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
@@ -945,8 +948,8 @@ async def self_service_onboard(request: Request, body: dict = Body(...)):
                 "laundryId": next_id,
                 "laundryName": laundry_name,
                 "deviceRegistrationCode": reg_code,
-                "adminUrl": f"https://smartlaundrybasket.ai/{next_id}/admin",
-                "customerUrl": f"https://smartlaundrybasket.ai/{next_id}/site",
+                "adminUrl": f"{base_origin}/{next_id}/admin",
+                "customerUrl": f"{base_origin}/{next_id}/site",
             },
             "owner": {
                 "employeeId": owner_emp_id,
