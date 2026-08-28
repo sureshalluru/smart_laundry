@@ -165,6 +165,79 @@ export default function PlatformAdminPage() {
     const chatEndRef = useRef(null);
     const chatPollRef = useRef(null);
 
+    // Prospect Chat State
+    const [prospectConversations, setProspectConversations] = useState([]);
+    const [prospectChatOpen, setProspectChatOpen] = useState(false);
+    const [prospectChatConv, setProspectChatConv] = useState(null);
+    const [prospectMessages, setProspectMessages] = useState([]);
+    const [prospectInput, setProspectInput] = useState('');
+    const [prospectSending, setProspectSending] = useState(false);
+    const prospectEndRef = useRef(null);
+    const prospectPollRef = useRef(null);
+
+    // Fetch prospect conversations (from product page visitors)
+    const fetchProspectConversations = async () => {
+        try {
+            const res = await axios.get(`${API_URL}/api/chat/admin/conversations`, {
+                params: { laundryId: 'platform' },
+                headers: { Authorization: `Bearer ${platformKey}` }
+            });
+            if (res.data?.conversations) {
+                // Filter to only prospect/visitor conversations (not laundry- prefixed)
+                const prospects = res.data.conversations.filter(c =>
+                    !c.customerId?.startsWith('laundry-')
+                );
+                setProspectConversations(prospects);
+            }
+        } catch (err) { /* ok */ }
+    };
+
+    const openProspectChat = (conv) => {
+        setProspectChatConv(conv);
+        setProspectChatOpen(true);
+        fetchProspectMessages(conv.conversationId);
+        if (prospectPollRef.current) clearInterval(prospectPollRef.current);
+        prospectPollRef.current = setInterval(() => fetchProspectMessages(conv.conversationId), 5000);
+    };
+
+    const closeProspectChat = () => {
+        setProspectChatOpen(false);
+        if (prospectPollRef.current) clearInterval(prospectPollRef.current);
+        fetchProspectConversations(); // Refresh to update unread counts
+    };
+
+    const fetchProspectMessages = async (conversationId) => {
+        try {
+            const res = await axios.get(`${API_URL}/api/chat/admin/messages`, {
+                params: { conversationId, laundryId: 'platform' },
+                headers: { Authorization: `Bearer ${platformKey}` }
+            });
+            if (res.data?.messages) setProspectMessages(res.data.messages);
+        } catch (err) { /* ok */ }
+    };
+
+    const sendProspectReply = async () => {
+        if (!prospectInput.trim() || !prospectChatConv) return;
+        setProspectSending(true);
+        try {
+            await axios.post(`${API_URL}/api/chat/admin/send`, {
+                conversationId: prospectChatConv.conversationId,
+                message: prospectInput.trim(),
+                senderName: 'Smart Laundry Basket',
+            }, { headers: { Authorization: `Bearer ${platformKey}` } });
+            setProspectInput('');
+            setTimeout(() => fetchProspectMessages(prospectChatConv.conversationId), 500);
+        } catch (err) {
+            toast({ title: 'Send failed', status: 'error', duration: 2000 });
+        } finally {
+            setProspectSending(false);
+        }
+    };
+
+    useEffect(() => {
+        if (prospectEndRef.current) prospectEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }, [prospectMessages]);
+
     // Fetch unread counts for all tenants
     const fetchUnreadCounts = async () => {
         try {
@@ -186,8 +259,10 @@ export default function PlatformAdminPage() {
     useEffect(() => {
         if (isAuthenticated) {
             fetchUnreadCounts();
+            fetchProspectConversations();
             const interval = setInterval(fetchUnreadCounts, 15000);
-            return () => clearInterval(interval);
+            const prospectInterval = setInterval(fetchProspectConversations, 15000);
+            return () => { clearInterval(interval); clearInterval(prospectInterval); };
         }
     }, [isAuthenticated]);
 
@@ -298,6 +373,17 @@ export default function PlatformAdminPage() {
                 <TabList mb={4}>
                     <Tab>Laundries</Tab>
                     <Tab>Companies</Tab>
+                    <Tab>
+                        <HStack spacing={1}>
+                            <FiMessageCircle />
+                            <Text>Prospect Chats</Text>
+                            {prospectConversations.length > 0 && prospectConversations.some(c => c.unreadAdmin > 0) && (
+                                <Badge colorScheme="red" borderRadius="full" fontSize="xs" ml={1}>
+                                    {prospectConversations.reduce((sum, c) => sum + (c.unreadAdmin || 0), 0)}
+                                </Badge>
+                            )}
+                        </HStack>
+                    </Tab>
                 </TabList>
                 <TabPanels>
                     <TabPanel p={0}>
@@ -391,6 +477,43 @@ export default function PlatformAdminPage() {
                     <TabPanel p={0}>
                         <CompanyManagementSection platformKey={platformKey} onAuthError={handleAuthError} />
                     </TabPanel>
+                    <TabPanel p={0}>
+                        {/* Prospect Chats — messages from product page visitors */}
+                        <VStack spacing={4} align="stretch">
+                            <Flex justify="space-between" align="center">
+                                <Text fontWeight="600" color="gray.700">Website visitor conversations (from smartlaundrybasket.ai chat)</Text>
+                                <IconButton icon={<FiRefreshCw />} size="sm" variant="ghost" onClick={fetchProspectConversations} />
+                            </Flex>
+                            {prospectConversations.length === 0 ? (
+                                <Box textAlign="center" py={10} bg="white" borderRadius="xl" border="1px solid" borderColor="gray.100">
+                                    <Text color="gray.400">No prospect conversations yet.</Text>
+                                    <Text fontSize="xs" color="gray.400" mt={1}>When visitors escalate from AI chat on the product page, their conversations appear here.</Text>
+                                </Box>
+                            ) : (
+                                <VStack spacing={3} align="stretch">
+                                    {prospectConversations.map(conv => (
+                                        <Box key={conv.conversationId} bg="white" p={4} borderRadius="xl" border="1px solid"
+                                            borderColor={conv.unreadAdmin > 0 ? 'blue.200' : 'gray.100'}
+                                            cursor="pointer" _hover={{ boxShadow: 'md' }}
+                                            onClick={() => openProspectChat(conv)}>
+                                            <Flex justify="space-between" align="center">
+                                                <HStack>
+                                                    <FiMessageCircle color={conv.unreadAdmin > 0 ? '#3182CE' : '#A0AEC0'} />
+                                                    <Text fontWeight="600" fontSize="sm">{conv.customerName || 'Website Visitor'}</Text>
+                                                    {conv.unreadAdmin > 0 && (
+                                                        <Badge colorScheme="blue" borderRadius="full" fontSize="xs">{conv.unreadAdmin} new</Badge>
+                                                    )}
+                                                </HStack>
+                                                <Text fontSize="xs" color="gray.500">
+                                                    {conv.lastMessageAt ? new Date(conv.lastMessageAt).toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : ''}
+                                                </Text>
+                                            </Flex>
+                                        </Box>
+                                    ))}
+                                </VStack>
+                            )}
+                        </VStack>
+                    </TabPanel>
                 </TabPanels>
             </Tabs>
 
@@ -481,8 +604,48 @@ export default function PlatformAdminPage() {
                 </ModalContent>
             </Modal>
 
-            {/* Support Chat Drawer */}
+            {/* Support Chat Drawer (tenant owners) */}
             <Drawer isOpen={chatOpen} onClose={closeChat} placement="right" size="md">
+
+            {/* Prospect Chat Drawer (website visitors) */}
+            <Drawer isOpen={prospectChatOpen} onClose={closeProspectChat} placement="right" size="md">
+                <DrawerOverlay />
+                <DrawerContent>
+                    <DrawerCloseButton />
+                    <DrawerHeader bg="blue.500" color="white" fontSize="md">
+                        💬 {prospectChatConv?.customerName || 'Website Visitor'}
+                    </DrawerHeader>
+                    <DrawerBody display="flex" flexDirection="column" p={3} h="100%" overflow="hidden">
+                        <Box flex={1} overflowY="auto" bg="gray.50" borderRadius="md" p={3} mb={3} minH="0">
+                            {prospectMessages.length === 0 ? (
+                                <Text color="gray.400" textAlign="center" py={10} fontSize="sm">No messages yet.</Text>
+                            ) : (
+                                <VStack spacing={2} align="stretch">
+                                    {prospectMessages.map(msg => (
+                                        <Flex key={msg.messageId} justify={msg.senderType === 'admin' ? 'flex-end' : 'flex-start'}>
+                                            <Box maxW="80%" bg={msg.senderType === 'admin' ? 'blue.500' : 'white'}
+                                                color={msg.senderType === 'admin' ? 'white' : 'gray.800'}
+                                                px={3} py={2} borderRadius="lg" boxShadow="sm"
+                                                border={msg.senderType !== 'admin' ? '1px solid' : 'none'} borderColor="gray.200">
+                                                <Text fontSize="sm">{msg.message}</Text>
+                                                <Text fontSize="xs" opacity={0.7} mt={1}>
+                                                    {msg.senderName || (msg.senderType === 'admin' ? 'You' : 'Visitor')} • {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                                </Text>
+                                            </Box>
+                                        </Flex>
+                                    ))}
+                                    <div ref={prospectEndRef} />
+                                </VStack>
+                            )}
+                        </Box>
+                        <HStack flexShrink={0} pt={2} borderTop="1px solid" borderColor="gray.200">
+                            <Input placeholder="Reply to visitor..." value={prospectInput} onChange={(e) => setProspectInput(e.target.value)}
+                                onKeyPress={(e) => e.key === 'Enter' && sendProspectReply()} size="sm" />
+                            <Button colorScheme="blue" size="sm" onClick={sendProspectReply} isLoading={prospectSending} px={5}>Send</Button>
+                        </HStack>
+                    </DrawerBody>
+                </DrawerContent>
+            </Drawer>
 
             {/* Credentials Modal */}
             <Modal isOpen={!!credentialsModal} onClose={() => setCredentialsModal(null)} size="md">
