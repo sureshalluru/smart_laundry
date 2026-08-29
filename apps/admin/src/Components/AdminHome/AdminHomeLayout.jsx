@@ -133,7 +133,16 @@ const AdminLayout = ({ validateEmpCredentials, empPrefix }) => {
             const { isValidated, role } = await validateEmpCredentials(laundryId, fullEmpId, passcode);
     
             if (isValidated) {
-                if ((isDriverAccess && role === "Delivery Driver") || (!isDriverAccess && (role === "Manager" || role === "Admin"))) {
+                // Normalize role so both "Delivery Driver"/"DeliveryDriver"/"Driver"
+                // and Manager/Admin/owner variants are matched regardless of casing/spacing.
+                const normalizedRole = (role || '').toLowerCase().replace(/\s+/g, '');
+                const isDriverRole = normalizedRole === 'driver' || normalizedRole === 'deliverydriver';
+                const isManagerRole = normalizedRole === 'manager' || normalizedRole === 'admin' || normalizedRole === 'owner';
+                // Managers/Admins/owners may also use Driver Access (an owner who
+                // does their own pickups/deliveries). Drivers may only use Driver Access.
+                const driverAccessAllowed = isDriverRole || isManagerRole;
+                const managerAccessAllowed = isManagerRole;
+                if ((isDriverAccess && driverAccessAllowed) || (!isDriverAccess && managerAccessAllowed)) {
                     // Re-login as this employee to get a fresh JWT with their emp_id
                     try {
                         const loginResponse = await axios.post(`${process.env.REACT_APP_AWS_API_URL}/api/auth/login`, {

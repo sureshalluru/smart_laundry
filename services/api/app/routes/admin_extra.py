@@ -621,7 +621,7 @@ async def create_employee(
         try:
             cur.execute("""
                 INSERT INTO shop.employees (emp_id, laundry_id, first_name, last_name, email, role, passcode, joining_date, is_active, created_at, updated_at)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, TRUE, NOW(), NOW())
+                VALUES (%s, %s, %s, %s, %s, %s, %s, COALESCE(%s, CURRENT_DATE), TRUE, NOW(), NOW())
             """, (emp_id, laundry_id, first_name, last_name, email, role, passcode, joining_date or None))
         except Exception as e:
             return {"statusCode": 200, "body": {
@@ -1490,6 +1490,146 @@ async def update_store_hours(
         """, (json.dumps(cleaned), laundryId))
 
     return {"status": "success", "message": "Store hours updated", "hours": cleaned}
+
+
+# ── Trust Badges (storefront hero badges) ─────────────────────────────────────
+
+@router.get("/trust-badges")
+async def get_trust_badges(
+    laundryId: str = Query(...),
+    current_user: dict = Depends(get_current_user),
+):
+    """Get the storefront trust badges from site_content.trustBadges."""
+    with get_db() as conn:
+        cur = get_cursor(conn)
+        cur.execute("SELECT site_content FROM shop.laundry_shops WHERE laundry_id = %s", (laundryId,))
+        row = cur.fetchone()
+    sc = row["site_content"] if row and row.get("site_content") else {}
+    return {"trustBadges": sc.get("trustBadges", [])}
+
+
+@router.put("/trust-badges")
+async def update_trust_badges(
+    laundryId: str = Query(...),
+    body: dict = Body({}),
+    current_user: dict = Depends(get_current_user),
+):
+    """Update the storefront trust badges in site_content.trustBadges.
+
+    Accepts a list of short strings. Blank entries are dropped and each badge
+    is capped to a reasonable length. Empty list is allowed (hides badges).
+    """
+    badges = body.get("trustBadges", [])
+    if not isinstance(badges, list):
+        return {"status": "error", "message": "trustBadges must be a list"}
+    # Clean: trim, drop blanks, cap length and count (hero cycles 3 icons)
+    cleaned = [str(b).strip()[:40] for b in badges if str(b).strip()][:6]
+
+    with get_db() as conn:
+        cur = get_cursor(conn)
+        cur.execute("""
+            UPDATE shop.laundry_shops
+            SET site_content = jsonb_set(
+                COALESCE(site_content, '{}'::jsonb),
+                '{trustBadges}',
+                %s::jsonb
+            )
+            WHERE laundry_id = %s
+        """, (json.dumps(cleaned), laundryId))
+
+    return {"status": "success", "message": "Trust badges updated", "trustBadges": cleaned}
+
+
+# ── Hero Content (storefront headline / subheadline) ──────────────────────────
+
+@router.get("/hero-content")
+async def get_hero_content(
+    laundryId: str = Query(...),
+    current_user: dict = Depends(get_current_user),
+):
+    """Get the storefront hero headline/subheadline from site_content."""
+    with get_db() as conn:
+        cur = get_cursor(conn)
+        cur.execute("SELECT site_content FROM shop.laundry_shops WHERE laundry_id = %s", (laundryId,))
+        row = cur.fetchone()
+    sc = row["site_content"] if row and row.get("site_content") else {}
+    return {
+        "headline": sc.get("headline", ""),
+        "subheadline": sc.get("subheadline", ""),
+    }
+
+
+@router.put("/hero-content")
+async def update_hero_content(
+    laundryId: str = Query(...),
+    body: dict = Body({}),
+    current_user: dict = Depends(get_current_user),
+):
+    """Update the storefront hero headline/subheadline in site_content.
+
+    headline may contain a single <span>...</span> accent (rendered highlighted
+    on the site). Both fields are trimmed and length-capped. Empty values fall
+    back to the site's defaults on render.
+    """
+    headline = str(body.get("headline", "")).strip()[:120]
+    subheadline = str(body.get("subheadline", "")).strip()[:240]
+
+    with get_db() as conn:
+        cur = get_cursor(conn)
+        cur.execute("""
+            UPDATE shop.laundry_shops
+            SET site_content = COALESCE(site_content, '{}'::jsonb)
+                || jsonb_build_object('headline', %s::text, 'subheadline', %s::text)
+            WHERE laundry_id = %s
+        """, (headline, subheadline, laundryId))
+
+    return {"status": "success", "message": "Hero content updated",
+            "headline": headline, "subheadline": subheadline}
+
+
+# ── Site Section Visibility (which marketing sections show on the public site) ──
+
+# The public storefront hides a section when the corresponding flag is TRUE.
+# Absent flag => section shows (today's default behavior).
+_SECTION_FLAGS = ("hideHowItWorks", "hidePricing", "hideLocation", "hideAbout")
+
+
+@router.get("/site-sections")
+async def get_site_sections(
+    laundryId: str = Query(...),
+    current_user: dict = Depends(get_current_user),
+):
+    """Get storefront section visibility flags from site_content."""
+    with get_db() as conn:
+        cur = get_cursor(conn)
+        cur.execute("SELECT site_content FROM shop.laundry_shops WHERE laundry_id = %s", (laundryId,))
+        row = cur.fetchone()
+    sc = row["site_content"] if row and row.get("site_content") else {}
+    return {flag: bool(sc.get(flag, False)) for flag in _SECTION_FLAGS}
+
+
+@router.put("/site-sections")
+async def update_site_sections(
+    laundryId: str = Query(...),
+    body: dict = Body({}),
+    current_user: dict = Depends(get_current_user),
+):
+    """Update storefront section visibility flags in site_content.
+
+    Only the four known section flags are accepted; each coerced to a boolean.
+    A TRUE flag hides that section on the public site.
+    """
+    payload = {flag: bool(body.get(flag, False)) for flag in _SECTION_FLAGS}
+
+    with get_db() as conn:
+        cur = get_cursor(conn)
+        cur.execute("""
+            UPDATE shop.laundry_shops
+            SET site_content = COALESCE(site_content, '{}'::jsonb) || %s::jsonb
+            WHERE laundry_id = %s
+        """, (json.dumps(payload), laundryId))
+
+    return {"status": "success", "message": "Site sections updated", **payload}
 
 
 # ── Financial Reports (added directly to admin_extra to avoid routing issues) ──

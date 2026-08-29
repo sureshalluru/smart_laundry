@@ -1018,7 +1018,7 @@ const ManagerDashboardPage = () => {
 
                                 {/* Joining date */}
                                 <Td whiteSpace="nowrap">
-                                {format(new Date(emp.joiningDate), "yyyy-MM-dd")}
+                                {emp.joiningDate ? format(new Date(emp.joiningDate), "yyyy-MM-dd") : "—"}
                                 </Td>
 
                                 {/* Role badge */}

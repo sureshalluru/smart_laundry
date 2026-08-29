@@ -616,7 +616,7 @@ async def self_service_onboard(request: Request, body: dict = Body(...)):
                     {"day": "Mon-Fri", "time": "8AM - 5PM"},
                     {"day": "Sat", "time": "9AM - 5PM"},
                 ],
-                "trustBadges": ["Free Pickup & Delivery", "Open 24/7", "Modern Facility"],
+                "trustBadges": ["Free Pickup & Delivery", "Fast Turnaround", "5-Star Rated"],
             }
             # Only seed the street address + maps pin for storefront operators.
             # Home-based operators (hide_home_address) never get the street in

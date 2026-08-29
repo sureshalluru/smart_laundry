@@ -29,6 +29,12 @@ const SiteLandingPage = ({ laundryConfig }) => {
     const laundryId = laundryConfig?.laundryId || '1';
     const visitorId = getVisitorId();
 
+    // Optional per-tenant section hide-flags (site_content). When a flag is
+    // absent the section renders exactly as before — no change for existing
+    // tenants. Home-based / pickup-delivery-only operators can opt to hide
+    // marketing sections that don't fit their business.
+    const sc = laundryConfig?.siteContent || {};
+
     return (
         <Box bg="white" minH="100vh">
             <SiteNavbar config={laundryConfig} />
@@ -36,10 +42,10 @@ const SiteLandingPage = ({ laundryConfig }) => {
             {laundryConfig?.siteContent?.services?.length > 0 && (
                 <SiteServices config={laundryConfig} />
             )}
-            <SiteHowItWorks />
-            <SitePricing config={laundryConfig} />
-            <SiteLocation config={laundryConfig} />
-            <SiteAbout config={laundryConfig} />
+            {!sc.hideHowItWorks && <SiteHowItWorks config={laundryConfig} />}
+            {!sc.hidePricing && <SitePricing config={laundryConfig} />}
+            {!sc.hideLocation && <SiteLocation config={laundryConfig} />}
+            {!sc.hideAbout && <SiteAbout config={laundryConfig} />}
             <SiteFooter config={laundryConfig} />
             <ChatWidget
                 customerId={visitorId}

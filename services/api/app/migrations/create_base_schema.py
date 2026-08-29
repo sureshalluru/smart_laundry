@@ -645,7 +645,7 @@ def run():
                     state          VARCHAR(50),
                     zip_code       VARCHAR(20),
                     country        VARCHAR(100),
-                    joining_date   DATE,
+                    joining_date   DATE DEFAULT CURRENT_DATE,
                     is_active      BOOLEAN DEFAULT true NOT NULL,
                     created_at     TIMESTAMPTZ DEFAULT now() NOT NULL,
                     updated_at     TIMESTAMPTZ DEFAULT now() NOT NULL,

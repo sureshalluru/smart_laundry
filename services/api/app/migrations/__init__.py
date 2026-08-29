@@ -30,6 +30,7 @@ from app.migrations import add_notification_queue
 from app.migrations import add_hide_home_address
 from app.migrations import add_order_bags
 from app.migrations import fix_reminder_stage_nullable
+from app.migrations import backfill_employee_joining_date
 from app.migrations import backfill_customer_stats
 
 logger = logging.getLogger(__name__)
@@ -67,5 +68,6 @@ def run_all():
     add_hide_home_address.run()
     add_order_bags.run()
     fix_reminder_stage_nullable.run()
+    backfill_employee_joining_date.run()
     backfill_customer_stats.run()
     logger.info("All migrations complete.")

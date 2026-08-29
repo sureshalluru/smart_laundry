@@ -72,10 +72,194 @@ const ServiceCatalogManager = ({ laundryId, currentServices }) => {
     const [customFormError, setCustomFormError] = useState("");
     const [creatingCustom, setCreatingCustom] = useState(false);
 
+    // Trust badges (storefront hero badges)
+    const [badges, setBadges] = useState([]);
+    const [savingBadges, setSavingBadges] = useState(false);
+
+    // Hero content (headline / subheadline)
+    const [hero, setHero] = useState({ headline: "", subheadline: "" });
+    const [savingHero, setSavingHero] = useState(false);
+
+    // Section visibility flags (true = hidden on public site)
+    const [sections, setSections] = useState({
+        hideHowItWorks: false,
+        hidePricing: false,
+        hideLocation: false,
+        hideAbout: false,
+    });
+    const [savingSections, setSavingSections] = useState(false);
+
     // Fetch catalog on mount
     useEffect(() => {
         fetchCatalog();
+        fetchBadges();
+        fetchHero();
+        fetchSections();
     }, [laundryId]);
+
+    const fetchSections = async () => {
+        try {
+            const res = await axios.get(
+                `${process.env.REACT_APP_AWS_API_URL}/api/admin/site-sections`,
+                { params: { laundryId }, headers: { Authorization: `Bearer ${authToken}` } }
+            );
+            setSections({
+                hideHowItWorks: !!res.data?.hideHowItWorks,
+                hidePricing: !!res.data?.hidePricing,
+                hideLocation: !!res.data?.hideLocation,
+                hideAbout: !!res.data?.hideAbout,
+            });
+        } catch (err) {
+            console.error("Error fetching site sections:", err);
+        }
+    };
+
+    const handleSaveSections = async (next) => {
+        setSavingSections(true);
+        try {
+            const res = await axios.put(
+                `${process.env.REACT_APP_AWS_API_URL}/api/admin/site-sections`,
+                next,
+                { params: { laundryId }, headers: { Authorization: `Bearer ${authToken}` } }
+            );
+            setSections({
+                hideHowItWorks: !!res.data?.hideHowItWorks,
+                hidePricing: !!res.data?.hidePricing,
+                hideLocation: !!res.data?.hideLocation,
+                hideAbout: !!res.data?.hideAbout,
+            });
+            toast({
+                title: "Sections updated",
+                status: "success",
+                duration: 2000,
+                isClosable: true,
+            });
+        } catch (err) {
+            console.error("Error saving site sections:", err);
+            toast({
+                title: "Error saving sections",
+                description: "Please try again.",
+                status: "error",
+                duration: 4000,
+                isClosable: true,
+            });
+            // Reload authoritative state on failure
+            fetchSections();
+        } finally {
+            setSavingSections(false);
+        }
+    };
+
+    // A toggle shows "section visible" (inverse of the hide flag); flipping it
+    // saves immediately so the tenant gets instant feedback.
+    const handleToggleSection = (hideKey) => {
+        const next = { ...sections, [hideKey]: !sections[hideKey] };
+        setSections(next);
+        handleSaveSections(next);
+    };
+
+    const fetchBadges = async () => {
+        try {
+            const res = await axios.get(
+                `${process.env.REACT_APP_AWS_API_URL}/api/admin/trust-badges`,
+                { params: { laundryId }, headers: { Authorization: `Bearer ${authToken}` } }
+            );
+            setBadges(res.data?.trustBadges || []);
+        } catch (err) {
+            console.error("Error fetching trust badges:", err);
+        }
+    };
+
+    const fetchHero = async () => {
+        try {
+            const res = await axios.get(
+                `${process.env.REACT_APP_AWS_API_URL}/api/admin/hero-content`,
+                { params: { laundryId }, headers: { Authorization: `Bearer ${authToken}` } }
+            );
+            setHero({
+                headline: res.data?.headline || "",
+                subheadline: res.data?.subheadline || "",
+            });
+        } catch (err) {
+            console.error("Error fetching hero content:", err);
+        }
+    };
+
+    const handleSaveHero = async () => {
+        setSavingHero(true);
+        try {
+            const res = await axios.put(
+                `${process.env.REACT_APP_AWS_API_URL}/api/admin/hero-content`,
+                { headline: hero.headline.trim(), subheadline: hero.subheadline.trim() },
+                { params: { laundryId }, headers: { Authorization: `Bearer ${authToken}` } }
+            );
+            setHero({
+                headline: res.data?.headline || "",
+                subheadline: res.data?.subheadline || "",
+            });
+            toast({
+                title: "Headline saved!",
+                description: "Your storefront headline is updated.",
+                status: "success",
+                duration: 3000,
+                isClosable: true,
+            });
+        } catch (err) {
+            console.error("Error saving hero content:", err);
+            toast({
+                title: "Error saving headline",
+                description: "Please try again.",
+                status: "error",
+                duration: 4000,
+                isClosable: true,
+            });
+        } finally {
+            setSavingHero(false);
+        }
+    };
+
+    const handleBadgeChange = (index, value) => {
+        setBadges((prev) => prev.map((b, i) => (i === index ? value : b)));
+    };
+
+    const handleAddBadge = () => {
+        setBadges((prev) => (prev.length >= 6 ? prev : [...prev, ""]));
+    };
+
+    const handleRemoveBadge = (index) => {
+        setBadges((prev) => prev.filter((_, i) => i !== index));
+    };
+
+    const handleSaveBadges = async () => {
+        setSavingBadges(true);
+        try {
+            const cleaned = badges.map((b) => b.trim()).filter(Boolean);
+            const res = await axios.put(
+                `${process.env.REACT_APP_AWS_API_URL}/api/admin/trust-badges`,
+                { trustBadges: cleaned },
+                { params: { laundryId }, headers: { Authorization: `Bearer ${authToken}` } }
+            );
+            setBadges(res.data?.trustBadges || cleaned);
+            toast({
+                title: "Badges saved!",
+                description: "Your storefront badges are updated.",
+                status: "success",
+                duration: 3000,
+                isClosable: true,
+            });
+        } catch (err) {
+            console.error("Error saving trust badges:", err);
+            toast({
+                title: "Error saving badges",
+                description: "Please try again.",
+                status: "error",
+                duration: 4000,
+                isClosable: true,
+            });
+        } finally {
+            setSavingBadges(false);
+        }
+    };
 
     const fetchCatalog = async () => {
         setLoading(true);
@@ -256,8 +440,101 @@ const ServiceCatalogManager = ({ laundryId, currentServices }) => {
         <Box p={4}>
             <Text fontSize="xl" fontWeight="bold" mb={1}>Website Services</Text>
             <Text fontSize="sm" color="gray.600" mb={6}>
-                Select which services appear on your public website. Toggle services on or off, customize descriptions, or add your own.
+                Select which services appear on your public website. Toggle services on or off, customize descriptions, or add your own. Your selection here is private to your laundry and only affects your own site.
             </Text>
+
+            {/* Hero headline editor */}
+            <Box mb={8} p={4} borderWidth="1px" borderRadius="md" borderColor="gray.200" bg="gray.50">
+                <Text fontWeight="bold" mb={1}>Homepage Headline</Text>
+                <Text fontSize="xs" color="gray.500" mb={3}>
+                    The large headline and supporting line at the top of your public site. Wrap a word or two in &lt;span&gt;...&lt;/span&gt; to highlight it (e.g. "Concierge Laundry, &lt;span&gt;Delivered&lt;/span&gt;"). Leave blank to use the default.
+                </Text>
+                <FormControl mb={2}>
+                    <FormLabel fontSize="sm">Headline</FormLabel>
+                    <Input
+                        size="sm"
+                        value={hero.headline}
+                        maxLength={120}
+                        placeholder="We Pick Up, Wash & <span>Deliver</span>"
+                        onChange={(e) => setHero((h) => ({ ...h, headline: e.target.value }))}
+                    />
+                </FormControl>
+                <FormControl mb={3}>
+                    <FormLabel fontSize="sm">Subheadline</FormLabel>
+                    <Textarea
+                        size="sm"
+                        value={hero.subheadline}
+                        maxLength={240}
+                        rows={2}
+                        placeholder="Schedule a free pickup and we handle the rest — washed, folded, delivered."
+                        onChange={(e) => setHero((h) => ({ ...h, subheadline: e.target.value }))}
+                    />
+                </FormControl>
+                <Button size="sm" colorScheme="blue" onClick={handleSaveHero} isLoading={savingHero} loadingText="Saving...">
+                    Save Headline
+                </Button>
+            </Box>
+
+            {/* Trust badges editor */}
+            <Box mb={8} p={4} borderWidth="1px" borderRadius="md" borderColor="gray.200" bg="gray.50">
+                <Text fontWeight="bold" mb={1}>Trust Badges</Text>
+                <Text fontSize="xs" color="gray.500" mb={3}>
+                    Short highlights shown at the top of your public site (e.g. "Free Pickup & Delivery", "Eco-Friendly", "Locally Owned"). Up to 6. Leave empty to hide badges.
+                </Text>
+                <VStack spacing={2} align="stretch" mb={3}>
+                    {badges.map((badge, i) => (
+                        <HStack key={`badge-${i}`} spacing={2}>
+                            <Input
+                                size="sm"
+                                value={badge}
+                                maxLength={40}
+                                placeholder="e.g. Free Pickup & Delivery"
+                                onChange={(e) => handleBadgeChange(i, e.target.value)}
+                            />
+                            <Button size="sm" variant="ghost" colorScheme="red" onClick={() => handleRemoveBadge(i)}>
+                                Remove
+                            </Button>
+                        </HStack>
+                    ))}
+                    {badges.length === 0 && (
+                        <Text fontSize="sm" color="gray.400">No badges — your site will show none until you add some.</Text>
+                    )}
+                </VStack>
+                <HStack spacing={3}>
+                    <Button size="sm" variant="outline" onClick={handleAddBadge} isDisabled={badges.length >= 6}>
+                        + Add badge
+                    </Button>
+                    <Button size="sm" colorScheme="blue" onClick={handleSaveBadges} isLoading={savingBadges} loadingText="Saving...">
+                        Save Badges
+                    </Button>
+                </HStack>
+            </Box>
+
+            {/* Homepage section visibility toggles */}
+            <Box mb={8} p={4} borderWidth="1px" borderRadius="md" borderColor="gray.200" bg="gray.50">
+                <Text fontWeight="bold" mb={1}>Homepage Sections</Text>
+                <Text fontSize="xs" color="gray.500" mb={3}>
+                    Choose which sections appear on your public site. Turn one off to hide it (useful for pickup-and-delivery-only businesses). Changes save automatically.
+                </Text>
+                <VStack spacing={2} align="stretch">
+                    {[
+                        { key: "hideHowItWorks", label: "How It Works" },
+                        { key: "hidePricing", label: "Pricing" },
+                        { key: "hideLocation", label: "Location / Service Area" },
+                        { key: "hideAbout", label: "About" },
+                    ].map((row) => (
+                        <Flex key={row.key} justify="space-between" align="center">
+                            <Text fontSize="sm">{row.label}</Text>
+                            <Switch
+                                colorScheme="green"
+                                isChecked={!sections[row.key]}
+                                isDisabled={savingSections}
+                                onChange={() => handleToggleSection(row.key)}
+                            />
+                        </Flex>
+                    ))}
+                </VStack>
+            </Box>
 
             {/* Catalog list with toggles */}
             <VStack spacing={3} align="stretch" mb={8}>
@@ -362,7 +639,12 @@ const ServiceCatalogManager = ({ laundryId, currentServices }) => {
                     Add Custom Service
                 </Text>
                 <Text fontSize="xs" color="gray.500" mb={4}>
-                    Create a new service that will be available for all tenants.
+                    Heads up: custom services are added to the shared platform
+                    catalog and become selectable presets for every business on
+                    the platform. Choosing which services appear on YOUR public
+                    site is separate and stays private to your laundry. Only add
+                    a custom service here if you're comfortable it being a shared
+                    preset.
                 </Text>
 
                 <FormControl isInvalid={!!customFormError} mb={3}>
