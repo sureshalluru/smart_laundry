@@ -21,7 +21,7 @@ export default function SiteFooter({ config }) {
 
                     <VStack align="flex-start" spacing={3}>
                         <Text fontWeight="600" fontSize="sm" color="gray.300" textTransform="uppercase">Contact</Text>
-                        <HStack spacing={2} color="gray.400"><Icon as={FiMapPin} boxSize={4} /><Text fontSize="sm">{sc.address}, {sc.city}, {sc.state} {sc.zip}</Text></HStack>
+                        <HStack spacing={2} color="gray.400"><Icon as={FiMapPin} boxSize={4} /><Text fontSize="sm">{sc.address ? `${sc.address}, ${sc.city}, ${sc.state} ${sc.zip}` : [sc.city, sc.state].filter(Boolean).join(', ')}</Text></HStack>
                         {sc.phone && <HStack spacing={2} color="gray.400"><Icon as={FiPhone} boxSize={4} /><Text fontSize="sm">{sc.phone}</Text></HStack>}
                         {sc.email && <HStack spacing={2} color="gray.400"><Icon as={FiMail} boxSize={4} /><Text fontSize="sm">{sc.email}</Text></HStack>}
                     </VStack>

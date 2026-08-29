@@ -25,7 +25,7 @@ async def get_city_pages_index(laundry_id: str):
         # Get tenant info
         cur.execute("""
             SELECT laundry_name, street, city, state, zip_code,
-                   contact_phone, serviceable_zip_codes
+                   contact_phone, serviceable_zip_codes, hide_home_address
             FROM shop.laundry_shops WHERE laundry_id = %s
         """, (laundry_id,))
         shop = cur.fetchone()
@@ -65,9 +65,15 @@ async def get_city_pages_index(laundry_id: str):
             "url": f"/{laundry_id}/pickup-delivery/{city_data['slug']}",
         })
 
+    # Home-based operators: never expose the street publicly — city/state only.
+    if shop.get("hide_home_address"):
+        laundry_address = f"{shop['city']}, {shop['state']}".strip(", ")
+    else:
+        laundry_address = f"{shop['street']}, {shop['city']}, {shop['state']} {shop['zip_code']}".strip(", ")
+
     return {
         "laundryName": laundry_name,
-        "laundryAddress": f"{shop['street']}, {shop['city']}, {shop['state']} {shop['zip_code']}".strip(", "),
+        "laundryAddress": laundry_address,
         "phone": shop.get("contact_phone") or "",
         "washFoldPrice": wash_fold_price,
         "cities": city_pages,
@@ -87,7 +93,7 @@ async def get_city_page_detail(laundry_id: str, city_slug: str):
         # Get tenant info
         cur.execute("""
             SELECT laundry_name, street, city, state, zip_code,
-                   contact_phone, serviceable_zip_codes
+                   contact_phone, serviceable_zip_codes, hide_home_address
             FROM shop.laundry_shops WHERE laundry_id = %s
         """, (laundry_id,))
         shop = cur.fetchone()
@@ -183,25 +189,43 @@ async def get_city_page_detail(laundry_id: str, city_slug: str):
         f"just fresh laundry delivered to your doorstep."
     )
 
-    # JSON-LD LocalBusiness structured data
-    json_ld = {
-        "@context": "https://schema.org",
-        "@type": "LocalBusiness",
-        "name": laundry_name,
-        "description": f"Professional laundry pickup and delivery service in {city_name}, {state}",
-        "address": {
-            "@type": "PostalAddress",
-            "streetAddress": shop.get("street") or "",
-            "addressLocality": shop.get("city") or city_name,
-            "addressRegion": state,
-            "postalCode": shop.get("zip_code") or "",
-        },
-        "telephone": shop.get("contact_phone") or "",
-        "areaServed": [
-            {"@type": "City", "name": city_name}
-        ],
-        "serviceType": "Laundry Pickup and Delivery",
-    }
+    hide_address = bool(shop.get("hide_home_address"))
+
+    # JSON-LD structured data (crawlable). For home-based operators, use a
+    # Service schema with only the served area — never emit the street address.
+    if hide_address:
+        json_ld = {
+            "@context": "https://schema.org",
+            "@type": "Service",
+            "name": laundry_name,
+            "description": f"Professional laundry pickup and delivery service in {city_name}, {state}",
+            "provider": {"@type": "LocalBusiness", "name": laundry_name},
+            "areaServed": [
+                {"@type": "City", "name": city_name}
+            ],
+            "serviceType": "Laundry Pickup and Delivery",
+        }
+        if shop.get("contact_phone"):
+            json_ld["provider"]["telephone"] = shop["contact_phone"]
+    else:
+        json_ld = {
+            "@context": "https://schema.org",
+            "@type": "LocalBusiness",
+            "name": laundry_name,
+            "description": f"Professional laundry pickup and delivery service in {city_name}, {state}",
+            "address": {
+                "@type": "PostalAddress",
+                "streetAddress": shop.get("street") or "",
+                "addressLocality": shop.get("city") or city_name,
+                "addressRegion": state,
+                "postalCode": shop.get("zip_code") or "",
+            },
+            "telephone": shop.get("contact_phone") or "",
+            "areaServed": [
+                {"@type": "City", "name": city_name}
+            ],
+            "serviceType": "Laundry Pickup and Delivery",
+        }
 
     # Adjacent city pages for navigation
     all_city_slugs = sorted(cities.keys())
@@ -220,7 +244,11 @@ async def get_city_page_detail(laundry_id: str, city_slug: str):
         "slug": city_slug,
         "zipCodes": city_zips,
         "laundryName": laundry_name,
-        "laundryAddress": f"{shop['street']}, {shop['city']}, {shop['state']} {shop['zip_code']}".strip(", "),
+        "laundryAddress": (
+            f"{shop['city']}, {shop['state']}".strip(", ")
+            if hide_address
+            else f"{shop['street']}, {shop['city']}, {shop['state']} {shop['zip_code']}".strip(", ")
+        ),
         "phone": shop.get("contact_phone") or "",
         "pageTitle": page_title,
         "metaDescription": meta_description,

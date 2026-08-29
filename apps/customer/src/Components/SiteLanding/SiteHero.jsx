@@ -140,17 +140,21 @@ export default function SiteHero({ config }) {
                                 </Box>
                                 <VStack align="flex-start" spacing={0}>
                                     <Text fontSize={{ base: 'sm', md: 'md' }} fontWeight="700" color={videoLoaded ? 'white' : 'gray.800'}>
-                                        {sc.address || ''}
+                                        {sc.address || [sc.city, sc.state].filter(Boolean).join(', ')}
                                     </Text>
                                     <Text fontSize="xs" color={videoLoaded ? 'whiteAlpha.800' : 'gray.500'}>
-                                        {sc.city || ''}, {sc.state || ''} {sc.zip || ''} — {(sc.hours || [])[0]?.time || 'Open'}
+                                        {sc.address
+                                            ? `${sc.city || ''}, ${sc.state || ''} ${sc.zip || ''} — ${(sc.hours || [])[0]?.time || 'Open'}`
+                                            : `Serving your area — ${(sc.hours || [])[0]?.time || 'Open'}`}
                                     </Text>
                                 </VStack>
                             </HStack>
-                            <Button as="a" href={`https://www.google.com/maps/dir/?api=1&destination=${sc.mapsQuery || ''}`} target="_blank" rel="noopener noreferrer"
-                                size="sm" colorScheme={themeColor} variant={videoLoaded ? 'solid' : 'outline'} borderRadius="full" leftIcon={<FiNavigation size={14} />} flexShrink={0}>
-                                Get Directions
-                            </Button>
+                            {sc.address && (
+                                <Button as="a" href={`https://www.google.com/maps/dir/?api=1&destination=${sc.mapsQuery || ''}`} target="_blank" rel="noopener noreferrer"
+                                    size="sm" colorScheme={themeColor} variant={videoLoaded ? 'solid' : 'outline'} borderRadius="full" leftIcon={<FiNavigation size={14} />} flexShrink={0}>
+                                    Get Directions
+                                </Button>
+                            )}
                         </Flex>
                     </Box>
                 </VStack>

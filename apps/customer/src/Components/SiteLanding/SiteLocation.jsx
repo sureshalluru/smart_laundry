@@ -23,25 +23,41 @@ export default function SiteLocation({ config }) {
                 </VStack>
 
                 <SimpleGrid columns={{ base: 1, lg: 2 }} spacing={8}>
-                    {/* Map */}
-                    <Box as="a" href={`https://www.google.com/maps/dir/?api=1&destination=${sc.mapsQuery || ''}`} target="_blank" rel="noopener noreferrer"
-                        borderRadius="2xl" overflow="hidden" boxShadow="md" minH="300px" display="block" position="relative" bg={`${themeColor}.50`}
-                        _hover={{ boxShadow: 'lg', transform: 'translateY(-2px)' }} transition="all 0.2s">
-                        <img src={`https://maps.googleapis.com/maps/api/staticmap?center=${sc.mapsQuery || ''}&zoom=15&size=600x400&markers=color:${themeColor === 'green' ? 'green' : 'blue'}%7C${sc.mapsQuery || ''}&key=${process.env.REACT_APP_GOOGLE_MAPS_API_KEY || ''}`}
-                            alt="Location" style={{ width: '100%', height: '100%', objectFit: 'cover', minHeight: '300px' }} />
-                        <Box position="absolute" bottom="0" left="0" right="0" bg="rgba(0,0,0,0.6)" color="white" py={2} px={4} textAlign="center">
-                            <Text fontSize="sm" fontWeight="600">Tap for Directions →</Text>
+                    {/* Map — only shown when a public street address is available.
+                        Home-based operators (address hidden) get a service-area panel instead. */}
+                    {sc.address ? (
+                        <Box as="a" href={`https://www.google.com/maps/dir/?api=1&destination=${sc.mapsQuery || ''}`} target="_blank" rel="noopener noreferrer"
+                            borderRadius="2xl" overflow="hidden" boxShadow="md" minH="300px" display="block" position="relative" bg={`${themeColor}.50`}
+                            _hover={{ boxShadow: 'lg', transform: 'translateY(-2px)' }} transition="all 0.2s">
+                            <img src={`https://maps.googleapis.com/maps/api/staticmap?center=${sc.mapsQuery || ''}&zoom=15&size=600x400&markers=color:${themeColor === 'green' ? 'green' : 'blue'}%7C${sc.mapsQuery || ''}&key=${process.env.REACT_APP_GOOGLE_MAPS_API_KEY || ''}`}
+                                alt="Location" style={{ width: '100%', height: '100%', objectFit: 'cover', minHeight: '300px' }} />
+                            <Box position="absolute" bottom="0" left="0" right="0" bg="rgba(0,0,0,0.6)" color="white" py={2} px={4} textAlign="center">
+                                <Text fontSize="sm" fontWeight="600">Tap for Directions →</Text>
+                            </Box>
                         </Box>
-                    </Box>
+                    ) : (
+                        <Box borderRadius="2xl" boxShadow="md" minH="300px" display="flex" flexDirection="column" alignItems="center" justifyContent="center"
+                            bg={`${themeColor}.50`} p={8} textAlign="center">
+                            <Icon as={FiMapPin} color={`${themeColor}.500`} boxSize={10} mb={4} />
+                            <Text fontWeight="700" color="gray.800" fontSize="lg">Free Pickup & Delivery</Text>
+                            <Text fontSize="md" color="gray.600" mt={1}>
+                                Serving {[sc.city, sc.state].filter(Boolean).join(', ') || 'your area'} and surrounding areas
+                            </Text>
+                        </Box>
+                    )}
 
                     {/* Info */}
                     <VStack spacing={6} align="stretch">
                         <Box bg="white" borderRadius="2xl" p={6} boxShadow="sm" border="1px solid" borderColor="gray.100">
                             <HStack spacing={3} mb={3}>
                                 <Box bg={`${themeColor}.50`} borderRadius="lg" p={2}><Icon as={FiMapPin} color={`${themeColor}.500`} boxSize={5} /></Box>
-                                <Text fontWeight="700" color="gray.800">Address</Text>
+                                <Text fontWeight="700" color="gray.800">{sc.address ? 'Address' : 'Service Area'}</Text>
                             </HStack>
-                            <Text fontSize="md" color="gray.600">{sc.address}<br />{sc.city}, {sc.state} {sc.zip}</Text>
+                            <Text fontSize="md" color="gray.600">
+                                {sc.address
+                                    ? <>{sc.address}<br />{sc.city}, {sc.state} {sc.zip}</>
+                                    : <>Pickup &amp; delivery across {[sc.city, sc.state].filter(Boolean).join(', ') || 'your area'}</>}
+                            </Text>
                             {sc.phone && <Text fontSize="sm" color="gray.500" mt={2}>📞 {sc.phone}</Text>}
                         </Box>
 

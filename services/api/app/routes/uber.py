@@ -164,6 +164,44 @@ def get_laundry_uber_credentials(laundry_id: str, uber_env: str = None):
         }
 
 
+def get_laundry_full_address(laundry_id: str):
+    """
+    Return the shop's full internal street address (street, city, state zip).
+    Used for Uber routing so that home-based tenants who hide their street
+    address from public surfaces still get correct pickup/dropoff routing.
+    Returns None if the shop or street is not found.
+    """
+    with get_db() as conn:
+        cur = get_cursor(conn)
+        cur.execute("""
+            SELECT street, city, state, zip_code
+            FROM shop.laundry_shops WHERE laundry_id = %s
+        """, (laundry_id,))
+        row = cur.fetchone()
+        if not row or not row.get("street"):
+            return None
+        return f"{row['street']}, {row['city']}, {row['state']} {row['zip_code']}"
+
+
+def _resolve_store_address(laundry_id: str, type_order: str, pickup_address: str, dropoff_address: str):
+    """
+    Ensure the store-side leg of an Uber delivery uses the shop's real street
+    address, even when the client only supplied city/state (home-address-hidden
+    tenants). The customer-side leg is left untouched.
+
+    For 'laundryPickup': store is the DROPOFF (bags go from customer -> store).
+    For 'laundryDropoff': store is the PICKUP (clean laundry goes store -> customer).
+    Returns (pickup_address, dropoff_address).
+    """
+    full = get_laundry_full_address(laundry_id)
+    if not full:
+        return pickup_address, dropoff_address
+    if type_order == "laundryPickup":
+        return pickup_address, full
+    else:
+        return full, dropoff_address
+
+
 def create_uber_quote(token, customer_id, base_url, pickup_address, dropoff_address,
                       pickup_phone, dropoff_phone, pickup_ready_dt, pickup_deadline_dt,
                       type_order, return_full_quote=False):
@@ -258,6 +296,12 @@ async def get_uber_quote_estimate(
         if not all([pickup_address, dropoff_address, delivery_date, time_interval]):
             return {"statusCode": 400, "body": json.dumps({"error": "Missing required fields for quote."})}
 
+        # Use the shop's real street for the store-side leg (home-address-hidden
+        # tenants send only city/state to the client, so resolve it server-side).
+        pickup_address, dropoff_address = _resolve_store_address(
+            laundry_id, type_order, pickup_address, dropoff_address
+        )
+
         creds = get_laundry_uber_credentials(laundry_id, uber_env)
         token = get_uber_access_token(creds["clientId"], creds["clientSecret"])
 
@@ -335,6 +379,12 @@ async def schedule_uber_order(body: dict = Body(...)):
 
         if not all([pickup_address, dropoff_address, delivery_date, time_interval]):
             return {"statusCode": 400, "body": json.dumps({"error": "Missing required fields."})}
+
+        # Use the shop's real street for the store-side leg (home-address-hidden
+        # tenants send only city/state to the client, so resolve it server-side).
+        pickup_address, dropoff_address = _resolve_store_address(
+            laundry_id, type_order, pickup_address, dropoff_address
+        )
 
         creds = get_laundry_uber_credentials(laundry_id, uber_env)
         token = get_uber_access_token(creds["clientId"], creds["clientSecret"])

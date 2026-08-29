@@ -103,7 +103,8 @@ def _get_laundry_info(cur, laundry_id, is_customer=None):
     cur.execute("""
         SELECT laundry_name, laundry_timezone, stripe_public_key, stripe_terminal_id,
                delivery_time_interval, user_domain,
-               street, city, state, zip_code, country, serviceable_zip_codes, bag_price, tax_rate, site_content, laundry_logo, subscription_discount
+               street, city, state, zip_code, country, serviceable_zip_codes, bag_price, tax_rate, site_content, laundry_logo, subscription_discount,
+               hide_home_address
         FROM shop.laundry_shops WHERE laundry_id = %s
     """, (laundry_id,))
     shop = cur.fetchone()
@@ -185,7 +186,22 @@ def _get_laundry_info(cur, laundry_id, is_customer=None):
                 frequency_promotions.append({"frequency": freq, "promoCode": r["promo_code"], "description": r["description"] or ""})
                 covered.add(freq)
 
-    addr = f"{shop['street']}, {shop['city']}, {shop['state']} {shop['zip_code']}"
+    hide_address = bool(shop.get("hide_home_address"))
+
+    # Public-facing address: for home-based operators (hide_home_address), expose
+    # only city/state so the street is never shown on client-facing surfaces.
+    if hide_address:
+        addr = f"{shop['city']}, {shop['state']}".strip(", ")
+    else:
+        addr = f"{shop['street']}, {shop['city']}, {shop['state']} {shop['zip_code']}"
+
+    # Sanitize site_content: strip the exact street address + maps query so the
+    # public marketing site / footer / map pin never render the home address.
+    site_content = dict(shop.get("site_content") or {})
+    if hide_address:
+        site_content.pop("address", None)
+        site_content.pop("mapsQuery", None)
+        # Keep city/state/zip's city+state only; the components fall back to city/state.
 
     return {
         "status": "success",
@@ -195,6 +211,7 @@ def _get_laundry_info(cur, laundry_id, is_customer=None):
         "stripeTerminalExists": bool(shop["stripe_terminal_id"]),
         "deliveryTimeInterval": str(shop["delivery_time_interval"] or 2),
         "laundryAddress": addr,
+        "hideHomeAddress": hide_address,
         "laundryServices": laundry_services,
         "serviceCategories": service_categories,
         "deliveryTimeSlots": delivery_time_slots,
@@ -206,7 +223,7 @@ def _get_laundry_info(cur, laundry_id, is_customer=None):
         "uberCredentialsExist": bool(uber_row),
         "bagPrice": float(shop["bag_price"]) if shop.get("bag_price") else 30.00,
         "taxRate": float(shop["tax_rate"]) if shop.get("tax_rate") else 0,
-        "siteContent": shop.get("site_content") or {},
+        "siteContent": site_content,
         "laundryLogo": shop.get("laundry_logo") or "",
         "subscriptionDiscount": float(shop.get("subscription_discount") or 0),
     }

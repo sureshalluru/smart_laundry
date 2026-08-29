@@ -426,6 +426,33 @@ async def reset_registration_code(laundry_id: str, x_platform_key: str = Header(
     return {"status": "success", "newCode": new_code}
 
 
+@router.post("/laundries/{laundry_id}/hide-home-address")
+async def set_hide_home_address(laundry_id: str, body: dict = Body(...), x_platform_key: str = Header(None)):
+    """
+    Toggle the hide_home_address privacy flag for a laundry.
+
+    When enabled, the shop's street address is never shown on any client-facing
+    surface (website, booking portal, SEO city pages, public API, AI chat) —
+    only city/state and the service area are public. The street stays stored
+    internally for driver routing and account verification. Intended for
+    home-based wash & fold operators with no public drop-off location.
+    """
+    verify_platform_admin(x_platform_key)
+
+    hide = bool(body.get("hide", True))
+
+    with get_db() as conn:
+        cur = get_cursor(conn)
+        cur.execute(
+            "UPDATE shop.laundry_shops SET hide_home_address = %s WHERE laundry_id = %s RETURNING laundry_id",
+            (hide, laundry_id),
+        )
+        if cur.fetchone() is None:
+            raise HTTPException(status_code=404, detail="Laundry not found")
+
+    return {"status": "success", "laundryId": laundry_id, "hideHomeAddress": hide}
+
+
 @router.post("/onboard")
 async def self_service_onboard(request: Request, body: dict = Body(...)):
     """

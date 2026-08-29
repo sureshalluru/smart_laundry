@@ -778,7 +778,8 @@ def run():
                     company_id                  UUID,
                     sms_enabled                 BOOLEAN DEFAULT false,
                     sms_count                   INT DEFAULT 0,
-                    google_review_url           TEXT
+                    google_review_url           TEXT,
+                    hide_home_address           BOOLEAN DEFAULT false
                 )
             """)
 

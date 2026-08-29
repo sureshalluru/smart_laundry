@@ -42,10 +42,16 @@ export default function SiteNavbar({ config }) {
                         </Text>
                         <HStack spacing={1}>
                             <Icon as={FiMapPin} color="gray.400" boxSize={3} />
-                            <Text as="a" href={`https://www.google.com/maps/dir/?api=1&destination=${sc.mapsQuery || ''}`}
-                                target="_blank" rel="noopener noreferrer" fontSize="xs" color="gray.400" _hover={{ color: `${themeColor}.500` }}>
-                                {sc.address}, {sc.city}, {sc.state}
-                            </Text>
+                            {sc.address ? (
+                                <Text as="a" href={`https://www.google.com/maps/dir/?api=1&destination=${sc.mapsQuery || ''}`}
+                                    target="_blank" rel="noopener noreferrer" fontSize="xs" color="gray.400" _hover={{ color: `${themeColor}.500` }}>
+                                    {sc.address}, {sc.city}, {sc.state}
+                                </Text>
+                            ) : (
+                                <Text fontSize="xs" color="gray.400">
+                                    {[sc.city, sc.state].filter(Boolean).join(', ')}
+                                </Text>
+                            )}
                         </HStack>
                     </VStack>
                 </HStack>

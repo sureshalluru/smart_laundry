@@ -75,7 +75,7 @@ def get_tenant_data(laundry_id, conn) -> dict:
     # --- Shop info ---
     cur.execute("""
         SELECT laundry_name, street, city, state, zip_code,
-               contact_phone, serviceable_zip_codes
+               contact_phone, serviceable_zip_codes, hide_home_address
         FROM shop.laundry_shops
         WHERE laundry_id = %s
     """, (laundry_id,))
@@ -85,8 +85,13 @@ def get_tenant_data(laundry_id, conn) -> dict:
         if shop.get("laundry_name"):
             data["shop_name"] = shop["laundry_name"]
 
-        # Build full address from parts
-        parts = [shop.get("street"), shop.get("city"), shop.get("state"), shop.get("zip_code")]
+        # Build the address token. For home-based operators (hide_home_address),
+        # the AI chat must NEVER reveal the street — use city/state only so a
+        # visitor asking "where are you located?" only sees the service area.
+        if shop.get("hide_home_address"):
+            parts = [shop.get("city"), shop.get("state")]
+        else:
+            parts = [shop.get("street"), shop.get("city"), shop.get("state"), shop.get("zip_code")]
         full_address = ", ".join(p for p in parts if p)
         if full_address:
             data["address"] = full_address
