@@ -498,6 +498,9 @@ async def self_service_onboard(request: Request, body: dict = Body(...)):
     # SMS Add-On
     sms_enabled = body.get("smsEnabled", False)
 
+    # Home-based privacy: hide the street address from all public surfaces
+    hide_home_address = bool(body.get("hideHomeAddress", False))
+
     # Verification fields
     email_verification_token = body.get("emailVerificationToken", "")
 
@@ -604,11 +607,9 @@ async def self_service_onboard(request: Request, body: dict = Body(...)):
                 "headline": f"Fresh, Clean Laundry <span>Delivered</span>",
                 "subheadline": tagline or f"{laundry_name} — professional wash & fold with free pickup and delivery.",
                 "heroVideoUrl": "https://laundry-images-store-prod.s3.us-east-1.amazonaws.com/15380072_3840_2160_30fps.mp4",
-                "address": full_address,
                 "city": city,
                 "state": state,
                 "zip": zip_code,
-                "mapsQuery": maps_query,
                 "phone": contact_phone,
                 "email": contact_email,
                 "hours": [
@@ -617,6 +618,12 @@ async def self_service_onboard(request: Request, body: dict = Body(...)):
                 ],
                 "trustBadges": ["Free Pickup & Delivery", "Open 24/7", "Modern Facility"],
             }
+            # Only seed the street address + maps pin for storefront operators.
+            # Home-based operators (hide_home_address) never get the street in
+            # site_content, so the public marketing site can't render it.
+            if not hide_home_address:
+                site_content["address"] = full_address
+                site_content["mapsQuery"] = maps_query
 
             cur.execute("""
                 INSERT INTO shop.laundry_shops (
@@ -627,8 +634,9 @@ async def self_service_onboard(request: Request, body: dict = Body(...)):
                     stripe_public_key, stripe_private_key,
                     delivery_time_interval, emp_prefix,
                     serviceable_zip_codes, user_domain, site_content,
-                    referred_by_name, referred_by_email, sms_enabled
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    referred_by_name, referred_by_email, sms_enabled,
+                    hide_home_address
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """, (
                 next_id, laundry_name, timezone,
                 street, city, state, zip_code, country,
@@ -642,6 +650,7 @@ async def self_service_onboard(request: Request, body: dict = Body(...)):
                 referred_by_name or None,
                 referred_by_email or None,
                 bool(sms_enabled),
+                hide_home_address,
             ))
 
             # Upload logo if provided

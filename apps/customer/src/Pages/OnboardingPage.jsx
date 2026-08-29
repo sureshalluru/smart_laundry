@@ -52,7 +52,7 @@ const OnboardingPage = () => {
         laundryName: '', street: '', city: '', state: '', zipCode: '', country: 'USA',
         timezone: 'America/Chicago', contactPhone: '', contactEmail: '',
         ownerFirstName: '', ownerLastName: '', ownerPhone: '', ownerEmail: '',
-        referredByName: '', referredByEmail: '',
+        referredByName: '', referredByEmail: '', hideHomeAddress: false,
     });
 
     // Email verification state
@@ -499,6 +499,21 @@ const OnboardingPage = () => {
                                 )}
                             </FormControl>
                         </SimpleGrid>
+
+                        <FormControl>
+                            <Checkbox
+                                isChecked={businessInfo.hideHomeAddress}
+                                onChange={e => updateBusiness('hideHomeAddress', e.target.checked)}
+                                colorScheme="blue"
+                            >
+                                Hide my street address (home-based business)
+                            </Checkbox>
+                            <Text fontSize="sm" color="gray.500" mt={1} ml={6}>
+                                Check this if you run pickup &amp; delivery from home with no public drop-off location.
+                                Your website, booking pages, maps, and search listings will show only your city and
+                                service area — never your street. We still keep it privately for driver routing.
+                            </Text>
+                        </FormControl>
 
                         <FormControl>
                             <FormLabel>Time Zone</FormLabel>
