@@ -198,3 +198,130 @@ class TestDetectWeightEndpoint:
         response = client.post("/api/admin/photo-upload-status")
         # Should get 422 (missing query params) not 404 (endpoint not found)
         assert response.status_code == 422
+
+
+class TestDetectWeightReconciledWrite:
+    """
+    The reconciled detect-weight write persists to the AUTHORITATIVE location
+    (orders.orders.total_weight + weight-based orders.order_services) and
+    recomputes totals — never the legacy laundry_orders.service_weight.
+
+    Validates: Requirements 4.1, 4.2, 4.3, 4.4
+    """
+
+    from contextlib import contextmanager
+
+    class RecordingCursor:
+        """Records executed SQL; serves service/product/order rows for recompute."""
+
+        def __init__(self):
+            self.executed = []
+            self._last = ""
+            # After the weight UPDATE, order_services has one weight-based line at $1.59/lb
+            self._service_rows = [{"service_price": 1.59, "weight_or_count": 10.0}]
+            self._product_rows = []
+            self._order_row = {"discounted_price": 0, "tip_amount": 0}
+
+        def execute(self, sql, params=None):
+            self._last = sql
+            self.executed.append((sql, params))
+
+        def fetchall(self):
+            if "FROM orders.order_services" in self._last:
+                return self._service_rows
+            if "FROM orders.order_products" in self._last:
+                return self._product_rows
+            return []
+
+        def fetchone(self):
+            if "FROM orders.orders" in self._last:
+                return self._order_row
+            return None
+
+    @staticmethod
+    def _vision_patches(weight_json='{"weight": 10.0, "unit": "lbs", "confidence": 95}'):
+        """Returns (anthropic_patch, settings_patch) that make Vision return a weight."""
+        mock_response = MagicMock()
+        mock_response.content = [MagicMock()]
+        mock_response.content[0].text = weight_json
+        client_patch = patch("anthropic.Anthropic")
+        return client_patch, mock_response
+
+    def _run(self, client, cursor, monkey_raises=False):
+        import base64
+        from contextlib import contextmanager
+
+        fake_image = b"\xff\xd8\xff\xe0" + b"\x00" * 2000
+        encoded = base64.b64encode(fake_image).decode()
+
+        @contextmanager
+        def fake_get_db():
+            if monkey_raises:
+                raise RuntimeError("db down")
+            yield MagicMock()
+
+        client_patch, mock_response = self._vision_patches()
+        with client_patch as MockClient:
+            inst = MagicMock()
+            inst.messages.create.return_value = mock_response
+            MockClient.return_value = inst
+            with patch("app.config.settings") as mock_settings, \
+                 patch("app.routes.item_tracking.get_db", fake_get_db), \
+                 patch("app.routes.item_tracking.get_cursor", lambda conn: cursor):
+                mock_settings.anthropic_api_key = "test-key"
+                return client.post(
+                    "/api/admin/item-tracking/detect-weight",
+                    json={"imageBase64": encoded, "laundryId": "L001", "orderId": "ORD001"},
+                )
+
+    def test_writes_authoritative_columns_not_legacy(self, client):
+        cursor = self.RecordingCursor()
+        resp = self._run(client, cursor)
+        assert resp.status_code == 200
+        sqls = " ".join(s for s, _ in cursor.executed)
+        # Authoritative writes present
+        assert "UPDATE orders.orders" in sqls
+        assert "total_weight" in sqls
+        assert "UPDATE orders.order_services" in sqls
+        assert "input_weight = true" in sqls
+        # Legacy write gone
+        assert "laundry_orders" not in sqls
+        assert "service_weight" not in sqls
+
+    def test_recomputes_totals_and_is_laundry_scoped(self, client):
+        cursor = self.RecordingCursor()
+        resp = self._run(client, cursor)
+        assert resp.status_code == 200
+        # Final totals UPDATE: 1.59 * 10 = 15.90, no discount/tip
+        totals_updates = [
+            (s, p) for s, p in cursor.executed
+            if "UPDATE orders.orders" in s and "sub_total" in s
+        ]
+        assert totals_updates, "expected a totals recompute UPDATE"
+        sql, params = totals_updates[0]
+        assert 15.9 in params  # sub_total == total_cost == grand_total == 15.90
+        # laundry_id scoping on the authoritative order-level write
+        weight_updates = [
+            p for s, p in cursor.executed
+            if "UPDATE orders.orders" in s and "total_weight" in s
+        ]
+        assert weight_updates and "L001" in weight_updates[0]
+        assert "ORD001" in weight_updates[0]
+
+    def test_response_shape_unchanged(self, client):
+        cursor = self.RecordingCursor()
+        resp = self._run(client, cursor)
+        data = resp.json()
+        assert data["statusCode"] == 200
+        assert data["body"]["weight"] == 10.0
+        assert data["body"]["unit"] == "lbs"
+        assert data["body"]["confidence"] == 95
+
+    def test_db_error_does_not_break_detection(self, client):
+        """If the authoritative write fails, detection still returns the weight."""
+        cursor = self.RecordingCursor()
+        resp = self._run(client, cursor, monkey_raises=True)
+        data = resp.json()
+        # Fail-soft: weight still returned, no 500
+        assert data["statusCode"] == 200
+        assert data["body"]["weight"] == 10.0

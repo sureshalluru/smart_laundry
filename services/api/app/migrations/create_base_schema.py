@@ -343,6 +343,21 @@ def run():
             """)
 
             cur.execute("""
+                CREATE TABLE IF NOT EXISTS orders.order_bags (
+                    id              SERIAL NOT NULL PRIMARY KEY,
+                    order_id        VARCHAR(50) NOT NULL,
+                    laundry_id      VARCHAR(50) NOT NULL,
+                    bag_number      INT NOT NULL,
+                    weight          NUMERIC,
+                    created_at      TIMESTAMPTZ DEFAULT now() NOT NULL
+                )
+            """)
+            cur.execute("""
+                CREATE UNIQUE INDEX IF NOT EXISTS uq_order_bags_order_bag
+                ON orders.order_bags (order_id, laundry_id, bag_number)
+            """)
+
+            cur.execute("""
                 CREATE TABLE IF NOT EXISTS orders.order_reviews (
                     review_id         UUID DEFAULT gen_random_uuid() NOT NULL PRIMARY KEY,
                     laundry_id        VARCHAR(50) NOT NULL,
@@ -563,7 +578,7 @@ def run():
                     laundry_id       VARCHAR(10) NOT NULL,
                     customer_id      UUID NOT NULL,
                     reminder_type    VARCHAR(50) NOT NULL,
-                    reminder_stage   VARCHAR(50) NOT NULL,
+                    reminder_stage   VARCHAR(50),
                     message_channel  VARCHAR(20) DEFAULT 'sms',
                     promo_code       VARCHAR(100),
                     sent_at          TIMESTAMPTZ DEFAULT now(),

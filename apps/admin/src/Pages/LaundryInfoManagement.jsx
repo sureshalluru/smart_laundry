@@ -626,8 +626,8 @@ const SystemSettingsSection = ({ laundryId }) => {
                 </Flex>
                 <Text fontSize="xs" color="gray.600" mb={2}>
                     {smsEnabled
-                        ? "SMS is ON — customers will receive text notifications for order updates, delivery tracking, and reminders. You will be billed per message."
-                        : "SMS is OFF — only login OTP texts will be sent. Enable to send order updates via SMS (billed per message)."}
+                        ? "SMS is ON — customers will receive text notifications for order updates, delivery tracking, and reminders. Included in your platform fee — no per-message charge."
+                        : "SMS is OFF — only login OTP texts will be sent. Enable to send order updates via SMS. Included in your platform fee — no per-message charge."}
                 </Text>
                 {smsCount > 0 && (
                     <Text fontSize="xs" color="orange.700" fontWeight="500">

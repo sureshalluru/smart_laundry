@@ -2201,6 +2201,123 @@ async def employee_update_services(
         return {"statusCode": 500, "body": {"message": f"Update failed: {str(e)}"}}
 
 
+@router.post("/order-bags")
+async def upsert_order_bags(
+    body: dict = Body({}),
+):
+    """
+    Save per-bag weights for an order (scale-integration-bag-tags spec).
+
+    No admin JWT auth required — protected by PIN session on frontend
+    (same no-auth pattern as employee-update-services).
+
+    This stores the per-bag detail only. The order-level weight that drives
+    totals is written separately via employee-update-services as the sum of the
+    bag weights. weight may be null for a bag that was tagged but not weighed.
+
+    Body:
+        {
+            "orderId": "IS-ABC123",
+            "laundryId": "5",
+            "empId": "EMP-001",
+            "bags": [
+                { "bagNumber": 1, "weight": 12.5 },
+                { "bagNumber": 2, "weight": null }
+            ]
+        }
+    """
+    order_id = body.get("orderId", "")
+    laundry_id = body.get("laundryId", "")
+    emp_id = body.get("empId", "")
+    bags = body.get("bags", [])
+
+    if not order_id or not laundry_id or not emp_id:
+        return {"statusCode": 400, "body": {"message": "Missing required fields: orderId, laundryId, empId"}}
+
+    if not isinstance(bags, list) or not bags:
+        return {"statusCode": 400, "body": {"message": "No bags to update"}}
+
+    try:
+        with get_db() as conn:
+            cur = get_cursor(conn)
+
+            # Verify the order exists and belongs to this laundry (tenant scoping)
+            cur.execute(
+                "SELECT order_id FROM orders.orders WHERE order_id = %s AND laundry_id = %s",
+                (order_id, laundry_id),
+            )
+            if not cur.fetchone():
+                return {"statusCode": 404, "body": {"message": "Order not found"}}
+
+            for bag in bags:
+                bag_number = bag.get("bagNumber")
+                if bag_number is None:
+                    continue
+                raw_weight = bag.get("weight")
+                weight = None
+                if raw_weight is not None and raw_weight != "":
+                    try:
+                        weight = float(raw_weight)
+                    except (TypeError, ValueError):
+                        weight = None
+                # Idempotent upsert — re-weighing a bag updates rather than duplicates
+                cur.execute("""
+                    INSERT INTO orders.order_bags (order_id, laundry_id, bag_number, weight)
+                    VALUES (%s, %s, %s, %s)
+                    ON CONFLICT (order_id, laundry_id, bag_number)
+                    DO UPDATE SET weight = EXCLUDED.weight
+                """, (order_id, laundry_id, int(bag_number), weight))
+
+            # Return the current stored bags
+            cur.execute("""
+                SELECT bag_number, weight
+                FROM orders.order_bags
+                WHERE order_id = %s AND laundry_id = %s
+                ORDER BY bag_number ASC
+            """, (order_id, laundry_id))
+            stored = [
+                {"bagNumber": r["bag_number"], "weight": float(r["weight"]) if r["weight"] is not None else None}
+                for r in cur.fetchall()
+            ]
+
+        return {"statusCode": 200, "body": {"message": "Bags updated successfully", "bags": stored}}
+
+    except Exception as e:
+        logger.exception(f"order-bags upsert failed: order={order_id}")
+        return {"statusCode": 500, "body": {"message": f"Update failed: {str(e)}"}}
+
+
+@router.get("/order-bags")
+async def get_order_bags(
+    orderId: str = Query(...),
+    laundryId: str = Query(...),
+):
+    """
+    Return the stored per-bag weights for an order (bag_number ascending).
+
+    Used to display "Bag N = X lb" and to feed bagWeights into the bag-tag
+    print template on reprint. laundry_id-scoped.
+    """
+    try:
+        with get_db() as conn:
+            cur = get_cursor(conn)
+            cur.execute("""
+                SELECT bag_number, weight
+                FROM orders.order_bags
+                WHERE order_id = %s AND laundry_id = %s
+                ORDER BY bag_number ASC
+            """, (orderId, laundryId))
+            bags = [
+                {"bagNumber": r["bag_number"], "weight": float(r["weight"]) if r["weight"] is not None else None}
+                for r in cur.fetchall()
+            ]
+        return {"statusCode": 200, "body": {"orderId": orderId, "bags": bags}}
+
+    except Exception as e:
+        logger.exception(f"order-bags fetch failed: order={orderId}")
+        return {"statusCode": 500, "body": {"message": f"Fetch failed: {str(e)}"}}
+
+
 async def _run_weight_detection(laundry_id: str, order_id: str, image_base64: str):
     """
     Background task: call Claude Vision to detect weight from a scale photo.

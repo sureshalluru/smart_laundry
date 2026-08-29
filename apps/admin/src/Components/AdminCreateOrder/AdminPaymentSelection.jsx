@@ -33,11 +33,13 @@ import {
     useBreakpointValue
 } from "@chakra-ui/react";
 import {useNavigate} from "react-router-dom";
-import {FaMoneyBillWave, FaCreditCard} from "react-icons/fa";
+import {FaMoneyBillWave, FaCreditCard, FaPrint} from "react-icons/fa";
 import axios from "axios";
 import {CardElement, useStripe, useElements} from '@stripe/react-stripe-js';
 import TipSelector from "./TipSelector";
 import {roundToTwo} from "../../utils/decimalUtils";
+import {generateBagTagHtml} from "../../utils/ticketPrint";
+import {printViaIframe} from "../../utils/printUtils";
 
 
 export default function PaymentSelection({
@@ -635,6 +637,20 @@ export default function PaymentSelection({
     const handleViewOrders = () => {
         navigate(`/${laundryId}/admin/active-orders`);
     };
+
+    // Print one scannable bag tag per bag. Each tag's QR opens the same employee
+    // order page as the receipt QR, so a scanned bag resolves back to its order.
+    const printBagTags = () => {
+        if (!orderId) return;
+        const htmlContent = generateBagTagHtml({
+            orderId,
+            laundryId,
+            userDomain: null, // uses window.location.origin fallback
+            bags: laundryBags || 1,
+            intakeDate: new Date().toLocaleDateString(),
+        });
+        printViaIframe(htmlContent);
+    };
     return (
         <Box width="100%" position="relative" maxWidth="1200px" p={isMobile ? 2 : 3}  mx="auto">
             <Heading mb={sectionSpacing} fontSize={headingSize}>Review and Payment</Heading>
@@ -934,6 +950,9 @@ export default function PaymentSelection({
                         )}
                     </ModalBody>
                     <ModalFooter>
+                        <Button leftIcon={<FaPrint/>} colorScheme="teal" mr={3} onClick={printBagTags}>
+                            Print Bag Tags
+                        </Button>
                         <Button colorScheme="blue" onClick={handleViewOrders}>
                             View Orders
                         </Button>

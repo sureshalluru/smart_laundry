@@ -31,7 +31,10 @@ import {
   FaPlus,
   FaExclamationTriangle,
   FaTrash,
+  FaBalanceScale,
 } from 'react-icons/fa';
+import { useScale } from '../../Services/scale/useScale';
+import { convertToStoreUnit } from '../../Services/scale/convertToStoreUnit';
 
 const API_URL = process.env.REACT_APP_AWS_API_URL || '';
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
@@ -103,6 +106,13 @@ const MobileWeightEntry = ({ order, laundryId, employeeId, isOpen, onClose, onSa
   // Track whether the employee has manually overridden the weight input
   const [weightManuallyEdited, setWeightManuallyEdited] = useState(false);
 
+  // Digital scale integration. Degrades gracefully: when Web Serial is
+  // unsupported, `isSupported` is false and the Read Scale UI is hidden.
+  const scale = useScale();
+  const storeUnit = 'lb'; // store billing unit; matches existing lbs labels
+  // Per-bag scale readings captured from the connected scale: [{ weight }]
+  const [scaleBags, setScaleBags] = useState([]);
+
   // Initialize service values when drawer opens or order changes
   useEffect(() => {
     if (isOpen && order?.services) {
@@ -117,6 +127,7 @@ const MobileWeightEntry = ({ order, laundryId, employeeId, isOpen, onClose, onSa
       );
       setSaveError(null);
       setBagPhotos([]);
+      setScaleBags([]);
       setWeightManuallyEdited(false);
     }
   }, [isOpen, order]);
@@ -142,6 +153,59 @@ const MobileWeightEntry = ({ order, laundryId, employeeId, isOpen, onClose, onSa
       );
     }
   }, [totalDetectedWeight]);
+
+  // Sum of captured scale-bag weights (store unit)
+  const totalScaleWeight = scaleBags.reduce((sum, b) => {
+    const w = parseFloat(b.weight);
+    return sum + (isNaN(w) ? 0 : w);
+  }, 0);
+
+  // When scale bags are captured, auto-fill weight-based service lines with the
+  // running total (same path as photo detection). Employee can still override.
+  useEffect(() => {
+    if (totalScaleWeight > 0) {
+      setWeightManuallyEdited(false);
+      setServiceValues((prev) =>
+        prev.map((svc) =>
+          svc.inputWeight ? { ...svc, weightOrCount: totalScaleWeight.toFixed(1) } : svc
+        )
+      );
+    }
+  }, [totalScaleWeight]);
+
+  // Connect the scale (must be triggered by a user gesture)
+  const handleConnectScale = async () => {
+    const ok = await scale.connect();
+    if (!ok) {
+      toast({
+        title: 'Scale not connected',
+        description: 'Could not open the scale. Check the cable/permissions, or enter weight manually.',
+        status: 'warning',
+        duration: 4000,
+        isClosable: true,
+      });
+    }
+  };
+
+  // Capture the current stable reading as a bag weight
+  const handleReadScale = () => {
+    const reading = scale.lastReading;
+    if (!reading || reading.value == null) {
+      toast({ title: 'No reading yet', description: 'Waiting for the scale.', status: 'info', duration: 2500, isClosable: true });
+      return;
+    }
+    if (!reading.stable) {
+      toast({ title: 'Scale still settling', description: 'Wait for a stable reading, then tap again.', status: 'info', duration: 2500, isClosable: true });
+      return;
+    }
+    const converted = convertToStoreUnit(reading, storeUnit);
+    if (converted.value == null) return;
+    setScaleBags((prev) => [...prev, { weight: converted.value.toFixed(1) }]);
+  };
+
+  const handleRemoveScaleBag = (index) => {
+    setScaleBags((prev) => prev.filter((_, i) => i !== index));
+  };
 
   // Handle value change for a service (marks as manually edited)
   const handleValueChange = (index, value) => {
@@ -204,6 +268,21 @@ const MobileWeightEntry = ({ order, laundryId, employeeId, isOpen, onClose, onSa
       const statusCode = response.data?.statusCode || response.status;
 
       if (statusCode === 200) {
+        // Persist per-bag scale weights (if any) as order-bag detail. The order
+        // total was already written via employee-update-services above; this is
+        // supplementary and must not block the save if it fails.
+        if (scaleBags.length > 0) {
+          try {
+            await axios.post(`${API_URL}/api/admin/order-bags`, {
+              orderId: order.orderId,
+              laundryId,
+              empId: employeeId,
+              bags: scaleBags.map((b, i) => ({ bagNumber: i + 1, weight: parseFloat(b.weight) })),
+            });
+          } catch (bagErr) {
+            /* non-critical — order total is already saved */
+          }
+        }
         toast({
           title: 'Updated',
           description: 'Weight/count values saved successfully.',
@@ -561,6 +640,73 @@ const MobileWeightEntry = ({ order, laundryId, employeeId, isOpen, onClose, onSa
               >
                 {bagPhotos.length === 0 ? 'Take Scale Photo' : 'Add Another Bag'}
               </Button>
+
+              {/* Connected Digital Scale — only when Web Serial is supported */}
+              {scale.isSupported && (
+                <Box mt={3} pt={3} borderTop="1px dashed" borderColor="gray.200">
+                  <HStack spacing={2} mb={2}>
+                    <Icon as={FaBalanceScale} color="teal.500" boxSize={4} />
+                    <Text fontSize="sm" fontWeight="bold" color="gray.700">
+                      Connected Scale
+                    </Text>
+                    {scale.isConnected && (
+                      <Badge colorScheme={scale.stable ? 'green' : 'yellow'} fontSize="xs">
+                        {scale.lastReading.value != null
+                          ? `${scale.lastReading.value} ${scale.lastReading.unit || ''} ${scale.stable ? '(stable)' : '(settling…)'}`
+                          : 'waiting…'}
+                      </Badge>
+                    )}
+                  </HStack>
+
+                  {/* Captured scale-bag readings */}
+                  {scaleBags.length > 0 && (
+                    <VStack spacing={1} mb={2} align="stretch">
+                      {scaleBags.map((b, idx) => (
+                        <HStack key={`scale-bag-${idx}`} justify="space-between">
+                          <Text fontSize="sm" color="gray.600">Bag {idx + 1}</Text>
+                          <HStack spacing={2}>
+                            <Text fontSize="sm" fontWeight="bold" color="teal.700">{b.weight} lbs</Text>
+                            <IconButton
+                              icon={<FaTrash />}
+                              aria-label={`Remove scale bag ${idx + 1}`}
+                              size="xs"
+                              variant="ghost"
+                              colorScheme="red"
+                              onClick={() => handleRemoveScaleBag(idx)}
+                            />
+                          </HStack>
+                        </HStack>
+                      ))}
+                    </VStack>
+                  )}
+
+                  {!scale.isConnected ? (
+                    <Button
+                      leftIcon={<FaBalanceScale />}
+                      colorScheme="teal"
+                      variant="outline"
+                      size="lg"
+                      minH="52px"
+                      width="100%"
+                      onClick={handleConnectScale}
+                    >
+                      Connect Scale
+                    </Button>
+                  ) : (
+                    <Button
+                      leftIcon={<FaBalanceScale />}
+                      colorScheme="teal"
+                      size="lg"
+                      minH="52px"
+                      width="100%"
+                      onClick={handleReadScale}
+                      isDisabled={!scale.stable || scale.lastReading.value == null}
+                    >
+                      {scaleBags.length === 0 ? 'Read Scale' : 'Read Next Bag'}
+                    </Button>
+                  )}
+                </Box>
+              )}
             </Box>
 
             {/* Total Detected Weight Display */}

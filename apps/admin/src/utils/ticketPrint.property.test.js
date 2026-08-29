@@ -137,7 +137,7 @@ describe('Property 1: URL construction produces valid order URLs', () => {
  *
  * For any valid laundryId and orderId, the internal ticket URL SHALL follow the pattern
  * {baseUrl}/{laundryId}/admin/order/{orderId} and the customer ticket URL SHALL follow the
- * pattern {baseUrl}/{laundryId}/site/tracking?orderId={orderId}.
+ * pattern {baseUrl}/{laundryId}/user/my-orders/?order_id={orderId}&is_open=true.
  *
  * **Validates: Requirements 8.2, 8.4**
  */
@@ -194,7 +194,7 @@ describe('Property 7: Ticket URL generation produces correct patterns', () => {
     );
   });
 
-  it('customer URL always contains /{laundryId}/site/tracking?orderId={orderId} path segment', () => {
+  it('customer URL always contains /{laundryId}/user/my-orders/?order_id={orderId} path segment', () => {
     fc.assert(
       fc.property(
         laundryIdArb,
@@ -202,7 +202,7 @@ describe('Property 7: Ticket URL generation produces correct patterns', () => {
         domainWithProtocolArb,
         (laundryId, orderId, domain) => {
           const url = buildCustomerTrackingUrl(laundryId, orderId, domain);
-          const expectedPath = `/${laundryId}/site/tracking?orderId=${orderId}`;
+          const expectedPath = `/${laundryId}/user/my-orders/?order_id=${orderId}&is_open=true`;
           return url.includes(expectedPath);
         }
       ),

@@ -9,7 +9,8 @@ import axios from 'axios';
 import { FaArrowLeft, FaCheck, FaTimes, FaMinus, FaPlus, FaPrint, FaSearch } from 'react-icons/fa';
 import { QuickPOSPaymentModalWrapper } from '../Components/QuickPOS/QuickPOSPaymentModal';
 import RegisterCustomer from '../hooks/RegisterCustomer';
-import { generateTicketHtml } from '../utils/ticketPrint';
+import { generateTicketHtml, generateBagTagHtml } from '../utils/ticketPrint';
+import { printViaIframe } from '../utils/printUtils';
 import { fetchShopDetails } from './AdminHomePage';
 
 const popIn = keyframes`
@@ -279,6 +280,22 @@ export default function QuickPOSPage({ laundryId, stripePublicKey, stripeTermina
     }, 400);
   };
 
+  // Print one scannable bag tag per bag. Each tag's QR opens the same employee
+  // order page as the receipt QR, so a scanned bag resolves back to its order.
+  const printBagTags = (printOrderId) => {
+    const intakeDate = new Date().toLocaleDateString();
+    const htmlContent = generateBagTagHtml({
+      orderId: printOrderId,
+      laundryId,
+      userDomain: null, // uses window.location.origin fallback
+      bags,
+      storeName: shopDetails.storeName,
+      customerName: customerName || customerPhone,
+      intakeDate,
+    });
+    printViaIframe(htmlContent);
+  };
+
   if (orderSuccess) {
     return (
       <Flex h="100vh" align="center" justify="center" bg="green.50" direction="column">
@@ -287,6 +304,7 @@ export default function QuickPOSPage({ laundryId, stripePublicKey, stripeTermina
         <Text fontSize="2xl" color="gray.600" mt={2}>{orderId}</Text>
         <HStack mt={6} spacing={4}>
           <Button leftIcon={<FaPrint />} colorScheme="blue" size="lg" onClick={() => printTicket(orderId)}>Print Receipt</Button>
+          <Button leftIcon={<FaPrint />} colorScheme="teal" size="lg" onClick={() => printBagTags(orderId)}>Print Bag Tags</Button>
           <Button leftIcon={<FaPrint />} colorScheme="purple" size="lg" onClick={() => printTag(orderId)}>Print Tag</Button>
           <Button colorScheme="green" size="lg" onClick={resetPOS}>New Order</Button>
         </HStack>

@@ -1543,20 +1543,70 @@ async def detect_weight(request: DetectWeightRequest):
         else:
             confidence = 0
 
-        # Update the order weight in DB if we got a valid weight
+        # Persist the detected weight to the AUTHORITATIVE location used by the
+        # manual and scale-entry paths — orders.orders.total_weight plus the
+        # weight-based orders.order_services lines — and recompute order totals
+        # so photo-detected weight can never diverge from the rest of the system.
+        # (Previously this wrote laundry_orders.service_weight, a non-authoritative
+        # column, leaving totals stale.) Fail-soft and laundry_id-scoped.
         if weight is not None and weight > 0 and request.orderId and request.laundryId:
             try:
-                from app.database import get_db_connection
-                conn = get_db_connection()
-                cur = conn.cursor()
-                cur.execute("""
-                    UPDATE laundry_orders
-                    SET service_weight = %s
-                    WHERE order_id = %s AND laundry_id = %s
-                """, (str(weight), request.orderId, request.laundryId))
-                conn.commit()
-                cur.close()
-                conn.close()
+                with get_db() as conn:
+                    cur = get_cursor(conn)
+
+                    # Order-level weight (authoritative)
+                    cur.execute("""
+                        UPDATE orders.orders
+                        SET total_weight = %s, updated_at = NOW()
+                        WHERE order_id = %s AND laundry_id = %s
+                    """, (weight, request.orderId, request.laundryId))
+
+                    # Apply the weight to every weight-based service line
+                    cur.execute("""
+                        UPDATE orders.order_services
+                        SET weight_or_count = %s
+                        WHERE order_id = %s AND input_weight = true
+                    """, (weight, request.orderId))
+
+                    # Recompute totals from line items (same math as
+                    # employee-update-services): sub_total = services + products,
+                    # applying any existing fixed discount, preserving tip.
+                    cur.execute(
+                        "SELECT service_price, weight_or_count FROM orders.order_services WHERE order_id = %s",
+                        (request.orderId,),
+                    )
+                    svc_total = sum(
+                        float(r["service_price"] or 0) * float(r["weight_or_count"] or 0)
+                        for r in cur.fetchall()
+                    )
+                    cur.execute(
+                        "SELECT product_price, product_count FROM orders.order_products WHERE order_id = %s",
+                        (request.orderId,),
+                    )
+                    prod_total = sum(
+                        float(r["product_price"] or 0) * float(r["product_count"] or 0)
+                        for r in cur.fetchall()
+                    )
+                    sub_total = round(svc_total + prod_total, 2)
+
+                    cur.execute("""
+                        SELECT o.discounted_price, ot.tip_amount
+                        FROM orders.orders o
+                        LEFT JOIN orders.order_tips ot ON ot.order_id = o.order_id
+                        WHERE o.order_id = %s AND o.laundry_id = %s
+                    """, (request.orderId, request.laundryId))
+                    row = cur.fetchone() or {}
+                    discounted_price = float(row.get("discounted_price") or 0)
+                    tip_amount = float(row.get("tip_amount") or 0)
+                    total_cost = round(sub_total - discounted_price, 2) if discounted_price > 0 else sub_total
+                    grand_total = round(total_cost + tip_amount, 2)
+
+                    cur.execute("""
+                        UPDATE orders.orders
+                        SET sub_total = %s, total_cost = %s, grand_total = %s, updated_at = NOW()
+                        WHERE order_id = %s AND laundry_id = %s
+                    """, (sub_total, total_cost, grand_total, request.orderId, request.laundryId))
+
                 logger.info(f"[item-tracking] Updated order {request.orderId} weight to {weight} {unit}")
             except Exception as db_err:
                 logger.error(f"[item-tracking] Failed to update order weight in DB: {db_err}")

@@ -315,3 +315,162 @@ export function generateTicketHtml(options) {
     </html>
   `;
 }
+
+/**
+ * Generates a complete HTML document for printing bag tags — one compact label
+ * per physical bag belonging to an order.
+ *
+ * Unlike generateTicketHtml (an 80mm receipt), this produces a narrow label
+ * sized for thermal label stock, with one label per bag separated by a page
+ * break so each prints on its own label. Each label carries a QR that resolves
+ * to the SAME employee order page as the ticket QR (buildOrderUrl), so scanning
+ * a bag opens that order.
+ *
+ * Layout per label (top to bottom):
+ * 1. Store name (centered)
+ * 2. Order ID and "Bag n of N"
+ * 3. Customer name (or last-4 of phone)
+ * 4. Intake date (+ this bag's weight when available)
+ * 5. QR code — full URL to the employee Mobile Order Page
+ *
+ * @param {Object} options
+ * @param {string} options.orderId - The order ID (e.g., "IS-1FCC7193")
+ * @param {string} options.laundryId - The laundry shop ID
+ * @param {string|null|undefined} options.userDomain - Custom domain for QR URL
+ * @param {number} options.bags - Number of bag labels to print (default 1)
+ * @param {string} options.storeName - Laundry shop name
+ * @param {string} options.customerName - Customer name (or last-4 phone)
+ * @param {string} options.intakeDate - Intake date string
+ * @param {Array} [options.bagWeights] - Optional [{bagNumber, weight}] from orders.order_bags
+ * @param {string} [options.weightUnit='lb'] - Store weight unit for display
+ * @param {number} [options.labelWidthMm=50] - Label stock width in mm
+ * @returns {string} Full HTML document string ready for iframe print
+ */
+export function generateBagTagHtml(options) {
+  const {
+    orderId,
+    laundryId,
+    userDomain,
+    bags = 1,
+    storeName = 'N/A',
+    customerName = 'N/A',
+    intakeDate = 'N/A',
+    bagWeights = [],
+    weightUnit = 'lb',
+    labelWidthMm = 50,
+  } = options;
+
+  const bagCount = Math.max(1, Number(bags) || 1);
+  const orderUrl = buildOrderUrl(laundryId, orderId, userDomain);
+
+  // Map bagNumber -> weight for quick lookup (weight is optional per bag)
+  const weightByBag = new Map(
+    (bagWeights || [])
+      .filter((b) => b && b.bagNumber != null && b.weight != null && b.weight !== '')
+      .map((b) => [Number(b.bagNumber), b.weight])
+  );
+
+  // Generate a single bag label
+  const generateLabel = (bagNumber, totalBags) => {
+    const weight = weightByBag.get(bagNumber);
+    const weightLine = weight != null
+      ? `<div class="bt-weight">${weight} ${weightUnit}</div>`
+      : '';
+
+    return `
+      <div class="bag-label">
+        <div class="bt-store">${storeName}</div>
+        <div class="bt-bag">Bag ${bagNumber} of ${totalBags}</div>
+        <div class="bt-order">Order ${orderId}</div>
+        <div class="bt-customer">${customerName}</div>
+        <div class="bt-date">${intakeDate}</div>
+        ${weightLine}
+        <div class="bt-qr" id="bag-qr-${bagNumber}"></div>
+      </div>
+    `;
+  };
+
+  const labelSections = Array.from({ length: bagCount }, (_, i) =>
+    generateLabel(i + 1, bagCount)
+  ).join('');
+
+  // One QR per label, all pointing at the same employee order URL
+  const qrScripts = Array.from({ length: bagCount }, (_, i) => `
+    QRCode.toDataURL('${orderUrl}', { width: 110, height: 110, errorCorrectionLevel: 'M' }, function(err, url) {
+      var qrContainer = document.getElementById('bag-qr-${i + 1}');
+      if (err) {
+        console.error('QR Code generation failed:', err);
+        if (qrContainer) qrContainer.innerHTML = '<p>QR unavailable</p>';
+      } else {
+        var img = document.createElement('img');
+        img.src = url;
+        if (qrContainer) qrContainer.appendChild(img);
+      }
+    });
+  `).join('\n');
+
+  return `
+    <html>
+      <head>
+        <title>Bag Tags</title>
+        <style>
+          @page {
+            size: auto;
+            margin: 0;
+          }
+          body {
+            font-family: "Courier New", monospace;
+            margin: 0;
+            padding: 0;
+            font-weight: bold;
+          }
+          .bag-label {
+            width: ${labelWidthMm}mm;
+            box-sizing: border-box;
+            padding: 6px 4px;
+            text-align: center;
+            page-break-after: always;
+          }
+          .bag-label:last-child {
+            page-break-after: auto;
+          }
+          .bt-store {
+            font-size: 13px;
+            margin-bottom: 2px;
+          }
+          .bt-bag {
+            font-size: 15px;
+            margin: 2px 0;
+          }
+          .bt-order {
+            font-size: 12px;
+          }
+          .bt-customer {
+            font-size: 12px;
+          }
+          .bt-date {
+            font-size: 11px;
+          }
+          .bt-weight {
+            font-size: 12px;
+            margin-top: 2px;
+          }
+          .bt-qr {
+            margin-top: 4px;
+          }
+          .bt-qr img {
+            width: 110px;
+            height: 110px;
+          }
+        </style>
+      </head>
+      <body>
+        ${labelSections}
+        <script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js"></script>
+        <script>
+          ${qrScripts}
+        </script>
+      </body>
+    </html>
+  `;
+}

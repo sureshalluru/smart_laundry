@@ -23,9 +23,10 @@ import {
     Badge
 } from "@chakra-ui/react";
 import { QRCodeSVG } from "qrcode.react";
-import { FaHistory, FaTicketAlt, FaReceipt, FaFileInvoice, FaUserTag, FaTag  } from "react-icons/fa";
+import { FaHistory, FaTicketAlt, FaReceipt, FaFileInvoice, FaUserTag, FaTag, FaBoxes  } from "react-icons/fa";
 import {NotificationButton} from "./SendNotification";
-import { buildOrderUrl } from "../utils/ticketPrint";
+import { buildOrderUrl, generateBagTagHtml } from "../utils/ticketPrint";
+import { printViaIframe } from "../utils/printUtils";
 import axios from "axios";
 
 const OrderActionsDrawer = ({ isOpen, onClose, order, handleOrderHistory, handlePrintTicket, handlePrintReceipt, setSelectedOrder, setInvoiceModalOpen, setPaymentInstructions, setSendEmail, laundryId }) => {
@@ -149,6 +150,35 @@ const OrderActionsDrawer = ({ isOpen, onClose, order, handleOrderHistory, handle
         }, 400);
     };
 
+    // Reprint one scannable bag tag per bag for this existing order. Tags are
+    // regenerated from the order's current bag count; each QR opens the same
+    // employee order page as the receipt QR (stable by orderId). Per-bag weights
+    // (if recorded) are fetched so tags show each bag's weight.
+    const printBagTags = async () => {
+        if (!order) return;
+        let bagWeights = [];
+        try {
+            const res = await axios.get(
+                `${process.env.REACT_APP_AWS_API_URL}/api/admin/order-bags`,
+                { params: { orderId: order.orderId, laundryId } }
+            );
+            bagWeights = res?.data?.body?.bags || [];
+        } catch (e) {
+            /* non-critical — print tags without weights if the fetch fails */
+        }
+        const htmlContent = generateBagTagHtml({
+            orderId: order.orderId,
+            laundryId,
+            userDomain: null, // uses window.location.origin fallback
+            bags: order.laundryBags || 1,
+            storeName: order.laundryName || 'Laundry',
+            customerName: order.customerName || 'Customer',
+            intakeDate: new Date().toLocaleDateString(),
+            bagWeights,
+        });
+        printViaIframe(htmlContent);
+    };
+
 
     if (!order) return null;
 
@@ -255,6 +285,16 @@ const OrderActionsDrawer = ({ isOpen, onClose, order, handleOrderHistory, handle
                                         size="md"
                                         onClick={printTag}
                                         aria-label="Print Tag"
+                                    />
+                                </Tooltip>
+
+                                <Tooltip label="Print Bag Tags" aria-label="Print Bag Tags Tooltip">
+                                    <IconButton
+                                        icon={<FaBoxes />}
+                                        colorScheme="teal"
+                                        size="md"
+                                        onClick={printBagTags}
+                                        aria-label="Print Bag Tags"
                                     />
                                 </Tooltip>
 
