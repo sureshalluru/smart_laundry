@@ -11,6 +11,9 @@ import {
   Flex,
   IconButton,
   Badge,
+  Input,
+  Wrap,
+  WrapItem,
 } from '@chakra-ui/react';
 import { CloseIcon } from '@chakra-ui/icons';
 import {
@@ -289,6 +292,92 @@ export default function UnifiedReviewPage({
           })}
         </Box>
       )}
+
+      {/* Tip selector — customer can choose a preset percentage or a custom amount */}
+      <Box
+        bg="white"
+        borderRadius="2xl"
+        p={4}
+        border="1px solid"
+        borderColor="gray.200"
+      >
+        <Text fontWeight="600" color="gray.700" mb={2}>Add a tip</Text>
+        <Wrap spacing={2}>
+          {[5, 10, 15, 20, 25].map((pct) => {
+            const isSelected = tip?.tipType === 'percentage'
+              && parseFloat(tip?.tipPercentage) === pct;
+            return (
+              <WrapItem key={pct}>
+                <Button
+                  size="sm"
+                  borderRadius="lg"
+                  variant={isSelected ? 'solid' : 'outline'}
+                  colorScheme="blue"
+                  onClick={() => setTip((prev) => ({
+                    ...prev,
+                    tipType: 'percentage',
+                    tipPercentage: pct,
+                    // tipAmount recomputed by the effect above from the taxable subtotal
+                  }))}
+                >
+                  {pct}%
+                </Button>
+              </WrapItem>
+            );
+          })}
+          <WrapItem>
+            <Button
+              size="sm"
+              borderRadius="lg"
+              variant={tip?.tipType === 'custom' ? 'solid' : 'outline'}
+              colorScheme="blue"
+              onClick={() => setTip((prev) => ({
+                ...prev,
+                tipType: 'custom',
+                tipPercentage: 0,
+                tipAmount: prev?.tipType === 'custom' ? prev.tipAmount : '',
+              }))}
+            >
+              Custom
+            </Button>
+          </WrapItem>
+          <WrapItem>
+            <Button
+              size="sm"
+              borderRadius="lg"
+              variant={tip?.tipType === 'noTip' ? 'solid' : 'outline'}
+              colorScheme="gray"
+              onClick={() => setTip((prev) => ({
+                ...prev,
+                tipType: 'noTip',
+                tipPercentage: 0,
+                tipAmount: '0.00',
+              }))}
+            >
+              No Tip
+            </Button>
+          </WrapItem>
+        </Wrap>
+
+        {tip?.tipType === 'custom' && (
+          <HStack mt={3} maxW="200px">
+            <Text color="gray.600">$</Text>
+            <Input
+              type="number"
+              min="0"
+              step="0.01"
+              placeholder="0.00"
+              value={tip?.tipAmount ?? ''}
+              onChange={(e) => {
+                const v = e.target.value;
+                setTip((prev) => ({ ...prev, tipType: 'custom', tipPercentage: 0, tipAmount: v }));
+              }}
+              size="sm"
+              borderRadius="lg"
+            />
+          </HStack>
+        )}
+      </Box>
 
       {/* Grand total section */}
       <Box

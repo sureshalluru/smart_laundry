@@ -70,25 +70,42 @@ async def instore_payment(
             sub_total = float(order["sub_total"] or 0)
             total_cost = float(order["total_cost"] or 0)
 
-            # Tip
-            tip_type = tip_payload.get("tipType", "noTip")
-            tip_amount = float(tip_payload.get("tipAmount", 0) or 0)
-            if tip_type == "percentage":
-                pct = float(tip_payload.get("tipPercentage", 0) or 0)
-                tip_amount = round(sub_total * (pct / 100), 2)
+            # Tip.
+            # IMPORTANT: only (re)compute and overwrite the tip when the payment
+            # request explicitly carries a tip_payload. Historically this path
+            # defaulted to tipType="noTip"/amount=0 and then blindly UPSERTed the
+            # order_tips row, which WIPED a tip the customer had already selected
+            # at order creation (grand_total would drop back to the subtotal).
+            # When no tip is sent with the payment, preserve the order's existing
+            # stored tip instead.
+            has_tip_payload = bool(tip_payload) and (
+                "tipType" in tip_payload or "tipAmount" in tip_payload
+                or "tipPercentage" in tip_payload
+            )
+
+            if has_tip_payload:
+                tip_type = tip_payload.get("tipType", "noTip")
+                tip_amount = float(tip_payload.get("tipAmount", 0) or 0)
+                if tip_type == "percentage":
+                    pct = float(tip_payload.get("tipPercentage", 0) or 0)
+                    tip_amount = round(sub_total * (pct / 100), 2)
+
+                # Overwrite only when the caller actually provided tip data.
+                cur.execute("""
+                    INSERT INTO orders.order_tips (order_id, tip_amount, tip_percentage, tip_type, tip_method, tip_receiver_id)
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (order_id) DO UPDATE SET
+                        tip_amount = EXCLUDED.tip_amount, tip_percentage = EXCLUDED.tip_percentage,
+                        tip_type = EXCLUDED.tip_type, tip_method = EXCLUDED.tip_method,
+                        tip_receiver_id = EXCLUDED.tip_receiver_id
+                """, (orderId, tip_amount, tip_payload.get("tipPercentage"),
+                      tip_type, tip_payload.get("tipMethod"), empId))
+            else:
+                # No tip in the payment request: keep whatever the order already
+                # has (captured at order creation) so paying does not erase it.
+                tip_amount = float(order["tip_amount"] or 0)
 
             grand_total = round(total_cost + tip_amount, 2)
-
-            # Update tip
-            cur.execute("""
-                INSERT INTO orders.order_tips (order_id, tip_amount, tip_percentage, tip_type, tip_method, tip_receiver_id)
-                VALUES (%s, %s, %s, %s, %s, %s)
-                ON CONFLICT (order_id) DO UPDATE SET
-                    tip_amount = EXCLUDED.tip_amount, tip_percentage = EXCLUDED.tip_percentage,
-                    tip_type = EXCLUDED.tip_type, tip_method = EXCLUDED.tip_method,
-                    tip_receiver_id = EXCLUDED.tip_receiver_id
-            """, (orderId, tip_amount, tip_payload.get("tipPercentage"),
-                  tip_type, tip_payload.get("tipMethod"), empId))
 
             # Process payment updates (new payments to add)
             for p in payment_updates:
