@@ -147,3 +147,104 @@ def compute_delivery_fee(mode, distance_mi=None, config=None) -> dict:
     result["fee"] = fee
     result["applies"] = fee > 0
     return result
+
+
+# ─── Distance resolver (does the I/O; kept separate from the pure math) ──────
+#
+# This is the only part of the module that touches the DB / network. It reuses
+# the existing geocode cache (routes.geocode_cache) and the synchronous Google
+# geocoder from the Uber integration, so 'distance' mode adds no new external
+# dependency beyond what the app already uses. Everything above stays pure.
+
+import logging as _logging
+
+_logger = _logging.getLogger(__name__)
+
+
+def _geocode_sync(address):
+    """Geocode an address to (lat, lng) using the shared Google geocoder.
+
+    Returns (lat, lng) or None on any failure (missing key, no result,
+    network error). Never raises to the caller.
+    """
+    if not address or not str(address).strip():
+        return None
+    try:
+        from app.routes.uber import get_coordinates_from_address
+        return get_coordinates_from_address(address)
+    except Exception as e:
+        _logger.warning(f"delivery_fee geocode failed for {address!r}: {e}")
+        return None
+
+
+def resolve_distance_miles(conn, shop_row, address_text):
+    """Resolve straight-line miles between the shop and a delivery address.
+
+    Shop coordinates come from shop_row.latitude/longitude when present; else
+    the shop's street/city/state/zip is geocoded once and persisted back onto
+    laundry_shops (so subsequent orders skip the geocode). The delivery address
+    is geocoded through the existing routes.geocode_cache.
+
+    Args:
+        conn: an open DB connection (caller owns the transaction).
+        shop_row: a dict-like row with latitude/longitude and the address parts
+                  (street, city, state, zip_code) + laundry_id.
+        address_text: the customer's delivery address string.
+
+    Returns:
+        float miles, or None if either endpoint can't be resolved (caller then
+        fails open to a $0 fee). Never raises.
+    """
+    try:
+        from app.database import get_cursor
+        from app.routes.route_planning import _get_cached_geocode, _save_geocode_cache
+    except Exception as e:
+        _logger.warning(f"delivery_fee resolver imports failed: {e}")
+        return None
+
+    # ── Shop coordinates (use stored lat/lng, else geocode once + persist) ──
+    shop_lat = _coord(shop_row.get("latitude"))
+    shop_lng = _coord(shop_row.get("longitude"))
+    if shop_lat is None or shop_lng is None:
+        parts = [shop_row.get("street"), shop_row.get("city"),
+                 shop_row.get("state"), shop_row.get("zip_code")]
+        shop_addr = ", ".join(str(p).strip() for p in parts if p and str(p).strip())
+        coords = _geocode_sync(shop_addr) if shop_addr else None
+        if not coords:
+            return None
+        shop_lat, shop_lng = coords[0], coords[1]
+        # Persist onto the shop so we don't geocode it again next time.
+        lid = shop_row.get("laundry_id")
+        if lid is not None:
+            try:
+                cur = get_cursor(conn)
+                cur.execute(
+                    "UPDATE shop.laundry_shops SET latitude = %s, longitude = %s WHERE laundry_id = %s",
+                    (shop_lat, shop_lng, lid),
+                )
+            except Exception as e:
+                _logger.warning(f"delivery_fee: failed to persist shop coords for {lid}: {e}")
+
+    # ── Delivery address coordinates (via the shared geocode cache) ─────────
+    addr = (address_text or "").strip()
+    if not addr:
+        return None
+    cust_lat = cust_lng = None
+    try:
+        cached = _get_cached_geocode(conn, addr)
+    except Exception:
+        cached = None
+    if cached:
+        cust_lat = _coord(cached.get("latitude"))
+        cust_lng = _coord(cached.get("longitude"))
+    if cust_lat is None or cust_lng is None:
+        coords = _geocode_sync(addr)
+        if not coords:
+            return None
+        cust_lat, cust_lng = coords[0], coords[1]
+        try:
+            _save_geocode_cache(conn, addr, cust_lat, cust_lng)
+        except Exception:
+            pass  # caching is best-effort
+
+    return haversine_miles(shop_lat, shop_lng, cust_lat, cust_lng)

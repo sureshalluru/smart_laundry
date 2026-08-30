@@ -79,6 +79,70 @@ async def check_phone(
         }
 
 
+@router.get("/quote-delivery-fee")
+async def quote_delivery_fee(
+    laundryId: str = Query(...),
+    address: str = Query(""),
+    dropoffService: str = Query("LaundryDriver"),
+):
+    """Quote the delivery fee for an in-progress order (Phase 3, pre-login).
+
+    The customer review screen calls this as the address/dropoff option change,
+    so the fee shows as its own line before payment. Read-only; never raises to
+    the caller — a lookup failure yields a $0 quote so checkout is never blocked.
+
+    Returns {"status","mode","applies","distanceMi","fee"}.
+    """
+    empty = {"status": "success", "mode": "none", "applies": False, "distanceMi": None, "fee": 0.0}
+    try:
+        from app.services.delivery_fee import compute_delivery_fee, resolve_distance_miles
+
+        with get_db() as conn:
+            cur = get_cursor(conn)
+            cur.execute("""
+                SELECT laundry_id, delivery_fee_mode, delivery_fee_flat,
+                       delivery_fee_base, delivery_fee_per_mile, delivery_fee_free_radius_mi,
+                       delivery_fee_max, delivery_fee_road_factor,
+                       latitude, longitude, street, city, state, zip_code
+                FROM shop.laundry_shops WHERE laundry_id = %s
+            """, (laundryId,))
+            shop = cur.fetchone()
+            if not shop:
+                return empty
+
+            mode = (shop.get("delivery_fee_mode") or "none").strip().lower()
+            # Uber prices the dropoff leg itself — don't double-charge.
+            if (dropoffService or "").strip().lower() == "uber":
+                return empty
+            if mode == "none":
+                return empty
+
+            cfg = {
+                "flat": shop.get("delivery_fee_flat"),
+                "base": shop.get("delivery_fee_base"),
+                "per_mile": shop.get("delivery_fee_per_mile"),
+                "free_radius_mi": shop.get("delivery_fee_free_radius_mi"),
+                "max_cap": shop.get("delivery_fee_max"),
+                "road_factor": shop.get("delivery_fee_road_factor"),
+            }
+
+            distance_mi = None
+            if mode == "distance":
+                distance_mi = resolve_distance_miles(conn, shop, address)
+
+            result = compute_delivery_fee(mode, distance_mi=distance_mi, config=cfg)
+            return {
+                "status": "success",
+                "mode": result["mode"],
+                "applies": result["applies"],
+                "distanceMi": result["distance_mi"],
+                "fee": result["fee"],
+            }
+    except Exception as e:
+        logger.warning(f"quote-delivery-fee failed (laundry {laundryId}): {e}")
+        return empty
+
+
 @router.post("/place-order")
 async def customer_place_order(
     body: dict = Body(...),
@@ -270,6 +334,23 @@ async def customer_place_order(
             except Exception as promo_err:
                 logger.warning(f"Promo application error: {promo_err}")
 
+        # Server-authoritative percentage tip.
+        # The client is supposed to send the computed dollar tipAmount, but some
+        # flows submitted a percentage tip (tipType='percentage', tipPercentage>0)
+        # with tipAmount=0 — which stored a "5%" tip worth $0. When the client
+        # sends a percentage but no dollar amount, derive it here from the
+        # post-discount subtotal (total_cost), matching how the review screen and
+        # the recompute/payment paths compute it. A client-sent custom/explicit
+        # amount is left untouched.
+        try:
+            if str(tip_data.get("tipType") or "").strip().lower() == "percentage":
+                _pct = float(str(tip_data.get("tipPercentage") or 0) or 0)
+                if _pct > 0 and tip_amount <= 0:
+                    tip_amount = round(total_cost * (_pct / 100), 2)
+                    grand_total = round(total_cost + tip_amount, 2)
+        except Exception as tip_err:
+            logger.warning(f"Percentage tip derivation error: {tip_err}")
+
         # Apply tax if configured for this laundry
         tax_amount = 0
         try:
@@ -283,6 +364,48 @@ async def customer_place_order(
                 grand_total = round(total_cost + tip_amount + tax_amount, 2)
         except Exception as tax_err:
             logger.warning(f"Tax calculation error: {tax_err}")
+
+        # Distance/flat delivery fee (Phase 3). Computed server-side (never
+        # trusted from the client), snapshotted onto the order, and folded into
+        # grand_total. Gated by the tenant's delivery_fee_mode; skipped entirely
+        # when the tenant is on 'none' or the dropoff leg is Uber (Uber prices
+        # that leg itself). Fails open to $0 so a geocode miss never blocks the
+        # order.
+        delivery_fee = 0.0
+        delivery_distance_mi = None
+        try:
+            from app.services.delivery_fee import compute_delivery_fee, resolve_distance_miles
+            with get_db() as conn_df:
+                cur_df = get_cursor(conn_df)
+                cur_df.execute("""
+                    SELECT laundry_id, delivery_fee_mode, delivery_fee_flat,
+                           delivery_fee_base, delivery_fee_per_mile, delivery_fee_free_radius_mi,
+                           delivery_fee_max, delivery_fee_road_factor,
+                           latitude, longitude, street, city, state, zip_code
+                    FROM shop.laundry_shops WHERE laundry_id = %s
+                """, (laundry_id,))
+                _shop_df = cur_df.fetchone()
+                _mode = ((_shop_df or {}).get("delivery_fee_mode") or "none").strip().lower()
+                _dropoff_uber = (dropoff_service or "").strip().lower() == "uber"
+                if _shop_df and _mode != "none" and not _dropoff_uber:
+                    _cfg = {
+                        "flat": _shop_df.get("delivery_fee_flat"),
+                        "base": _shop_df.get("delivery_fee_base"),
+                        "per_mile": _shop_df.get("delivery_fee_per_mile"),
+                        "free_radius_mi": _shop_df.get("delivery_fee_free_radius_mi"),
+                        "max_cap": _shop_df.get("delivery_fee_max"),
+                        "road_factor": _shop_df.get("delivery_fee_road_factor"),
+                    }
+                    _dist = None
+                    if _mode == "distance":
+                        _dist = resolve_distance_miles(conn_df, _shop_df, address_text)
+                    _fee_res = compute_delivery_fee(_mode, distance_mi=_dist, config=_cfg)
+                    delivery_fee = float(_fee_res["fee"] or 0)
+                    delivery_distance_mi = _fee_res["distance_mi"]
+                    if delivery_fee > 0:
+                        grand_total = round(grand_total + delivery_fee, 2)
+        except Exception as df_err:
+            logger.warning(f"Delivery fee calculation error: {df_err}")
 
         # Apply reward credits as discount (FIFO — oldest first)
         credit_discount = 0
@@ -347,12 +470,13 @@ async def customer_place_order(
                     laundry_bags, special_instructions, coupon, frequency,
                     sub_total, discounted_price, total_cost, grand_total, tax_amount,
                     pricing_type, pay_by_invoice, pickup_service, dropoff_service,
+                    delivery_fee, delivery_distance_mi,
                     auto_generated, is_reviewed, cancel_reason,
                     created_at, updated_at
                 ) VALUES (
                     %s,%s,%s,%s,%s,'OrderSubmitted','Active','Unpaid',
                     %s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,
-                    %s,%s,%s,%s,FALSE,FALSE,'',NOW(),NOW()
+                    %s,%s,%s,%s,%s,%s,FALSE,FALSE,'',NOW(),NOW()
                 )
             """, (
                 order_id, laundry_id, customer_id, address_id, order_type,
@@ -360,6 +484,7 @@ async def customer_place_order(
                 laundry_bags, special_instructions, coupon, frequency,
                 sub_total, discounted_price, total_cost, grand_total, tax_amount,
                 pricing_type, pay_by_invoice, pickup_service, dropoff_service,
+                delivery_fee, delivery_distance_mi,
             ))
 
             for svc in services:

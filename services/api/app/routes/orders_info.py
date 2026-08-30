@@ -514,6 +514,20 @@ async def instore_place_order(
             if grand_total == 0:
                 grand_total = round(total_cost + tip_amount, 2)
 
+        # Server-authoritative percentage tip (same guard as the online create):
+        # if the client sent a percentage tip (tipType='percentage',
+        # tipPercentage>0) but a $0 tipAmount, derive the dollar amount here from
+        # total_cost so a "5%" tip is never stored as $0. An explicit custom
+        # amount is left untouched.
+        try:
+            if str(tip_data.get("tipType") or "").strip().lower() == "percentage":
+                _pct = float(str(tip_data.get("tipPercentage") or 0) or 0)
+                if _pct > 0 and tip_amount <= 0:
+                    tip_amount = round(total_cost * (_pct / 100), 2)
+                    grand_total = round(total_cost + tip_amount, 2)
+        except Exception as tip_err:
+            logger.warning(f"Percentage tip derivation error (instore create): {tip_err}")
+
         # Apply tax if configured
         tax_amount = 0
         try:

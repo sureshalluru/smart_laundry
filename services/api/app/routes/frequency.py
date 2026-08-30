@@ -240,6 +240,17 @@ async def process_frequencies():
                 tip_type = sub.get("freq_tip_type") or ""
                 tip_method = sub.get("freq_tip_method") or ""
 
+                # Server-authoritative percentage tip: if the subscription stored a
+                # percentage but a $0 amount (or the recurring total differs from
+                # when it was set up), derive the dollar amount from this order's
+                # total so recurring orders never carry a "5%" tip worth $0.
+                if (str(tip_type).strip().lower() == "percentage"
+                        and tip_percentage > 0 and tip_amount <= 0):
+                    try:
+                        tip_amount = round(float(order_total or 0) * (tip_percentage / 100), 2)
+                    except Exception as _ftip_err:
+                        logger.warning(f"Recurring percentage tip derivation error for {order_id}: {_ftip_err}")
+
                 if tip_amount > 0 or tip_percentage > 0:
                     with get_db() as conn:
                         cur = get_cursor(conn)
