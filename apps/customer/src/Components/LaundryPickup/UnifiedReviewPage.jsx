@@ -20,7 +20,7 @@ import {
   FaEdit,
 } from 'react-icons/fa';
 import { format, parse } from 'date-fns';
-import { getCartSubtotal, getAddonsTotal, getBilledWeight } from './cartUtils';
+import { getCartSubtotal, getAddonsTotal, getBilledWeight, billedQuantity } from './cartUtils';
 
 /**
  * UnifiedReviewPage — Review step for the unified cart order flow.
@@ -139,7 +139,9 @@ export default function UnifiedReviewPage({
         ) : (
           <VStack spacing={3} align="stretch" divider={<Divider />}>
             {items.map((item) => {
-              const lineTotal = item.quantity * item.price;
+              const billedQty = billedQuantity(item);
+              const lineTotal = billedQty * item.price;
+              const wasFloored = item.inputWeight && billedQty > (item.quantity || 0);
               return (
                 <Flex key={item.serviceId} justify="space-between" align="center">
                   <VStack align="flex-start" spacing={0} flex="1">
@@ -148,9 +150,14 @@ export default function UnifiedReviewPage({
                     </Text>
                     <Text fontSize="xs" color="gray.500">
                       {item.inputWeight
-                        ? `${item.quantity} lbs × $${item.price.toFixed(2)}/lb = $${lineTotal.toFixed(2)}`
+                        ? `${billedQty} lbs × $${item.price.toFixed(2)}/lb = $${lineTotal.toFixed(2)}`
                         : `${item.quantity} × $${item.price.toFixed(2)} = $${lineTotal.toFixed(2)}`}
                     </Text>
+                    {wasFloored && (
+                      <Text fontSize="xs" color="orange.600">
+                        Billed at {billedQty} lb minimum (you entered {item.quantity} lb)
+                      </Text>
+                    )}
                   </VStack>
                   <HStack spacing={2}>
                     <Text fontWeight="bold" fontSize="sm" color="blue.600">

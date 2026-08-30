@@ -2929,16 +2929,26 @@ const { open: openCancelUber, ModalUI: CancelUberModal } = useCancelUberHandoff(
                                         {(selectedOrderDetails.services?.length > 0 || selectedOrderDetails.products?.length > 0 || selectedOrderDetails.addons?.length > 0) && (
                                             <Box mb={1} pb={2} borderBottom="1px dashed" borderColor="gray.300">
                                                 <Text fontSize="xs" fontWeight="bold" color="gray.600" mb={1}>Cart Breakdown:</Text>
-                                                {selectedOrderDetails.services?.map((svc, idx) => (
-                                                    <Flex key={`svc-${idx}`} justify="space-between" align="center" mb={0.5}>
-                                                        <Text fontSize="xs" color="gray.600" noOfLines={1} maxW="60%">
-                                                            {svc.service || svc.serviceName} × {svc.weightOrCount}
-                                                        </Text>
-                                                        <Text fontSize="xs" color="gray.600">
-                                                            ${roundToTwo((svc.servicePrice || 0) * (svc.weightOrCount || 0))}
-                                                        </Text>
-                                                    </Flex>
-                                                ))}
+                                                {selectedOrderDetails.services?.map((svc, idx) => {
+                                                    // Use billedWeight (backend-computed) so floored orders
+                                                    // reconcile with the stored subtotal. For legacy/un-floored
+                                                    // orders the backend returns billedWeight === weightOrCount,
+                                                    // so the display stays truthful to what was charged.
+                                                    const billed = (svc.billedWeight != null) ? svc.billedWeight : svc.weightOrCount;
+                                                    const wasFloored = (svc.billedWeight != null) &&
+                                                        (parseFloat(svc.billedWeight) !== parseFloat(svc.weightOrCount));
+                                                    return (
+                                                        <Flex key={`svc-${idx}`} justify="space-between" align="center" mb={0.5}>
+                                                            <Text fontSize="xs" color="gray.600" noOfLines={1} maxW="60%">
+                                                                {svc.service || svc.serviceName} × {billed}
+                                                                {wasFloored ? ' (min)' : ''}
+                                                            </Text>
+                                                            <Text fontSize="xs" color="gray.600">
+                                                                ${roundToTwo((svc.servicePrice || 0) * (billed || 0))}
+                                                            </Text>
+                                                        </Flex>
+                                                    );
+                                                })}
                                                 {selectedOrderDetails.products?.map((prod, idx) => (
                                                     <Flex key={`prod-${idx}`} justify="space-between" align="center" mb={0.5}>
                                                         <Text fontSize="xs" color="gray.600" noOfLines={1} maxW="60%">
@@ -2955,7 +2965,7 @@ const { open: openCancelUber, ModalUI: CancelUberModal } = useCancelUberHandoff(
                                                     // matching how the backend computes the total.
                                                     const billedWeight = (selectedOrderDetails.services || [])
                                                         .filter((s) => s.inputWeight === true || s.inputWeight === 'true')
-                                                        .reduce((sum, s) => sum + (parseFloat(s.weightOrCount) || 0), 0);
+                                                        .reduce((sum, s) => sum + (parseFloat(s.billedWeight != null ? s.billedWeight : s.weightOrCount) || 0), 0);
                                                     return (selectedOrderDetails.addons || []).map((addon, idx) => {
                                                         const unit = parseFloat(addon.unitPrice) || 0;
                                                         const qty = addon.pricingBasis === 'per_pound'

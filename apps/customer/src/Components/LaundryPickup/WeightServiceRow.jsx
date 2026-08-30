@@ -54,6 +54,9 @@ export default function WeightServiceRow({ service, cartItem, dispatch }) {
         price: parseFloat(service.price),
         inputWeight: true,
         quantity: weight,
+        // Carry the effective minimum so the cart/review can floor the billed
+        // total to match what the server will charge (Phase 2).
+        minBillableWeight: minWeight > 0 ? minWeight : null,
       },
     });
   };

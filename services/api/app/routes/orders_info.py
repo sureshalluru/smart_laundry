@@ -1836,24 +1836,62 @@ def get_single_order(cur, laundry_id, order_id):
         cur.execute("SELECT service_name, input_weight FROM shop.laundry_services WHERE laundry_id = %s", (laundry_id or order["laundry_id"],))
         catalog_map = {r["service_name"]: r["input_weight"] for r in cur.fetchall()}
 
-        services = []
-        for r in services_rows:
-            services.append({
-                "id": r["id"],
-                "orderId": r["order_id"],
-                "service": r["service_name"],
-                "serviceName": r["service_name"],
-                "servicePrice": float(r["service_price"]) if r["service_price"] else 0,
-                "weightOrCount": float(r["weight_or_count"]) if r["weight_or_count"] else 0,
-                "inputWeight": catalog_map.get(r["service_name"], False),
-            })
-
         cur.execute("SELECT * FROM orders.order_products WHERE order_id = %s", (order_id,))
         products = [serialize_row(r) for r in cur.fetchall()]
 
         # Add-ons applied to this order (Phase 2c/2d) — for admin display + editing.
         cur.execute("SELECT id, addon_id, addon_name, pricing_basis, unit_price, quantity FROM orders.order_addons WHERE order_id = %s ORDER BY id", (order_id,))
         addons = [serialize_row(r) for r in cur.fetchall()]
+
+        # Determine whether THIS order was actually billed with the minimum applied,
+        # by comparing the stored sub_total to the raw (un-floored) sum. This keeps
+        # legacy/un-floored orders showing actual weight (truthful to what was
+        # charged) while floored orders show the billed weight — so the drawer's
+        # line items always reconcile with the stored subtotal (Phase 2).
+        def _raw_line(r):
+            return float(r["service_price"] or 0) * float(r["weight_or_count"] or 0)
+
+        def _floored_line(r):
+            iw = catalog_map.get(r["service_name"], False)
+            actual = float(r["weight_or_count"] or 0)
+            mw = float(r["min_billable_weight"]) if r.get("min_billable_weight") is not None else 0.0
+            qty = mw if (iw and mw > 0 and actual < mw) else actual
+            return float(r["service_price"] or 0) * qty, qty
+
+        _stored_sub = round(float(order.get("sub_total") or 0), 2)
+        _prod_sum = sum(float(p.get("productPrice") or 0) * float(p.get("productCount") or 0) for p in products)
+        _addon_sum = 0.0
+        _floored_weight_total = sum(_floored_line(r)[1] for r in services_rows if catalog_map.get(r["service_name"], False))
+        for a in addons:
+            basis = a.get("pricingBasis")
+            unit = float(a.get("unitPrice") or 0)
+            if basis == "per_pound":
+                _addon_sum += unit * _floored_weight_total
+            else:
+                _addon_sum += unit * float(a.get("quantity") or 0)
+        _floored_sub = round(sum(_floored_line(r)[0] for r in services_rows) + _prod_sum + _addon_sum, 2)
+        _raw_sub = round(sum(_raw_line(r) for r in services_rows) + _prod_sum
+                         + sum((float(a.get("unitPrice") or 0) * (0 if a.get("pricingBasis") == "per_pound" else float(a.get("quantity") or 0))) for a in addons), 2)
+        # Order was floored iff the stored subtotal matches the floored computation
+        # and differs from the raw one.
+        _was_floored = (_floored_sub != _raw_sub) and (abs(_stored_sub - _floored_sub) < abs(_stored_sub - _raw_sub))
+
+        services = []
+        for r in services_rows:
+            actual = float(r["weight_or_count"]) if r["weight_or_count"] else 0
+            iw = catalog_map.get(r["service_name"], False)
+            _, floored_qty = _floored_line(r)
+            billed = floored_qty if _was_floored else actual
+            services.append({
+                "id": r["id"],
+                "orderId": r["order_id"],
+                "service": r["service_name"],
+                "serviceName": r["service_name"],
+                "servicePrice": float(r["service_price"]) if r["service_price"] else 0,
+                "weightOrCount": actual,
+                "billedWeight": billed,
+                "inputWeight": iw,
+            })
 
         cur.execute("SELECT * FROM orders.order_payments WHERE order_id = %s", (order_id,))
         payments = [serialize_row(r) for r in cur.fetchall()]

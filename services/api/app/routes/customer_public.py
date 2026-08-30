@@ -168,17 +168,81 @@ async def customer_place_order(
             # Create a single service entry for bag pricing
             services = [{"serviceName": "Per Bag Service", "servicePrice": bag_price, "weightOrCount": laundry_bags}]
         elif pricing_type == "mixed" or pricing_type == "per_pound" or pricing_type == "per_item":
-            # Per-pound or mixed pricing: calculate from services array
-            if sub_total == 0 and services:
+            # Per-pound or mixed pricing.
+            #
+            # Phase 2: if the tenant applies a minimum billable weight to ONLINE
+            # orders, recompute the subtotal server-side (flooring per-pound
+            # services and pricing per-pound add-ons on the floored weight) so the
+            # stored/charged total matches the minimum. When the tenant flag is
+            # off (or scoped to in-store only) this is skipped and the client's
+            # subtotal is trusted exactly as before.
+            _online_min = False
+            try:
+                from app.services.pricing import minimum_applies
+                with get_db() as _conn_mw:
+                    _cur_mw = get_cursor(_conn_mw)
+                    _cur_mw.execute("SELECT min_weight_enabled, min_weight_scope FROM shop.laundry_shops WHERE laundry_id = %s", (laundry_id,))
+                    _mw = _cur_mw.fetchone() or {}
+                    _online_min = minimum_applies(bool(_mw.get("min_weight_enabled")), _mw.get("min_weight_scope"), "Online")
+            except Exception as _mw_err:
+                logger.warning(f"min_weight flag lookup failed (customer create): {_mw_err}")
+
+            if _online_min and services:
+                from app.services.pricing import compute_order_billing
+                with get_db() as _conn_cat:
+                    _cur_cat = get_cursor(_conn_cat)
+                    _cur_cat.execute("""
+                        SELECT service_name, input_weight, min_billable_weight
+                        FROM shop.laundry_services WHERE laundry_id = %s AND is_active = TRUE
+                    """, (laundry_id,))
+                    _catalog = {r["service_name"].strip().lower(): r for r in _cur_cat.fetchall()}
+                _svc_dicts = []
                 for svc in services:
-                    price = float(str(svc.get("servicePrice") or svc.get("price", 0) or 0))
-                    weight = float(str(svc.get("weightOrCount") or svc.get("weight", 0) or 0))
-                    sub_total += price * weight
-                sub_total = round(sub_total, 2)
-            if total_cost == 0:
+                    nm = (svc.get("serviceName") or svc.get("service") or svc.get("name", "") or "").strip().lower()
+                    _cat = _catalog.get(nm)
+                    _svc_dicts.append({
+                        "service_price": svc.get("servicePrice") or svc.get("price", 0) or 0,
+                        "weight_or_count": svc.get("weightOrCount") or svc.get("weight", 0) or 0,
+                        "input_weight": _cat["input_weight"] if _cat else svc.get("inputWeight"),
+                        "min_billable_weight": _cat["min_billable_weight"] if _cat else None,
+                    })
+                # Per-pound add-ons (from selected_addons) price on the floored weight.
+                _addon_dicts = []
+                if selected_addons:
+                    with get_db() as _conn_ad:
+                        _cur_ad = get_cursor(_conn_ad)
+                        for a in selected_addons:
+                            _aid = a.get("addonId") or a.get("addon_id")
+                            if not _aid:
+                                continue
+                            _cur_ad.execute("""
+                                SELECT pricing_basis, unit_price FROM shop.laundry_addons
+                                WHERE addon_id = %s AND laundry_id = %s AND is_active = TRUE
+                            """, (_aid, laundry_id))
+                            _acat = _cur_ad.fetchone()
+                            if not _acat:
+                                continue
+                            _addon_dicts.append({
+                                "pricing_basis": _acat["pricing_basis"],
+                                "unit_price": _acat["unit_price"],
+                                "quantity": a.get("quantity") or a.get("qty"),
+                            })
+                _billing = compute_order_billing(services=_svc_dicts, addons=_addon_dicts, apply_minimums=True)
+                sub_total = _billing["sub_total"]
                 total_cost = sub_total
-            if grand_total == 0:
                 grand_total = round(total_cost + tip_amount, 2)
+            else:
+                # Client-trusted totals (unchanged): recompute only if client sent 0.
+                if sub_total == 0 and services:
+                    for svc in services:
+                        price = float(str(svc.get("servicePrice") or svc.get("price", 0) or 0))
+                        weight = float(str(svc.get("weightOrCount") or svc.get("weight", 0) or 0))
+                        sub_total += price * weight
+                    sub_total = round(sub_total, 2)
+                if total_cost == 0:
+                    total_cost = sub_total
+                if grand_total == 0:
+                    grand_total = round(total_cost + tip_amount, 2)
 
         # Apply coupon discount if provided
         if coupon and sub_total > 0:

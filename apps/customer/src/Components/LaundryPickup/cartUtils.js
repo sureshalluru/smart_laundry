@@ -11,7 +11,25 @@
  */
 export function getCartSubtotal(items) {
   if (!items || items.length === 0) return 0;
-  return items.reduce((sum, item) => sum + item.quantity * item.price, 0);
+  return items.reduce((sum, item) => sum + billedQuantity(item) * item.price, 0);
+}
+
+/**
+ * Returns the quantity to BILL for a cart item. For weight-based items carrying
+ * a positive minBillableWeight, the billed quantity is floored at the minimum;
+ * otherwise the entered quantity is used. The item only carries minBillableWeight
+ * when the tenant has minimum billable weight enabled for this channel (Phase 2).
+ * @param {object} item - CartItem
+ * @returns {number} billed quantity
+ */
+export function billedQuantity(item) {
+  if (!item) return 0;
+  const qty = item.quantity || 0;
+  if (item.inputWeight === true && item.minBillableWeight != null) {
+    const min = parseFloat(item.minBillableWeight) || 0;
+    if (min > 0 && qty < min) return min;
+  }
+  return qty;
 }
 
 /**
@@ -59,7 +77,7 @@ export function getBilledWeight(items) {
   if (!items || items.length === 0) return 0;
   return items
     .filter(item => item.inputWeight === true)
-    .reduce((sum, item) => sum + item.quantity, 0);
+    .reduce((sum, item) => sum + billedQuantity(item), 0);
 }
 
 /**
