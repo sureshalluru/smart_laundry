@@ -1480,3 +1480,78 @@ async def save_addon_preferences(body: dict = Body(...)):
             DO UPDATE SET preferences = EXCLUDED.preferences, updated_at = now()
         """, (customer_id, laundry_id, prefs))
     return {"status": "success", "message": "Preferences saved"}
+
+
+# ─── Public host → tenant resolution (custom domains / subdomains) ──────────
+
+def _normalize_host(value):
+    """Reduce a URL or host string to a bare lowercase hostname.
+
+    Strips scheme, any path/query, a trailing port, and a leading 'www.'.
+    Returns '' for empty/None input.
+    """
+    if not value:
+        return ""
+    h = str(value).strip().lower()
+    # Drop scheme
+    if "://" in h:
+        h = h.split("://", 1)[1]
+    # Drop path / query
+    h = h.split("/", 1)[0]
+    # Drop port
+    h = h.split(":", 1)[0]
+    # Drop leading www.
+    if h.startswith("www."):
+        h = h[4:]
+    return h.strip()
+
+
+@router.get("/resolve-domain")
+async def resolve_domain(host: str = Query(...)):
+    """Map a request hostname to a laundry_id using each tenant's user_domain.
+
+    Called by the customer app before login so a tenant's own domain (or a
+    subdomain of it, e.g. book.fetchandfold.com) lands on the correct tenant
+    without hardcoding the mapping in the frontend.
+
+    Matching (case-insensitive, scheme/www/port-insensitive):
+      1. Exact host match against the stored domain.
+      2. Subdomain match — the incoming host ends with '.<stored_domain>'
+         (so book.fetchandfold.com resolves a tenant whose domain is
+         fetchandfold.com).
+
+    Returns {"status": "success", "laundryId": "<id>"} on a match, or
+    {"status": "not_found"} when no tenant claims the host. Never raises to the
+    caller — a lookup failure just yields not_found so the app can fall back.
+    """
+    incoming = _normalize_host(host)
+    if not incoming:
+        return {"status": "not_found"}
+
+    try:
+        with get_db() as conn:
+            cur = get_cursor(conn)
+            cur.execute("""
+                SELECT laundry_id, user_domain
+                FROM shop.laundry_shops
+                WHERE user_domain IS NOT NULL AND user_domain <> ''
+            """)
+            rows = cur.fetchall()
+
+        best = None  # (specificity, laundry_id) — prefer the longest domain match
+        for r in rows:
+            stored = _normalize_host(r["user_domain"])
+            if not stored:
+                continue
+            if incoming == stored or incoming.endswith("." + stored):
+                # Longer stored domain = more specific match wins.
+                score = len(stored)
+                if best is None or score > best[0]:
+                    best = (score, str(r["laundry_id"]))
+
+        if best:
+            return {"status": "success", "laundryId": best[1]}
+    except Exception as e:
+        logger.warning(f"resolve-domain lookup failed for host={host!r}: {e}")
+
+    return {"status": "not_found"}

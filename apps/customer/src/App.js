@@ -1,4 +1,5 @@
-import React, { Suspense } from 'react';
+import React, { Suspense, useState, useEffect } from 'react';
+import axios from 'axios';
 import './App.css';
 import { ChakraProvider } from '@chakra-ui/react';
 import { HelmetProvider } from 'react-helmet-async';
@@ -41,34 +42,88 @@ function PayRedirect() {
     return <Navigate to={`/${laundryId}/user/my-orders/?order_id=${orderId}&is_open=true`} replace />;
 }
 
-// Domain-to-laundry mapping for multi-tenant root redirect
+// Known custom-domain → laundry_id mapping.
+//
+// This is an INSTANT fallback for the tenants we know at build time, so their
+// sites resolve with zero network latency and zero risk. Any domain NOT listed
+// here is resolved at runtime from the database (each tenant's user_domain) via
+// the public /api/customer/resolve-domain endpoint — so onboarding a new tenant
+// domain no longer requires a code change here.
+function knownHostLaundryId(host) {
+    const h = (host || '').toLowerCase();
+    if (h.includes('spinandshine')) return '2';
+    if (h.includes('roundrock')) return '1';
+    if (h.includes('clean-rite') || h.includes('cleanrite') || h.includes('clean-ritehays')) return '11';
+    if (h.includes('fetchandfold')) return '1003';
+    return null; // unknown → resolve from DB
+}
+
+// Resolve an unknown host to a laundry_id from the database. Returns the id
+// string on a match, or null on no-match / error (caller decides the fallback).
+async function resolveHostFromApi(host) {
+    try {
+        const base = process.env.REACT_APP_AWS_API_URL || '';
+        const { data } = await axios.get(`${base}/api/customer/resolve-domain`, {
+            params: { host },
+        });
+        if (data && data.status === 'success' && data.laundryId) {
+            return String(data.laundryId);
+        }
+    } catch (e) {
+        // Network/lookup failure — fall back to default silently.
+    }
+    return null;
+}
+
+// Domain-to-laundry mapping for multi-tenant root redirect.
+// Known hosts redirect instantly; unknown hosts are resolved from the DB.
 function DomainRedirect() {
     const host = window.location.hostname.toLowerCase();
     // SLB product website domain
     if (host.includes('smartlaundrybasket')) return <Navigate to="/slb" replace />;
-    let laundryId = '1'; // default
-    if (host.includes('spinandshine')) laundryId = '2';
-    else if (host.includes('roundrock')) laundryId = '1';
-    else if (host.includes('clean-rite') || host.includes('cleanrite') || host.includes('clean-ritehays')) laundryId = '11';
-    // Add more domains here as you onboard laundries
+
+    const known = knownHostLaundryId(host);
+    const [laundryId, setLaundryId] = useState(known);
+
+    useEffect(() => {
+        if (known) return; // already resolved instantly
+        let active = true;
+        resolveHostFromApi(host).then((id) => {
+            if (active) setLaundryId(id || '1'); // default to 1 if unresolved
+        });
+        return () => { active = false; };
+    }, [host, known]);
+
+    if (!laundryId) return null; // brief wait while the DB lookup resolves
     return <Navigate to={`/${laundryId}/site`} replace />;
 }
 
 // SEO page redirect — for custom domains accessing /pickup-delivery/city or /faq without laundryId
 function DomainSEORedirect({ page }) {
     const host = window.location.hostname.toLowerCase();
-    let laundryId = '1'; // default
-    if (host.includes('spinandshine')) laundryId = '2';
-    else if (host.includes('roundrock')) laundryId = '1';
-    else if (host.includes('clean-rite') || host.includes('cleanrite') || host.includes('clean-ritehays')) laundryId = '11';
-    // Get the rest of the path after the page prefix
     const path = window.location.pathname;
+
+    const known = knownHostLaundryId(host);
+    const [laundryId, setLaundryId] = useState(known);
+
+    useEffect(() => {
+        if (known) return;
+        let active = true;
+        resolveHostFromApi(host).then((id) => {
+            if (active) setLaundryId(id || '1');
+        });
+        return () => { active = false; };
+    }, [host, known]);
+
+    if (!laundryId) return null;
     return <Navigate to={`/${laundryId}${path}`} replace />;
 }
 
-// Set page title immediately based on domain (before API loads)
-// For tenants on smartlaundrybasket.ai/{laundryId}/site, the LaundryContext
-// will set the correct title from the database once data loads.
+// Set page title immediately based on domain (before API loads).
+// This only covers the build-time-known hosts so the title is correct instantly.
+// For every other tenant (resolved from the DB), the LaundryContext sets the
+// correct title once its data loads — so unknown domains just show the default
+// briefly rather than a wrong name.
 (function setDomainTitle() {
     const host = window.location.hostname.toLowerCase();
     if (host.includes('spinandshine')) {
@@ -77,6 +132,8 @@ function DomainSEORedirect({ page }) {
         document.title = 'EcoSpin Round Rock Laundry - Free Pickup & Delivery';
     } else if (host.includes('clean-rite') || host.includes('cleanrite')) {
         document.title = 'Clean-Rite Hays - Free Pickup & Delivery';
+    } else if (host.includes('fetchandfold')) {
+        document.title = 'Fetch & Fold - Pickup & Delivery';
     } else if (host.includes('smartlaundrybasket')) {
         document.title = 'Smart Laundry Basket';
     }

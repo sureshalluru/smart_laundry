@@ -34,6 +34,7 @@ from app.migrations import backfill_employee_joining_date
 from app.migrations import add_order_min_weight
 from app.migrations import add_order_addons
 from app.migrations import add_customer_preferences
+from app.migrations import add_delivery_fee
 from app.migrations import backfill_customer_stats
 
 logger = logging.getLogger(__name__)
@@ -75,5 +76,6 @@ def run_all():
     add_order_min_weight.run()
     add_order_addons.run()
     add_customer_preferences.run()
+    add_delivery_fee.run()
     backfill_customer_stats.run()
     logger.info("All migrations complete.")

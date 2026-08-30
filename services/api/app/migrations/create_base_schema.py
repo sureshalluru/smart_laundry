@@ -277,7 +277,9 @@ def run():
                     pickup_status          VARCHAR(50) DEFAULT NULL::character varying,
                     dropoff_status         VARCHAR(50) DEFAULT NULL::character varying,
                     uber_info              JSONB,
-                    tax_amount             NUMERIC DEFAULT 0
+                    tax_amount             NUMERIC DEFAULT 0,
+                    delivery_fee           NUMERIC(10,2) DEFAULT 0,
+                    delivery_distance_mi   NUMERIC(10,2)
                 )
             """)
 
@@ -836,6 +838,16 @@ def run():
                     min_weight_enabled          BOOLEAN DEFAULT false NOT NULL,
                     addons_enabled              BOOLEAN DEFAULT false NOT NULL,
                     min_weight_scope            VARCHAR(20) DEFAULT 'all' NOT NULL,
+                    delivery_fee_mode           VARCHAR(10) DEFAULT 'none' NOT NULL,
+                    delivery_fee_enabled        BOOLEAN DEFAULT false NOT NULL,
+                    delivery_fee_flat           NUMERIC(10,2) DEFAULT 0,
+                    delivery_fee_base           NUMERIC(10,2) DEFAULT 0,
+                    delivery_fee_per_mile       NUMERIC(10,2) DEFAULT 0,
+                    delivery_fee_free_radius_mi NUMERIC(10,2) DEFAULT 0,
+                    delivery_fee_max            NUMERIC(10,2),
+                    delivery_fee_road_factor    NUMERIC(6,3) DEFAULT 1.0,
+                    latitude                    NUMERIC(10,7),
+                    longitude                   NUMERIC(10,7),
                     address_verified            BOOLEAN DEFAULT false,
                     address_verified_at         TIMESTAMP,
                     referred_by_name            VARCHAR(255),
