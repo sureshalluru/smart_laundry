@@ -79,21 +79,22 @@ async function resolveHostFromApi(host) {
 // Known hosts redirect instantly; unknown hosts are resolved from the DB.
 function DomainRedirect() {
     const host = window.location.hostname.toLowerCase();
-    // SLB product website domain
-    if (host.includes('smartlaundrybasket')) return <Navigate to="/slb" replace />;
-
+    // SLB product website domain — handled after hooks (hooks must run
+    // unconditionally, before any early return, per rules-of-hooks).
+    const isSlb = host.includes('smartlaundrybasket');
     const known = knownHostLaundryId(host);
     const [laundryId, setLaundryId] = useState(known);
 
     useEffect(() => {
-        if (known) return; // already resolved instantly
+        if (isSlb || known) return; // SLB routes elsewhere; known resolves instantly
         let active = true;
         resolveHostFromApi(host).then((id) => {
             if (active) setLaundryId(id || '1'); // default to 1 if unresolved
         });
         return () => { active = false; };
-    }, [host, known]);
+    }, [host, known, isSlb]);
 
+    if (isSlb) return <Navigate to="/slb" replace />;
     if (!laundryId) return null; // brief wait while the DB lookup resolves
     return <Navigate to={`/${laundryId}/site`} replace />;
 }

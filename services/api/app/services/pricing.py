@@ -213,25 +213,33 @@ def compute_order_billing(services=None, products=None, addons=None, extras=None
 def apply_discount_tip_tax(sub_total: float,
                            discounted_price: float = 0.0,
                            tip_amount: float = 0.0,
-                           tax_amount: float = 0.0) -> dict:
+                           tax_amount: float = 0.0,
+                           delivery_fee: float = 0.0) -> dict:
     """Derive total_cost / grand_total from sub_total, mirroring legacy order.
 
-    Matches the existing inline logic exactly:
+    Matches the existing inline logic exactly, with the Phase-3 delivery fee
+    folded in AFTER tip and tax:
         total_cost  = round(sub_total - discounted_price, 2) if discount>0 else sub_total
-        grand_total = round(total_cost + tip_amount + tax_amount, 2)
+        grand_total = round(total_cost + tip_amount + tax_amount + delivery_fee, 2)
 
-    Callers still compute the discount/tip/tax amounts themselves (percentage
-    promos, tip percentage, tax rate) — this only assembles the totals so the
-    assembly is consistent everywhere.
+    `delivery_fee` defaults to 0.0, so callers that don't pass it (and orders
+    with no fee) produce a byte-identical result to the pre-Phase-3 formula.
+    The delivery fee is NOT part of sub_total or total_cost — it's an add-on to
+    the grand total, like tip/tax.
+
+    Callers still compute the discount/tip/tax/fee amounts themselves — this
+    only assembles the totals so the assembly is consistent everywhere.
     """
     st = round(_f(sub_total), 2)
     disc = _f(discounted_price)
     tip = _f(tip_amount)
     tax = _f(tax_amount)
+    fee = _f(delivery_fee)
     total_cost = round(st - disc, 2) if disc > 0 else st
-    grand_total = round(total_cost + tip + tax, 2)
+    grand_total = round(total_cost + tip + tax + fee, 2)
     return {
         "sub_total": st,
         "total_cost": total_cost,
         "grand_total": grand_total,
+        "delivery_fee": round(fee, 2),
     }

@@ -2260,7 +2260,7 @@ async def employee_update_services(
 
             # Verify order exists and belongs to the specified laundry
             cur.execute("""
-                SELECT o.order_id, o.coupon, o.discounted_price,
+                SELECT o.order_id, o.coupon, o.discounted_price, o.delivery_fee,
                        ot.tip_amount, ot.tip_percentage, ot.tip_type, ot.tip_method, ot.tip_receiver_id
                 FROM orders.orders o
                 LEFT JOIN orders.order_tips ot ON ot.order_id = o.order_id
@@ -2382,7 +2382,9 @@ async def employee_update_services(
                 """, (order_id, tip_amount, current_order["tip_percentage"], tip_type, current_order["tip_method"],
                       current_order.get("tip_receiver_id")))
 
-            grand_total = round(total_cost + tip_amount, 2)
+            # Preserve the snapshotted delivery fee (Phase 3) across recompute.
+            _delivery_fee = float(current_order.get("delivery_fee") or 0)
+            grand_total = round(total_cost + tip_amount + _delivery_fee, 2)
 
             # Update order totals and set last_updated_by
             cur.execute("""

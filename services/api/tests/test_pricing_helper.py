@@ -128,6 +128,55 @@ class TestApplyDiscountTipTax:
         assert r["grand_total"] == round(47.70 + 9.54, 2)
 
 
+class TestDeliveryFeeIntegration:
+    """Phase 3: the delivery_fee kwarg on apply_discount_tip_tax.
+
+    Regression guard: with delivery_fee omitted or 0.0, the result must be
+    byte-identical to the pre-Phase-3 formula (Req P3.3). When set, it adds to
+    grand_total AFTER tip and tax, and does NOT touch sub_total/total_cost.
+    """
+
+    def test_omitted_is_byte_identical_across_combos(self):
+        # For a matrix of discount/tip/tax, passing delivery_fee=0.0 must equal
+        # the call without the arg at all.
+        combos = [
+            (100.0, 0, 0, 0),
+            (100.0, 10, 5, 8.55),
+            (47.70, 0, 9.54, 0),
+            (0.0, 0, 0, 0),
+            (33.33, 3.33, 1.11, 2.22),
+            (250.00, 25, 0, 20.63),
+        ]
+        for sub, disc, tip, tax in combos:
+            without = apply_discount_tip_tax(sub, disc, tip, tax)
+            with_zero = apply_discount_tip_tax(sub, disc, tip, tax, delivery_fee=0.0)
+            assert without["sub_total"] == with_zero["sub_total"]
+            assert without["total_cost"] == with_zero["total_cost"]
+            assert without["grand_total"] == with_zero["grand_total"]
+
+    def test_fee_adds_to_grand_total_only(self):
+        base = apply_discount_tip_tax(100.0, discounted_price=10, tip_amount=5, tax_amount=8.55)
+        withfee = apply_discount_tip_tax(100.0, discounted_price=10, tip_amount=5,
+                                         tax_amount=8.55, delivery_fee=4.50)
+        # sub_total and total_cost unchanged by the fee
+        assert withfee["sub_total"] == base["sub_total"]
+        assert withfee["total_cost"] == base["total_cost"]
+        # grand_total is exactly the base grand_total plus the fee
+        assert withfee["grand_total"] == round(base["grand_total"] + 4.50, 2)
+        assert withfee["delivery_fee"] == 4.50
+
+    def test_fee_folded_after_tip_and_tax(self):
+        # 90 total_cost + 5 tip + 8.55 tax + 4.50 fee
+        r = apply_discount_tip_tax(100.0, discounted_price=10, tip_amount=5,
+                                   tax_amount=8.55, delivery_fee=4.50)
+        assert r["grand_total"] == round(90.0 + 5 + 8.55 + 4.50, 2)
+
+    def test_fee_none_and_string_coerced(self):
+        assert apply_discount_tip_tax(100.0, delivery_fee=None)["delivery_fee"] == 0.0
+        assert apply_discount_tip_tax(100.0, delivery_fee="3.5")["delivery_fee"] == 3.5
+        assert apply_discount_tip_tax(100.0, delivery_fee="3.5")["grand_total"] == 103.5
+
+
 class TestMinimumWeight:
     def test_floor_applied_when_under_min(self):
         qty, total = line_total_for_service(1.59, 15, input_weight=True,

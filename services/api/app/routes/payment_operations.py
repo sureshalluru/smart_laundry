@@ -105,7 +105,9 @@ async def instore_payment(
                 # has (captured at order creation) so paying does not erase it.
                 tip_amount = float(order["tip_amount"] or 0)
 
-            grand_total = round(total_cost + tip_amount, 2)
+            # Preserve the snapshotted delivery fee (Phase 3) in the payment total.
+            _delivery_fee = float(order.get("delivery_fee") or 0)
+            grand_total = round(total_cost + tip_amount + _delivery_fee, 2)
 
             # Process payment updates (new payments to add)
             for p in payment_updates:

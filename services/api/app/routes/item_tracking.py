@@ -1615,7 +1615,7 @@ async def detect_weight(request: DetectWeightRequest):
                     sub_total = billing["sub_total"]
 
                     cur.execute("""
-                        SELECT o.discounted_price, ot.tip_amount
+                        SELECT o.discounted_price, o.delivery_fee, ot.tip_amount
                         FROM orders.orders o
                         LEFT JOIN orders.order_tips ot ON ot.order_id = o.order_id
                         WHERE o.order_id = %s AND o.laundry_id = %s
@@ -1623,7 +1623,10 @@ async def detect_weight(request: DetectWeightRequest):
                     row = cur.fetchone() or {}
                     discounted_price = float(row.get("discounted_price") or 0)
                     tip_amount = float(row.get("tip_amount") or 0)
-                    totals = apply_discount_tip_tax(sub_total, discounted_price, tip_amount)
+                    # Preserve the snapshotted delivery fee (Phase 3) on recompute.
+                    delivery_fee = float(row.get("delivery_fee") or 0)
+                    totals = apply_discount_tip_tax(sub_total, discounted_price, tip_amount,
+                                                    delivery_fee=delivery_fee)
                     total_cost = totals["total_cost"]
                     grand_total = totals["grand_total"]
 

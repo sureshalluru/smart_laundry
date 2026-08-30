@@ -949,7 +949,9 @@ async def update_order_endpoint(
                     ON CONFLICT (order_id) DO UPDATE SET tip_amount = EXCLUDED.tip_amount, tip_receiver_id = COALESCE(EXCLUDED.tip_receiver_id, orders.order_tips.tip_receiver_id)
                 """, (orderId, tip_amount, current_order["tip_percentage"], tip_type, current_order["tip_method"], tip_receiver))
 
-            grand_total = round(total_cost + tip_amount, 2)
+            # Preserve the snapshotted delivery fee (Phase 3) across recompute.
+            _delivery_fee = float(current_order.get("delivery_fee") or 0)
+            grand_total = round(total_cost + tip_amount + _delivery_fee, 2)
 
             # Update order record
             update_fields = {
