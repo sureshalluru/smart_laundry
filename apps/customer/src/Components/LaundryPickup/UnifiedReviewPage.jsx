@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import {
   Box,
   VStack,
@@ -19,7 +20,7 @@ import {
   FaEdit,
 } from 'react-icons/fa';
 import { format, parse } from 'date-fns';
-import { getCartSubtotal } from './cartUtils';
+import { getCartSubtotal, getAddonsTotal, getBilledWeight } from './cartUtils';
 
 /**
  * UnifiedReviewPage — Review step for the unified cart order flow.
@@ -42,12 +43,18 @@ export default function UnifiedReviewPage({
   promoDescriptionMessage,
   frequency,
   subscriptionDiscount = 0,
+  selectedAddons = [],
   onPlaceOrder,
   onEdit,
   orderProcessing,
 }) {
   const items = cart.items || [];
-  const subtotal = getCartSubtotal(items);
+  // Subtotal = services/products + selected add-ons (per-pound priced on the
+  // order's billed weight). Must match handlePlaceOrder so what the customer
+  // sees equals what is charged (Phase 2c).
+  const billedWeight = getBilledWeight(items);
+  const addonsTotal = getAddonsTotal(selectedAddons, billedWeight);
+  const subtotal = getCartSubtotal(items) + addonsTotal;
 
   // Discount: subscription discount is a percentage of subtotal
   const discountAmount = subscriptionDiscount > 0
@@ -58,8 +65,23 @@ export default function UnifiedReviewPage({
   const taxableAmount = subtotal - discountAmount;
   const tax = taxRate > 0 ? taxableAmount * (taxRate / 100) : 0;
 
-  // Tip from tip state
-  const tipAmount = parseFloat(tip?.tipAmount || '0') || 0;
+  // Tip. For a percentage tip, compute the dollar amount from the (post-discount)
+  // taxable subtotal — there is no tip selector on this screen, so a default/
+  // preset percentage would otherwise be stored as $0 and left out of the total.
+  const tipAmount = tip?.tipType === 'percentage'
+    ? Math.round(taxableAmount * ((parseFloat(tip?.tipPercentage) || 0) / 100) * 100) / 100
+    : (parseFloat(tip?.tipAmount || '0') || 0);
+
+  // Keep the shared tip state in sync so the placed order (handlePlaceOrder)
+  // sends the computed dollar amount, not a stale $0.
+  useEffect(() => {
+    if (tip?.tipType === 'percentage') {
+      const computed = (Math.round(taxableAmount * ((parseFloat(tip?.tipPercentage) || 0) / 100) * 100) / 100).toFixed(2);
+      if (computed !== (tip?.tipAmount ?? '').toString() && typeof setTip === 'function') {
+        setTip((prev) => ({ ...prev, tipAmount: computed }));
+      }
+    }
+  }, [tip?.tipType, tip?.tipPercentage, taxableAmount, tip?.tipAmount, setTip]);
 
   // Grand total
   const grandTotal = taxableAmount + tax + tipAmount;
@@ -232,6 +254,35 @@ export default function UnifiedReviewPage({
         </Box>
       )}
 
+      {/* Selected add-ons (Phase 2c) */}
+      {selectedAddons.length > 0 && (
+        <Box
+          bg="gray.50"
+          borderRadius="xl"
+          p={3}
+          border="1px solid"
+          borderColor="gray.100"
+        >
+          <Text fontWeight="600" fontSize="sm" color="gray.700" mb={1}>Add-Ons</Text>
+          {selectedAddons.map((a) => {
+            const unit = parseFloat(a.unitPrice) || 0;
+            const qty = a.pricingBasis === 'per_pound' ? billedWeight : (parseFloat(a.quantity) || 0);
+            const amount = unit * qty;
+            return (
+              <Flex key={a.addonId} justify="space-between" align="center" fontSize="sm" color="gray.600">
+                <Text>
+                  {a.addonName}
+                  {a.pricingBasis === 'per_pound'
+                    ? ` (${billedWeight} lb × $${unit.toFixed(2)})`
+                    : ` (×${qty})`}
+                </Text>
+                <Text>${amount.toFixed(2)}</Text>
+              </Flex>
+            );
+          })}
+        </Box>
+      )}
+
       {/* Grand total section */}
       <Box
         bg="blue.50"
@@ -265,7 +316,9 @@ export default function UnifiedReviewPage({
 
         {tipAmount > 0 && (
           <Flex justify="space-between" align="center" mt={1}>
-            <Text fontSize="sm" color="gray.500">Tip</Text>
+            <Text fontSize="sm" color="gray.500">
+              Tip{tip?.tipType === 'percentage' && tip?.tipPercentage ? ` (${tip.tipPercentage}%)` : ''}
+            </Text>
             <Text fontSize="sm" color="gray.500">${tipAmount.toFixed(2)}</Text>
           </Flex>
         )}

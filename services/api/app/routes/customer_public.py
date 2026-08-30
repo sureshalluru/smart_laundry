@@ -5,6 +5,7 @@ These are called before the customer logs in.
 from fastapi import APIRouter, Query, Body
 from typing import Optional
 from app.database import get_db, get_cursor
+import json
 import logging
 
 logger = logging.getLogger(__name__)
@@ -23,14 +24,15 @@ async def record_cart_started(body: dict = Body(...)):
     try:
         with get_db() as conn:
             cur = get_cursor(conn)
-            # Remove any existing cart_started for this customer+laundry, then insert fresh
+            # Remove any existing cart_started for this customer+laundry, then insert fresh.
+            # customer_reminders.customer_id is UUID; customer_id here is a string.
             cur.execute("""
                 DELETE FROM shop.customer_reminders
-                WHERE customer_id = %s AND laundry_id = %s AND reminder_type = 'cart_started'
+                WHERE customer_id = %s::uuid AND laundry_id = %s AND reminder_type = 'cart_started'
             """, (customer_id, laundry_id))
             cur.execute("""
                 INSERT INTO shop.customer_reminders (customer_id, laundry_id, reminder_type)
-                VALUES (%s, %s, 'cart_started')
+                VALUES (%s::uuid, %s, 'cart_started')
             """, (customer_id, laundry_id))
     except Exception as e:
         logger.warning(f"cart-started tracking failed: {e}")
@@ -97,6 +99,8 @@ async def customer_place_order(
         customer_id = body.get("customerId")
         laundry_id = body.get("laundryId")
         services = body.get("services", [])
+        selected_addons = body.get("addons", []) or []  # Phase 2c: [{addonId, quantity}]
+        save_addon_prefs = bool(body.get("saveAddonPrefs", False))  # Phase 2d: persist as default
         address_id = body.get("addressId")
         address_text = body.get("address", "")
         door_number = body.get("doorNumber", "")
@@ -315,6 +319,80 @@ async def customer_place_order(
                     """, (order_id, svc_name,
                           float(str(svc.get("servicePrice") or svc.get("price", 0) or 0)),
                           float(str(svc.get("weightOrCount") or svc.get("weight", 0) or 0))))
+
+            # Snapshot the catalog's minimum billable weight onto the order lines
+            # so later catalog edits never rewrite the price of this order (Phase 2).
+            cur.execute("""
+                UPDATE orders.order_services os
+                SET min_billable_weight = ls.min_billable_weight
+                FROM shop.laundry_services ls
+                WHERE os.order_id = %s
+                  AND ls.laundry_id = %s
+                  AND lower(trim(ls.service_name)) = lower(trim(os.service_name))
+                  AND os.min_billable_weight IS NULL
+                  AND ls.min_billable_weight IS NOT NULL
+            """, (order_id, laundry_id))
+
+            # Snapshot selected add-ons onto orders.order_addons (Phase 2c). Prices
+            # and basis are taken from the tenant catalog (never trusted from the
+            # client) and copied onto the order row so later edits don't rewrite it.
+            #
+            # NOTE (Phase 2d): saved preferences are applied client-side — the
+            # customer's picker is prefilled from their defaults so they see and
+            # confirm (and pay for) the add-ons before checkout. We deliberately
+            # do NOT inject saved add-ons here, since this path trusts the totals
+            # the client already computed; injecting unpriced extras would mis-bill.
+            # Auto-generated recurring orders seed from prefs in the frequency
+            # processor, where the server prices the whole order itself.
+            if selected_addons:
+                cur.execute(
+                    "SELECT addons_enabled FROM shop.laundry_shops WHERE laundry_id = %s",
+                    (laundry_id,),
+                )
+                _shop_addon = cur.fetchone() or {}
+                if _shop_addon.get("addons_enabled"):
+                    for a in selected_addons:
+                        addon_id = a.get("addonId") or a.get("addon_id")
+                        if not addon_id:
+                            continue
+                        cur.execute("""
+                            SELECT addon_name, pricing_basis, unit_price
+                            FROM shop.laundry_addons
+                            WHERE addon_id = %s AND laundry_id = %s AND is_active = TRUE
+                        """, (addon_id, laundry_id))
+                        cat = cur.fetchone()
+                        if not cat:
+                            continue
+                        qty = a.get("quantity") or a.get("qty")
+                        # per_pound add-ons price on billed weight (qty stays NULL);
+                        # per_item use the selected count (default 1).
+                        if cat["pricing_basis"] == "per_pound":
+                            qty_val = None
+                        else:
+                            try:
+                                qty_val = float(qty) if qty is not None else 1.0
+                            except (TypeError, ValueError):
+                                qty_val = 1.0
+                        cur.execute("""
+                            INSERT INTO orders.order_addons
+                                (order_id, laundry_id, addon_id, addon_name, pricing_basis, unit_price, quantity)
+                            VALUES (%s, %s, %s, %s, %s, %s, %s)
+                        """, (order_id, laundry_id, addon_id, cat["addon_name"],
+                              cat["pricing_basis"], float(cat["unit_price"] or 0), qty_val))
+
+                    # Phase 2d: optionally persist this selection as the customer's
+                    # default for future orders (only when they opted in).
+                    if save_addon_prefs:
+                        _pref_addons = [{"addonId": a.get("addonId") or a.get("addon_id"),
+                                         "quantity": a.get("quantity") or a.get("qty")}
+                                        for a in selected_addons
+                                        if (a.get("addonId") or a.get("addon_id"))]
+                        cur.execute("""
+                            INSERT INTO shop.customer_preferences (customer_id, laundry_id, preferences)
+                            VALUES (%s, %s, %s::jsonb)
+                            ON CONFLICT (customer_id, laundry_id)
+                            DO UPDATE SET preferences = EXCLUDED.preferences, updated_at = now()
+                        """, (customer_id, laundry_id, json.dumps({"addons": _pref_addons})))
 
             if tip_data.get("tipType") or tip_amount > 0:
                 cur.execute("""
@@ -752,8 +830,48 @@ async def get_customer_order_detail(
         if not order:
             return {"status": "error", "message": "Order not found"}
 
+        # Tenant opt-in: whether minimum billable weight applies to this order's
+        # per-pound lines (Phase 2). Used to surface the billed weight to the
+        # customer so per-line totals reconcile with the grand total.
+        _order_laundry_id = order.get("laundry_id")
+        cur.execute("SELECT min_weight_enabled FROM shop.laundry_shops WHERE laundry_id = %s", (_order_laundry_id,))
+        _shop_flag = cur.fetchone() or {}
+        _apply_min = bool(_shop_flag.get("min_weight_enabled"))
+
         cur.execute("SELECT * FROM orders.order_services WHERE order_id = %s", (orderId,))
-        services = [{"serviceName": r["service_name"], "servicePrice": float(r["service_price"] or 0), "weightOrCount": float(r["weight_or_count"] or 0)} for r in cur.fetchall()]
+        services = []
+        for r in cur.fetchall():
+            actual = float(r["weight_or_count"] or 0)
+            min_w = float(r["min_billable_weight"]) if r.get("min_billable_weight") is not None else 0.0
+            billed = actual
+            if _apply_min and r.get("input_weight") and min_w > 0 and actual < min_w:
+                billed = min_w
+            services.append({
+                "serviceName": r["service_name"],
+                "servicePrice": float(r["service_price"] or 0),
+                "weightOrCount": actual,
+                "minBillableWeight": min_w if min_w > 0 else None,
+                "billedWeight": billed,
+            })
+
+        # Add-on lines (Phase 2c). per_pound lines are priced on the order's
+        # billed weight so the displayed amount reconciles with the grand total.
+        _billed_weight_total = sum(s["billedWeight"] for s in services if s.get("billedWeight"))
+        cur.execute("SELECT addon_name, pricing_basis, unit_price, quantity FROM orders.order_addons WHERE order_id = %s", (orderId,))
+        addons = []
+        for r in cur.fetchall():
+            unit = float(r["unit_price"] or 0)
+            if r["pricing_basis"] == "per_pound":
+                qty = _billed_weight_total
+            else:
+                qty = float(r["quantity"] or 0)
+            addons.append({
+                "addonName": r["addon_name"],
+                "pricingBasis": r["pricing_basis"],
+                "unitPrice": unit,
+                "quantity": qty,
+                "amount": round(unit * qty, 2),
+            })
 
         cur.execute("SELECT * FROM orders.order_payments WHERE order_id = %s", (orderId,))
         payments = [{"paymentIntentId": r["payment_intent_id"], "amount": float(r["amount"] or 0), "paymentMethod": r["payment_method"]} for r in cur.fetchall()]
@@ -820,6 +938,7 @@ async def get_customer_order_detail(
                     "discountedPrice": float(order["discounted_price"] or 0),
                     "createdAt": str(order["created_at"]),
                     "services": services,
+                    "addons": addons,
                     "finalPaymentIntentId": payments,
                     "specialInstructions": order["special_instructions"],
                     "laundryBags": order["laundry_bags"],
@@ -1239,3 +1358,61 @@ async def create_customer_review(body: dict = Body(...)):
             """, (emp_id, emp_id, emp_id))
 
     return {"statusCode": 200, "body": {"status": "success", "message": "Review submitted successfully"}}
+
+
+# ─── Saved customer add-on preferences (Phase 2d) ───────────────────────────
+
+@router.get("/addon-preferences")
+async def get_addon_preferences(
+    customerId: str = Query(...),
+    laundryId: str = Query(...),
+):
+    """Return the customer's saved default add-on selections for this tenant.
+
+    Shape: {"status": "success", "addons": [{addonId, quantity}]}. Empty when
+    the customer has saved nothing.
+    """
+    with get_db() as conn:
+        cur = get_cursor(conn)
+        cur.execute("""
+            SELECT preferences FROM shop.customer_preferences
+            WHERE customer_id = %s AND laundry_id = %s
+        """, (customerId, laundryId))
+        row = cur.fetchone()
+        prefs = (row["preferences"] or {}) if row else {}
+        addons = prefs.get("addons", []) if isinstance(prefs, dict) else []
+        return {"status": "success", "addons": addons}
+
+
+@router.post("/addon-preferences")
+async def save_addon_preferences(body: dict = Body(...)):
+    """Save the customer's default add-on selections for this tenant (UPSERT).
+
+    Body: {customerId, laundryId, addons: [{addonId, quantity}]}. Only addonId +
+    quantity are stored; prices/basis are always resolved from the live catalog
+    at billing time.
+    """
+    customer_id = body.get("customerId")
+    laundry_id = body.get("laundryId")
+    addons = body.get("addons", []) or []
+    if not customer_id or not laundry_id:
+        return {"status": "error", "message": "Missing customerId or laundryId"}
+
+    # Normalize to just {addonId, quantity} so we never persist stale prices.
+    clean = []
+    for a in addons:
+        addon_id = a.get("addonId") or a.get("addon_id")
+        if addon_id is None:
+            continue
+        clean.append({"addonId": addon_id, "quantity": a.get("quantity")})
+
+    prefs = json.dumps({"addons": clean})
+    with get_db() as conn:
+        cur = get_cursor(conn)
+        cur.execute("""
+            INSERT INTO shop.customer_preferences (customer_id, laundry_id, preferences)
+            VALUES (%s, %s, %s::jsonb)
+            ON CONFLICT (customer_id, laundry_id)
+            DO UPDATE SET preferences = EXCLUDED.preferences, updated_at = now()
+        """, (customer_id, laundry_id, prefs))
+    return {"status": "success", "message": "Preferences saved"}

@@ -7,6 +7,7 @@ from typing import Optional
 from app.database import get_db, get_cursor
 from app.auth import get_current_user
 from app.services.audit_service import log_action
+from app.services.pricing import compute_order_billing
 from app.utils import serialize
 from app.utils.invoice_helpers import resolve_invoice_emails
 from decimal import Decimal, ROUND_HALF_UP
@@ -288,10 +289,21 @@ async def create_invoice(
             cur.execute("SELECT * FROM orders.order_products WHERE order_id = %s", (order_id,))
             products = cur.fetchall()
 
-            # Get laundry name
-            cur.execute("SELECT laundry_name FROM shop.laundry_shops WHERE laundry_id = %s", (laundry_id,))
+            # Get laundry name + pricing opt-in flags (Phase 2)
+            cur.execute("SELECT laundry_name, min_weight_enabled, addons_enabled, min_weight_scope FROM shop.laundry_shops WHERE laundry_id = %s", (laundry_id,))
             shop = cur.fetchone()
             laundry_name = shop["laundry_name"] if shop else "Laundry"
+            from app.services.pricing import minimum_applies
+            _apply_min = minimum_applies(
+                bool(shop and shop.get("min_weight_enabled")),
+                shop.get("min_weight_scope") if shop else None,
+                order.get("order_type"),
+            )
+            _addons = []
+            if shop and shop.get("addons_enabled"):
+                cur.execute("SELECT addon_name, pricing_basis, unit_price, quantity FROM orders.order_addons WHERE order_id = %s", (order_id,))
+                _addons = [{"name": r["addon_name"], "pricing_basis": r["pricing_basis"],
+                            "unit_price": r["unit_price"], "quantity": r["quantity"]} for r in cur.fetchall()]
 
         # Resolve invoice recipient list using dual-email logic
         # If frontend explicitly provided a customerEmail, use it directly (backwards compat)
@@ -331,28 +343,37 @@ async def create_invoice(
         )
 
         # Add line items from services
-        for svc in services:
-            amount_cents = int(round(float(svc["service_price"] or 0) * float(svc["weight_or_count"] or 0) * 100))
-            if amount_cents > 0:
-                stripe_lib.InvoiceItem.create(
-                    customer=stripe_customer.id,
-                    invoice=invoice.id,
-                    amount=amount_cents,
-                    currency="usd",
-                    description=f"{svc['service_name']} ({svc['weight_or_count']} lbs)",
-                )
-
-        # Add line items from products
-        for prod in products:
-            amount_cents = int(round(float(prod["product_price"] or 0) * int(prod["product_count"] or 1) * 100))
-            if amount_cents > 0:
-                stripe_lib.InvoiceItem.create(
-                    customer=stripe_customer.id,
-                    invoice=invoice.id,
-                    amount=amount_cents,
-                    currency="usd",
-                    description=f"{prod['product_name']} (x{prod['product_count']})",
-                )
+        # Build itemized invoice lines via the shared billing helper (Phase 2).
+        # Same per-line amounts as before; centralizing here means future add-on/
+        # extra lines automatically appear on invoices too.
+        _billing = compute_order_billing(
+            services=[{"service_price": s["service_price"], "weight_or_count": s["weight_or_count"],
+                       "input_weight": s.get("input_weight"), "min_billable_weight": s.get("min_billable_weight"),
+                       "service_name": s["service_name"]} for s in services],
+            products=[{"product_price": p["product_price"], "product_count": p["product_count"],
+                       "product_name": p["product_name"]} for p in products],
+            addons=_addons,
+            apply_minimums=_apply_min,
+        )
+        for line in _billing["lines"]:
+            amount_cents = int(round(float(line["amount"]) * 100))
+            if amount_cents <= 0:
+                continue
+            if line["kind"] == "service":
+                desc = f"{line['name']} ({line['qty']} lbs)"
+            elif line["kind"] == "product":
+                desc = f"{line['name']} (x{int(line['qty'])})"
+            elif line["kind"] == "addon" and line.get("pricing_basis") == "per_pound":
+                desc = f"{line['name']} ({line['qty']} lbs)"
+            else:  # per-item addon / extra
+                desc = f"{line['name']} (x{line['qty']})"
+            stripe_lib.InvoiceItem.create(
+                customer=stripe_customer.id,
+                invoice=invoice.id,
+                amount=amount_cents,
+                currency="usd",
+                description=desc,
+            )
 
         # If no line items from services/products, use grand_total
         if not services and not products:

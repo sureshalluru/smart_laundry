@@ -50,6 +50,38 @@ export function derivePricingType(items) {
 }
 
 /**
+ * Returns the total billed weight across all per-pound cart items.
+ * Used to price per-pound add-ons (Phase 2c).
+ * @param {Array} items - Array of CartItem objects
+ * @returns {number} summed quantity of weight-based items
+ */
+export function getBilledWeight(items) {
+  if (!items || items.length === 0) return 0;
+  return items
+    .filter(item => item.inputWeight === true)
+    .reduce((sum, item) => sum + item.quantity, 0);
+}
+
+/**
+ * Returns the total cost of the selected add-ons (Phase 2c).
+ * per_pound add-ons are priced on the order's billed weight; per_item on qty.
+ * @param {Array} selectedAddons - [{ pricingBasis, unitPrice, quantity }]
+ * @param {number} billedWeight - total weight-based quantity for per_pound add-ons
+ * @returns {number} add-on subtotal
+ */
+export function getAddonsTotal(selectedAddons, billedWeight) {
+  if (!selectedAddons || selectedAddons.length === 0) return 0;
+  return selectedAddons.reduce((sum, a) => {
+    const price = parseFloat(a.unitPrice) || 0;
+    if (a.pricingBasis === "per_pound") {
+      return sum + price * (billedWeight || 0);
+    }
+    const qty = parseFloat(a.quantity) || 0;
+    return sum + price * qty;
+  }, 0);
+}
+
+/**
  * Constructs the order payload for the API.
  * @param {{ items: Array }} cart - Cart state object with items array
  * @param {object} orderDetails - Object with all other order fields
@@ -57,7 +89,11 @@ export function derivePricingType(items) {
  */
 export function buildOrderPayload(cart, orderDetails) {
   const items = cart.items || [];
-  const subtotal = getCartSubtotal(items);
+  // Subtotal may be overridden by the caller when it includes extras the cart
+  // items alone don't cover (e.g. Phase 2c add-ons).
+  const subtotal = orderDetails.subTotal != null
+    ? parseFloat(orderDetails.subTotal)
+    : getCartSubtotal(items);
   const subtotalStr = subtotal.toFixed(2);
   const grandTotalStr = orderDetails.grandTotal != null
     ? parseFloat(orderDetails.grandTotal).toFixed(2)
@@ -79,6 +115,13 @@ export function buildOrderPayload(cart, orderDetails) {
       inputWeight: item.inputWeight,
       categoryId: item.categoryId,
     })),
+    // Phase 2c: selected add-ons. Server re-prices from the catalog by addonId,
+    // so only the id + quantity are trusted.
+    addons: (orderDetails.addons || []).map(a => ({
+      addonId: a.addonId,
+      quantity: a.quantity,
+    })),
+    saveAddonPrefs: orderDetails.saveAddonPrefs || false,
     pickupDate: orderDetails.pickupDate,
     pickupTimeInterval: orderDetails.pickupTimeInterval,
     dropoffDate: orderDetails.dropoffDate,

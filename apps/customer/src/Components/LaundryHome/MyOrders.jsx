@@ -1141,12 +1141,39 @@ const MyOrders = ({ customerId, laundryId, laundryTimeZone }) => {
                                             </Tr>
                                         </Thead>
                                         <Tbody>
-                                            {orderDetails.services.map((service, index) => (
+                                            {orderDetails.services.map((service, index) => {
+                                                const actualQty = Number(service.weightOrCount);
+                                                const billedQty = service.billedWeight != null
+                                                    ? Number(service.billedWeight)
+                                                    : actualQty;
+                                                const wasFloored = billedQty > actualQty;
+                                                return (
                                                 <Tr key={index}>
-                                                    <Td>{service.serviceName}</Td>
-                                                    <Td isNumeric>{service.weightOrCount}</Td>
+                                                    <Td>
+                                                        {service.serviceName}
+                                                        {wasFloored && (
+                                                            <Text fontSize="xs" color="orange.600">
+                                                                Billed at {billedQty} lb minimum (actual {actualQty} lb)
+                                                            </Text>
+                                                        )}
+                                                    </Td>
+                                                    <Td isNumeric>{wasFloored ? billedQty : actualQty}</Td>
                                                     <Td isNumeric>${Number(service.servicePrice).toFixed(2)}</Td>
-                                                    <Td isNumeric>${(Number(service.servicePrice) * Number(service.weightOrCount)).toFixed(2)}</Td>
+                                                    <Td isNumeric>${(Number(service.servicePrice) * billedQty).toFixed(2)}</Td>
+                                                </Tr>
+                                                );
+                                            })}
+                                            {(orderDetails.addons || []).map((addon, aIdx) => (
+                                                <Tr key={`addon-${aIdx}`}>
+                                                    <Td>
+                                                        {addon.addonName}
+                                                        <Text fontSize="xs" color="gray.500">
+                                                            Add-on{addon.pricingBasis === 'per_pound' ? ' (per lb)' : ''}
+                                                        </Text>
+                                                    </Td>
+                                                    <Td isNumeric>{Number(addon.quantity)}{addon.pricingBasis === 'per_pound' ? ' lb' : ''}</Td>
+                                                    <Td isNumeric>${Number(addon.unitPrice).toFixed(2)}</Td>
+                                                    <Td isNumeric>${Number(addon.amount).toFixed(2)}</Td>
                                                 </Tr>
                                             ))}
                                         </Tbody>

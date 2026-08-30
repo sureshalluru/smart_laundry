@@ -343,6 +343,20 @@ def run():
             """)
 
             cur.execute("""
+                CREATE TABLE IF NOT EXISTS orders.order_addons (
+                    id              SERIAL NOT NULL PRIMARY KEY,
+                    order_id        VARCHAR(50) NOT NULL,
+                    laundry_id      VARCHAR(50) NOT NULL,
+                    addon_id        INT,
+                    addon_name      VARCHAR(255) NOT NULL,
+                    pricing_basis   VARCHAR(20) DEFAULT 'per_item' NOT NULL,
+                    unit_price      NUMERIC NOT NULL,
+                    quantity        NUMERIC,
+                    created_at      TIMESTAMPTZ DEFAULT now() NOT NULL
+                )
+            """)
+
+            cur.execute("""
                 CREATE TABLE IF NOT EXISTS orders.order_bags (
                     id              SERIAL NOT NULL PRIMARY KEY,
                     order_id        VARCHAR(50) NOT NULL,
@@ -381,7 +395,8 @@ def run():
                     service_price    NUMERIC NOT NULL,
                     weight_or_count  NUMERIC,
                     input_weight     BOOLEAN DEFAULT false,
-                    category_id      VARCHAR(50)
+                    category_id      VARCHAR(50),
+                    min_billable_weight NUMERIC
                 )
             """)
 
@@ -573,6 +588,22 @@ def run():
             """)
 
             cur.execute("""
+                CREATE TABLE IF NOT EXISTS shop.customer_preferences (
+                    id            SERIAL NOT NULL PRIMARY KEY,
+                    customer_id   VARCHAR(100) NOT NULL,
+                    laundry_id    VARCHAR(50) NOT NULL,
+                    preferences   JSONB DEFAULT '{}'::jsonb NOT NULL,
+                    created_at    TIMESTAMPTZ DEFAULT now() NOT NULL,
+                    updated_at    TIMESTAMPTZ DEFAULT now() NOT NULL
+                )
+            """)
+
+            cur.execute("""
+                CREATE UNIQUE INDEX IF NOT EXISTS uq_customer_preferences_customer_laundry
+                ON shop.customer_preferences (customer_id, laundry_id)
+            """)
+
+            cur.execute("""
                 CREATE TABLE IF NOT EXISTS shop.customer_reminders (
                     id               SERIAL NOT NULL PRIMARY KEY,
                     laundry_id       VARCHAR(10) NOT NULL,
@@ -742,6 +773,21 @@ def run():
             """)
 
             cur.execute("""
+                CREATE TABLE IF NOT EXISTS shop.laundry_addons (
+                    addon_id        SERIAL NOT NULL PRIMARY KEY,
+                    laundry_id      VARCHAR(50) NOT NULL,
+                    addon_name      VARCHAR(255) NOT NULL,
+                    description     TEXT,
+                    pricing_basis   VARCHAR(20) DEFAULT 'per_item' NOT NULL,
+                    unit_price      NUMERIC NOT NULL,
+                    customer_access BOOLEAN DEFAULT true NOT NULL,
+                    is_active       BOOLEAN DEFAULT true NOT NULL,
+                    created_at      TIMESTAMPTZ DEFAULT now() NOT NULL,
+                    updated_at      TIMESTAMPTZ DEFAULT now() NOT NULL
+                )
+            """)
+
+            cur.execute("""
                 CREATE TABLE IF NOT EXISTS shop.laundry_services (
                     service_id       SERIAL NOT NULL PRIMARY KEY,
                     laundry_id       VARCHAR(50) NOT NULL,
@@ -753,7 +799,8 @@ def run():
                     is_active        BOOLEAN DEFAULT true NOT NULL,
                     created_at       TIMESTAMPTZ DEFAULT now() NOT NULL,
                     updated_at       TIMESTAMPTZ DEFAULT now() NOT NULL,
-                    category_id      INT
+                    category_id      INT,
+                    min_billable_weight NUMERIC
                 )
             """)
 
@@ -786,6 +833,9 @@ def run():
                     site_content                JSONB DEFAULT '{}'::jsonb,
                     tax_rate                    NUMERIC DEFAULT 0,
                     subscription_discount       NUMERIC DEFAULT 5,
+                    min_weight_enabled          BOOLEAN DEFAULT false NOT NULL,
+                    addons_enabled              BOOLEAN DEFAULT false NOT NULL,
+                    min_weight_scope            VARCHAR(20) DEFAULT 'all' NOT NULL,
                     address_verified            BOOLEAN DEFAULT false,
                     address_verified_at         TIMESTAMP,
                     referred_by_name            VARCHAR(255),

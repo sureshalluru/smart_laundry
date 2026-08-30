@@ -19,6 +19,19 @@ import {
 export default function WeightServiceRow({ service, cartItem, dispatch }) {
   const [weight, setWeight] = useState(cartItem ? cartItem.quantity : 1);
 
+  // Minimum billable weight — only active when the tenant enabled it AND this
+  // service has a positive minimum configured (Phase 2).
+  const minWeight =
+    service.minWeightEnabled &&
+    service.minBillableWeight != null &&
+    parseFloat(service.minBillableWeight) > 0
+      ? parseFloat(service.minBillableWeight)
+      : 0;
+  const unitPrice = parseFloat(service.price);
+  // The weight the customer is actually billed for (floored at the minimum).
+  const billedWeight = minWeight > 0 ? Math.max(weight, minWeight) : weight;
+  const isBelowMin = minWeight > 0 && weight > 0 && weight < minWeight;
+
   const increment = (amount = 1) => {
     const newWeight = Math.round((weight + amount) * 10) / 10;
     setWeight(newWeight);
@@ -84,16 +97,21 @@ export default function WeightServiceRow({ service, cartItem, dispatch }) {
         </VStack>
         <VStack align="flex-end" spacing={0}>
           <Text fontSize="lg" fontWeight="800" color="blue.600">
-            ${parseFloat(service.price).toFixed(2)}/lb
+            ${unitPrice.toFixed(2)}/lb
           </Text>
-          <Text fontSize="xs" color="gray.500" fontWeight="500">Min. 20 lb</Text>
+          {minWeight > 0 && (
+            <Text fontSize="xs" color="gray.500" fontWeight="500">Min. {minWeight} lb</Text>
+          )}
         </VStack>
       </Flex>
 
       {/* Clarification: customer doesn't need to weigh */}
       <Box bg="green.50" border="1px solid" borderColor="green.200" borderRadius="lg" px={3} py={2} mb={3}>
         <Text fontSize="xs" color="green.700" fontWeight="500">
-          📋 No need to weigh at home! We'll weigh your laundry at the store and send a photo with the exact weight. Minimum order is 20 lbs. You'll only be charged for actual weight.
+          📋 No need to weigh at home! We'll weigh your laundry at the store and send a photo with the exact weight.
+          {minWeight > 0
+            ? ` A ${minWeight} lb minimum applies — orders under ${minWeight} lb are billed at ${minWeight} lb.`
+            : " You'll only be charged for actual weight."}
         </Text>
       </Box>
 
@@ -149,12 +167,19 @@ export default function WeightServiceRow({ service, cartItem, dispatch }) {
       {/* Cost preview + action button */}
       {weight > 0 && (
         <Flex justify="space-between" align="center">
-          <Text fontSize="sm" color="gray.600" fontWeight="600">
-            {weight} lbs × ${parseFloat(service.price).toFixed(2)} = 
-            <Text as="span" color="blue.600" fontWeight="800">
-              {' '}${(weight * parseFloat(service.price)).toFixed(2)}
+          <VStack align="flex-start" spacing={0}>
+            <Text fontSize="sm" color="gray.600" fontWeight="600">
+              {billedWeight} lbs × ${unitPrice.toFixed(2)} =
+              <Text as="span" color="blue.600" fontWeight="800">
+                {' '}${(billedWeight * unitPrice).toFixed(2)}
+              </Text>
             </Text>
-          </Text>
+            {isBelowMin && (
+              <Text fontSize="xs" color="orange.600" fontWeight="500">
+                Billed at the {minWeight} lb minimum (you entered {weight} lb)
+              </Text>
+            )}
+          </VStack>
 
           {cartItem ? (
             <HStack spacing={2}>

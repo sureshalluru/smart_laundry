@@ -14,9 +14,9 @@ import { getCartSubtotal, getCartItemCount } from './cartUtils';
  * Displays total items count, estimated subtotal, and a Continue button.
  * Continue is disabled when cart is empty.
  */
-export default function StickyCartBar({ items, onContinue, themeColor }) {
+export default function StickyCartBar({ items, onContinue, themeColor, addonsTotal = 0 }) {
   const itemCount = getCartItemCount(items);
-  const subtotal = getCartSubtotal(items);
+  const subtotal = getCartSubtotal(items) + (parseFloat(addonsTotal) || 0);
   const colorScheme = themeColor || 'blue';
 
   return (

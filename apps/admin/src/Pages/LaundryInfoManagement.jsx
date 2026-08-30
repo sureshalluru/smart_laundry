@@ -644,6 +644,19 @@ const SystemSettingsSection = ({ laundryId }) => {
 const LaundryInfoManagement = ({ validateEmpCredentials, type, empPrefix }) => {
     const { laundryId } = useParams();
     const [servicesData, setServicesData] = useState([]);
+    // Phase 2: tenant master opt-in for minimum billable weight
+    const [minWeightEnabled, setMinWeightEnabled] = useState(false);
+    const [originalMinWeightEnabled, setOriginalMinWeightEnabled] = useState(false);
+    // Phase 2: which order channels the minimum applies to ('all'|'online'|'instore')
+    const [minWeightScope, setMinWeightScope] = useState("all");
+    const [originalMinWeightScope, setOriginalMinWeightScope] = useState("all");
+    // Phase 2c: add-ons / processing extras catalog
+    const [addonsData, setAddonsData] = useState([]);
+    const [newAddons, setNewAddons] = useState([]);
+    const [addonsToRemove, setAddonsToRemove] = useState([]);
+    const [addonsEnabled, setAddonsEnabled] = useState(false);
+    const [originalAddonsEnabled, setOriginalAddonsEnabled] = useState(false);
+    const [isSavingAddons, setIsSavingAddons] = useState(false);
     const [loading, setLoading] = useState(true);
     const [newServices, setNewServices] = useState([]);
     const [empId, setEmpId] = useState("");
@@ -868,6 +881,12 @@ const LaundryInfoManagement = ({ validateEmpCredentials, type, empPrefix }) => {
             setLaundryLogo(laundryInfo.laundryLogo || null);
             setAdminDomain(laundryInfo.laundryDomain?.adminDomain  || "");
             setUserDomain(laundryInfo.laundryDomain?.userDomain || "");
+            setMinWeightEnabled(Boolean(laundryInfo.minWeightEnabled));
+            setOriginalMinWeightEnabled(Boolean(laundryInfo.minWeightEnabled));
+            setMinWeightScope(laundryInfo.minWeightScope || "all");
+            setOriginalMinWeightScope(laundryInfo.minWeightScope || "all");
+            setAddonsEnabled(Boolean(laundryInfo.addonsEnabled));
+            setOriginalAddonsEnabled(Boolean(laundryInfo.addonsEnabled));
             setIsLogoDomainFetched(true);
         } catch (error) {
             console.error("Error fetching laundry logo & domain:", error);
@@ -892,6 +911,7 @@ const LaundryInfoManagement = ({ validateEmpCredentials, type, empPrefix }) => {
             fetchLocations();
             fetchLaundryLogoAndDomain();
             fetchCategories();
+            fetchAddons();
         }
     }, [laundryId]);
     
@@ -912,6 +932,116 @@ const LaundryInfoManagement = ({ validateEmpCredentials, type, empPrefix }) => {
             });
         } finally {
             setLoading(false); // Hide the loading spinner
+        }
+    };
+
+    // ─── Add-ons / processing extras (Phase 2c) ──────────────────────────────
+    const fetchAddons = async () => {
+        try {
+            const authToken = localStorage.getItem('idToken');
+            const res = await axios.get(
+                `${process.env.REACT_APP_AWS_API_URL}/api/admin/laundry-products-info`,
+                {
+                    params: { operation: "viewAddons", laundryId },
+                    headers: { 'Authorization': `Bearer ${authToken}` },
+                }
+            );
+            setAddonsData(res.data?.body?.addons || []);
+        } catch (error) {
+            console.error("Error fetching add-ons:", error);
+        }
+    };
+
+    const handleAddAddon = () => {
+        setNewAddons((prev) => [
+            ...prev,
+            { addonName: "", description: "", pricingBasis: "per_item", unitPrice: "", customerAccess: true },
+        ]);
+    };
+
+    const handleNewAddonChange = (index, field, value) => {
+        setNewAddons((prev) =>
+            prev.map((a, i) => (i === index ? { ...a, [field]: value } : a))
+        );
+    };
+
+    const handleRemoveNewAddon = (index) => {
+        setNewAddons((prev) => prev.filter((_, i) => i !== index));
+    };
+
+    const handleEditAddon = (index, field, value) => {
+        setAddonsData((prev) =>
+            prev.map((a, i) => (i === index ? { ...a, [field]: value, isModified: true } : a))
+        );
+    };
+
+    const handleDeleteAddon = (index) => {
+        const addon = addonsData[index];
+        if (addon.addonId) {
+            setAddonsToRemove((prev) => [...prev, addon.addonId]);
+        }
+        setAddonsData((prev) => prev.filter((_, i) => i !== index));
+    };
+
+    const handleSaveAddons = async () => {
+        const payload = {
+            addonsEnabled,
+            addonsToAdd: (newAddons || [])
+                .filter((a) => (a.addonName || "").trim())
+                .map((a) => ({
+                    addonName: a.addonName.trim(),
+                    description: a.description || "",
+                    pricingBasis: a.pricingBasis === "per_pound" ? "per_pound" : "per_item",
+                    unitPrice: parseFloat(a.unitPrice) || 0,
+                    customerAccess: a.customerAccess ?? true,
+                })),
+            addonsToUpdate: (addonsData || [])
+                .filter((a) => a.isModified && a.addonId)
+                .map((a) => ({
+                    addonId: a.addonId,
+                    addonName: (a.addonName || "").trim(),
+                    description: a.description || "",
+                    pricingBasis: a.pricingBasis === "per_pound" ? "per_pound" : "per_item",
+                    unitPrice: parseFloat(a.unitPrice) || 0,
+                    customerAccess: a.customerAccess ?? true,
+                })),
+            addonsToRemove: addonsToRemove || [],
+        };
+
+        setIsSavingAddons(true);
+        try {
+            const authToken = localStorage.getItem('idToken');
+            await axios.post(
+                `${process.env.REACT_APP_AWS_API_URL}/api/admin/update-products-services`,
+                payload,
+                {
+                    params: { operation: "updateAddons", laundryId },
+                    headers: { 'Authorization': `Bearer ${authToken}` },
+                }
+            );
+            toast({
+                title: "Add-ons saved",
+                status: "success",
+                duration: 3000,
+                isClosable: true,
+                position: "top",
+            });
+            setNewAddons([]);
+            setAddonsToRemove([]);
+            setOriginalAddonsEnabled(addonsEnabled);
+            fetchAddons();
+        } catch (error) {
+            console.error("Error saving add-ons:", error);
+            toast({
+                title: "Error saving add-ons",
+                description: "Please try again.",
+                status: "error",
+                duration: 3000,
+                isClosable: true,
+                position: "top",
+            });
+        } finally {
+            setIsSavingAddons(false);
         }
     };
 
@@ -1135,17 +1265,18 @@ const LaundryInfoManagement = ({ validateEmpCredentials, type, empPrefix }) => {
             return;
         }
         const payload = {
-            servicesToAdd: (newServices || []).map(({ serviceName, price, description, customerAccess, inputWeight, categoryId }) => ({
+            servicesToAdd: (newServices || []).map(({ serviceName, price, description, customerAccess, inputWeight, categoryId, minBillableWeight }) => ({
                 serviceName,
                 price: parseFloat(price) || 0,
                 description: description || "N/A",
                 customerAccess: customerAccess ?? false,
                 inputWeight: inputWeight ?? false,
                 categoryId: categoryId || null,
+                minBillableWeight: (minBillableWeight === "" || minBillableWeight == null) ? null : parseFloat(minBillableWeight),
             })),
             servicesToUpdate: (servicesData || [])
                 .filter((service) => service.isModified)
-                .map(({ serviceName, originalServiceName, price, description, customerAccess, inputWeight, categoryId }) => ({
+                .map(({ serviceName, originalServiceName, price, description, customerAccess, inputWeight, categoryId, minBillableWeight }) => ({
                     serviceName,
                     originalServiceName: originalServiceName || serviceName,
                     price: parseFloat(price) || 0,
@@ -1153,14 +1284,19 @@ const LaundryInfoManagement = ({ validateEmpCredentials, type, empPrefix }) => {
                     customerAccess: customerAccess ?? false,
                     inputWeight: inputWeight ?? false,
                     categoryId: categoryId || null,
+                    minBillableWeight: (minBillableWeight === "" || minBillableWeight == null) ? null : parseFloat(minBillableWeight),
                 })),
             servicesToRemove: servicesToRemove || [],
+            minWeightEnabled: minWeightEnabled,
+            minWeightScope: minWeightScope,
         };
     
         if (
             payload.servicesToAdd.length === 0 &&
             payload.servicesToUpdate.length === 0 &&
-            payload.servicesToRemove.length === 0
+            payload.servicesToRemove.length === 0 &&
+            minWeightEnabled === originalMinWeightEnabled &&
+            minWeightScope === originalMinWeightScope
         ) {
             toast({
                 title: "No Changes",
@@ -1200,6 +1336,8 @@ const LaundryInfoManagement = ({ validateEmpCredentials, type, empPrefix }) => {
                 });
                 setNewServices([]);
                 setServicesToRemove([]);
+                setOriginalMinWeightEnabled(minWeightEnabled);
+                setOriginalMinWeightScope(minWeightScope);
                 fetchServices();
                 setIsServiceEditMode(false);
             } else {
@@ -1850,6 +1988,47 @@ const LaundryInfoManagement = ({ validateEmpCredentials, type, empPrefix }) => {
             {/* Table for Services */}
             {type === "services" && (              
                 <>
+                    {/* Minimum billable weight — tenant master toggle (Phase 2) */}
+                    <Box mb={4} p={4} bg="gray.50" borderRadius="md" border="1px solid" borderColor="gray.200">
+                        <Flex justify="space-between" align="center">
+                            <Box>
+                                <Text fontWeight="bold">⚖️ Minimum Billable Weight</Text>
+                                <Text fontSize="xs" color="gray.500" mt={1}>
+                                    When on, per-pound services are billed at their minimum weight if the
+                                    actual weight is lower. Set each service's minimum in the table below
+                                    (leave blank for no minimum). When off, customers are always billed for
+                                    the exact weight.
+                                </Text>
+                            </Box>
+                            <Switch
+                                colorScheme="blue"
+                                isChecked={minWeightEnabled}
+                                onChange={(e) => setMinWeightEnabled(e.target.checked)}
+                                isDisabled={!isServiceEditMode}
+                            />
+                        </Flex>
+                        {minWeightEnabled && (
+                            <Flex align="center" gap={3} mt={3}>
+                                <Text fontSize="sm" color="gray.700" fontWeight="500">Apply minimum to:</Text>
+                                <select
+                                    value={minWeightScope}
+                                    onChange={(e) => setMinWeightScope(e.target.value)}
+                                    disabled={!isServiceEditMode}
+                                    style={{ padding: "0.25rem 0.5rem", fontSize: "0.875rem", borderRadius: "6px", border: "1px solid #CBD5E0" }}
+                                >
+                                    <option value="all">All orders (online + in-store)</option>
+                                    <option value="online">Online orders only</option>
+                                    <option value="instore">In-store orders only</option>
+                                </select>
+                            </Flex>
+                        )}
+                        {!isServiceEditMode && (
+                            <Text fontSize="xs" color="gray.400" mt={2}>
+                                Click "Edit" to change these settings.
+                            </Text>
+                        )}
+                    </Box>
+
                     {/* Service Categories Management */}
                     <Box mb={4} p={4} bg="gray.50" borderRadius="md" border="1px solid" borderColor="gray.200">
                         <Text fontWeight="bold" mb={2}>📂 Service Categories</Text>
@@ -1931,6 +2110,7 @@ const LaundryInfoManagement = ({ validateEmpCredentials, type, empPrefix }) => {
                                 <Th fontWeight="bold" fontSize="md">Customer Access</Th>
                                 <Th fontWeight="bold" fontSize="md">Description</Th>
                                 <Th fontWeight="bold" fontSize="md">Input Weight</Th>
+                                <Th fontWeight="bold" fontSize="md" isNumeric>Min Weight (lb)</Th>
                                 {isServiceEditMode && <Th fontWeight="bold" fontSize="md">Actions</Th>}
                             </Tr>
                         </Thead>
@@ -1995,6 +2175,18 @@ const LaundryInfoManagement = ({ validateEmpCredentials, type, empPrefix }) => {
             <option value="true">True</option>
             <option value="false">False</option>
           </select>
+        </Td>
+        <Td isNumeric>
+          <Input
+            size="sm"
+            type="number"
+            min="0"
+            step="0.5"
+            placeholder="—"
+            isDisabled={!service.inputWeight}
+            value={service.minBillableWeight ?? ""}
+            onChange={(e) => handleNewServiceChange(index, "minBillableWeight", e.target.value)}
+          />
         </Td>
         <Td>
           <IconButton
@@ -2097,6 +2289,24 @@ const LaundryInfoManagement = ({ validateEmpCredentials, type, empPrefix }) => {
           service.inputWeight ? "True" : "False"
         )}
       </Td>
+      <Td fontSize="sm" isNumeric>
+        {isServiceEditMode ? (
+          <Input
+            size="sm"
+            type="number"
+            min="0"
+            step="0.5"
+            placeholder="—"
+            isDisabled={!service.inputWeight}
+            value={service.minBillableWeight ?? ""}
+            onChange={(e) => handleEditService(index, "minBillableWeight", e.target.value)}
+          />
+        ) : (
+          service.minBillableWeight != null && service.minBillableWeight !== ""
+            ? `${service.minBillableWeight} lb`
+            : "—"
+        )}
+      </Td>
       {isServiceEditMode && (
         <Td>
           <IconButton
@@ -2121,7 +2331,128 @@ const LaundryInfoManagement = ({ validateEmpCredentials, type, empPrefix }) => {
                             </Button>
                         </Flex>
                     )}
-                    
+
+                    {/* ─── Add-Ons & Extras (Phase 2c) ─────────────────────── */}
+                    <Box mt={8} p={4} bg="gray.50" borderRadius="md" border="1px solid" borderColor="gray.200">
+                        <Flex justify="space-between" align="center" mb={2}>
+                            <Box>
+                                <Text fontWeight="bold">✨ Add-Ons & Extras</Text>
+                                <Text fontSize="xs" color="gray.500" mt={1}>
+                                    Optional upgrades customers can add to an order — e.g. fabric softener
+                                    (per pound) or hangers (per item). Per-pound add-ons are billed on the
+                                    order's weight; per-item on the quantity chosen.
+                                </Text>
+                            </Box>
+                            <Flex align="center" gap={2}>
+                                <Text fontSize="sm" color="gray.600">Enabled</Text>
+                                <Switch
+                                    colorScheme="blue"
+                                    isChecked={addonsEnabled}
+                                    onChange={(e) => setAddonsEnabled(e.target.checked)}
+                                />
+                            </Flex>
+                        </Flex>
+
+                        <Table variant="simple" size="sm" mt={3}>
+                            <Thead bg="#EBF8FF">
+                                <Tr>
+                                    <Th>Add-On Name</Th>
+                                    <Th>Pricing Basis</Th>
+                                    <Th isNumeric>Unit Price</Th>
+                                    <Th>Customer Access</Th>
+                                    <Th>Actions</Th>
+                                </Tr>
+                            </Thead>
+                            <Tbody bg="white">
+                                {(newAddons || []).map((addon, index) => (
+                                    <Tr key={`new-addon-${index}`}>
+                                        <Td>
+                                            <Input size="sm" placeholder="e.g. Fabric Softener"
+                                                value={addon.addonName || ""}
+                                                onChange={(e) => handleNewAddonChange(index, "addonName", e.target.value)} />
+                                        </Td>
+                                        <Td>
+                                            <select value={addon.pricingBasis}
+                                                onChange={(e) => handleNewAddonChange(index, "pricingBasis", e.target.value)}
+                                                style={{ padding: "0.25rem", fontSize: "0.875rem", width: "100%" }}>
+                                                <option value="per_item">Per Item</option>
+                                                <option value="per_pound">Per Pound</option>
+                                            </select>
+                                        </Td>
+                                        <Td isNumeric>
+                                            <Input size="sm" type="number" min="0" step="0.01" placeholder="0.00"
+                                                value={addon.unitPrice}
+                                                onChange={(e) => handleNewAddonChange(index, "unitPrice", e.target.value)} />
+                                        </Td>
+                                        <Td>
+                                            <select value={addon.customerAccess ? "true" : "false"}
+                                                onChange={(e) => handleNewAddonChange(index, "customerAccess", e.target.value === "true")}
+                                                style={{ padding: "0.25rem", fontSize: "0.875rem", width: "100%" }}>
+                                                <option value="true">True</option>
+                                                <option value="false">False</option>
+                                            </select>
+                                        </Td>
+                                        <Td>
+                                            <IconButton icon={<DeleteIcon />} colorScheme="red" size="sm"
+                                                aria-label="Remove new add-on"
+                                                onClick={() => handleRemoveNewAddon(index)} />
+                                        </Td>
+                                    </Tr>
+                                ))}
+                                {(addonsData || []).map((addon, index) => (
+                                    <Tr key={addon.addonId || `addon-${index}`}>
+                                        <Td>
+                                            <Input size="sm" value={addon.addonName || ""}
+                                                onChange={(e) => handleEditAddon(index, "addonName", e.target.value)} />
+                                        </Td>
+                                        <Td>
+                                            <select value={addon.pricingBasis === "per_pound" ? "per_pound" : "per_item"}
+                                                onChange={(e) => handleEditAddon(index, "pricingBasis", e.target.value)}
+                                                style={{ padding: "0.25rem", fontSize: "0.875rem", width: "100%" }}>
+                                                <option value="per_item">Per Item</option>
+                                                <option value="per_pound">Per Pound</option>
+                                            </select>
+                                        </Td>
+                                        <Td isNumeric>
+                                            <Input size="sm" type="number" min="0" step="0.01"
+                                                value={addon.unitPrice ?? ""}
+                                                onChange={(e) => handleEditAddon(index, "unitPrice", e.target.value)} />
+                                        </Td>
+                                        <Td>
+                                            <select value={addon.customerAccess ? "true" : "false"}
+                                                onChange={(e) => handleEditAddon(index, "customerAccess", e.target.value === "true")}
+                                                style={{ padding: "0.25rem", fontSize: "0.875rem", width: "100%" }}>
+                                                <option value="true">True</option>
+                                                <option value="false">False</option>
+                                            </select>
+                                        </Td>
+                                        <Td>
+                                            <IconButton icon={<DeleteIcon />} colorScheme="red" size="sm"
+                                                aria-label="Delete add-on"
+                                                onClick={() => handleDeleteAddon(index)} />
+                                        </Td>
+                                    </Tr>
+                                ))}
+                                {(newAddons.length === 0 && addonsData.length === 0) && (
+                                    <Tr>
+                                        <Td colSpan={5}>
+                                            <Text fontSize="sm" color="gray.400">No add-ons yet. Click "Add Add-On" to create one.</Text>
+                                        </Td>
+                                    </Tr>
+                                )}
+                            </Tbody>
+                        </Table>
+
+                        <Flex gap={2} mt={3}>
+                            <Button size="sm" colorScheme="teal" onClick={handleAddAddon}>
+                                + Add Add-On
+                            </Button>
+                            <Button size="sm" colorScheme="blue" onClick={handleSaveAddons} isLoading={isSavingAddons}>
+                                Save Add-Ons
+                            </Button>
+                        </Flex>
+                    </Box>
+
                 </>
             )} 
             {type === "products" &&(

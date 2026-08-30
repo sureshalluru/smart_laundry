@@ -64,6 +64,8 @@ export default function AdminCreateOrder() {
     const [saveSpecialInstructions, setSaveSpecialInstructions] = useState(false);
     const [address, setAddress] = useState('');
     const [laundryServices, setLaundryServices] = useState([]); // set the laundry services information
+    // Phase 2: whether min billable weight applies to in-store orders (raw flag + scope)
+    const [minWeightActive, setMinWeightActive] = useState(false);
     const [deliveryTimeSlots, setDeliveryTimeSlots] = useState([]); // set the delivery time slots information
     const [inStorePickupTimeSlots, setInStorePickupTimeSlots] = useState([]); // set the inStore pickup time slots information
     const [deliveryTimeInterval, setDeliveryTimeInterval] = useState(0); // set the delivery time interval to generate the slots
@@ -453,6 +455,14 @@ export default function AdminCreateOrder() {
 
                     if (response.data.status === 'success') {
                         setLaundryServices(response.data.laundryServices);
+                        // Min weight applies to this (in-store) order when the
+                        // master flag is on AND scope includes in-store.
+                        {
+                            const scope = response.data.minWeightScope || 'all';
+                            setMinWeightActive(
+                                Boolean(response.data.minWeightEnabled) && (scope === 'all' || scope === 'instore')
+                            );
+                        }
                         setDeliveryTimeSlots(response.data.deliveryTimeSlots);
                         setInStorePickupTimeSlots(response.data.inStorePickupTimeSlots);
                         setLaundryTimeZone(response.data.laundryTimeZone);
@@ -540,6 +550,7 @@ export default function AdminCreateOrder() {
                         address={address}
                         setAddress={setAddress}
                         laundryServices={laundryServices}
+                        minWeightActive={minWeightActive}
                         inStorePickupTimeSlots={inStorePickupTimeSlots}
                         deliveryTimeInterval={deliveryTimeInterval}
                         laundryTimeZone={laundryTimeZone}

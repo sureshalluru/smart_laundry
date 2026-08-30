@@ -8,6 +8,7 @@ from app.database import get_db, get_cursor
 from app.auth import get_current_user
 from app.utils import serialize, serialize_row
 from app.services.payment_service import check_payment_gate
+from app.services.pricing import compute_order_billing
 from app.utils.invoice_helpers import resolve_invoice_emails
 from decimal import Decimal, ROUND_HALF_UP
 from datetime import datetime, timedelta
@@ -167,7 +168,8 @@ async def get_laundry_products_info(
                        delivery_time_interval, emp_prefix, admin_domain, user_domain,
                        street, city, state, zip_code, country,
                        contact_email, contact_phone, pickup_dropoff_instructions,
-                       stripe_public_key, stripe_terminal_id, serviceable_zip_codes
+                       stripe_public_key, stripe_terminal_id, serviceable_zip_codes,
+                       min_weight_enabled, addons_enabled, min_weight_scope
                 FROM shop.laundry_shops WHERE laundry_id = %s
             """, (laundryId,))
             row = cur.fetchone()
@@ -187,6 +189,9 @@ async def get_laundry_products_info(
                 "laundryTimezone": row["laundry_timezone"],
                 "serviceableZipCodes": row["serviceable_zip_codes"] or [],
                 "pickupDropoffInstructions": row["pickup_dropoff_instructions"],
+                "minWeightEnabled": bool(row["min_weight_enabled"]),
+                "addonsEnabled": bool(row["addons_enabled"]),
+                "minWeightScope": row.get("min_weight_scope") or "all",
             }}
 
         elif operation == 'viewLaundryInfoById':
@@ -216,7 +221,7 @@ async def get_laundry_products_info(
 
         elif operation == 'viewServices':
             cur.execute("""
-                SELECT service_id, service_name, description, price, input_weight, customer_access, category_id
+                SELECT service_id, service_name, description, price, input_weight, customer_access, category_id, min_billable_weight
                 FROM shop.laundry_services WHERE laundry_id = %s AND is_active = TRUE ORDER BY service_id
             """, (laundryId,))
             services = [serialize_row(r) for r in cur.fetchall()]
@@ -229,6 +234,15 @@ async def get_laundry_products_info(
             """, (laundryId,))
             products = [serialize_row(r) for r in cur.fetchall()]
             return {"statusCode": 200, "body": {"message": "Products fetched", "products": products}}
+
+        elif operation == 'viewAddons':
+            # Add-on / processing-extra catalog for this tenant (Phase 2c).
+            cur.execute("""
+                SELECT addon_id, addon_name, description, pricing_basis, unit_price, customer_access, is_active
+                FROM shop.laundry_addons WHERE laundry_id = %s AND is_active = TRUE ORDER BY addon_id
+            """, (laundryId,))
+            addons = [serialize_row(r) for r in cur.fetchall()]
+            return {"statusCode": 200, "body": {"message": "Add-ons fetched", "addons": addons}}
 
         elif operation == 'viewPromotions':
             cur.execute("""
@@ -434,22 +448,71 @@ async def instore_place_order(
         payment_status = "Unpaid"
         final_payments = []
 
-        # Calculate totals from services/products if not provided
-        if sub_total == 0 and (services or products):
-            for svc in services:
-                price = float(str(svc.get("servicePrice") or svc.get("price", 0) or 0))
-                weight = float(str(svc.get("weightOrCount") or svc.get("weight", 0) or 0))
-                sub_total += price * weight
-            for prod in products:
-                price = float(str(prod.get("productPrice") or prod.get("price", 0) or 0))
-                count = float(str(prod.get("productCount") or prod.get("count", 1) or 1))
-                sub_total += price * count
-            sub_total = round(sub_total, 2)
+        # Phase 2: if the tenant has minimum billable weight enabled, recompute
+        # the subtotal server-side (honoring per-service minimums) rather than
+        # trusting the client-supplied subtotal — otherwise an instore order for
+        # a weight under the minimum would undercharge. When the flag is OFF this
+        # block is skipped entirely and behavior is byte-identical to before.
+        _min_weight_enabled = False
+        try:
+            from app.services.pricing import minimum_applies
+            with get_db() as conn_flag:
+                cur_flag = get_cursor(conn_flag)
+                cur_flag.execute("SELECT min_weight_enabled, min_weight_scope FROM shop.laundry_shops WHERE laundry_id = %s", (laundry_id,))
+                _flag_row = cur_flag.fetchone() or {}
+                # This endpoint always creates an InStore-channel order.
+                _min_weight_enabled = minimum_applies(
+                    bool(_flag_row.get("min_weight_enabled")),
+                    _flag_row.get("min_weight_scope"),
+                    "InStore",
+                )
+        except Exception as flag_err:
+            logger.warning(f"min_weight flag lookup failed: {flag_err}")
 
-        if total_cost == 0:
+        if _min_weight_enabled and services:
+            # Resolve input_weight + min_billable_weight from the catalog by name.
+            with get_db() as conn_cat:
+                cur_cat = get_cursor(conn_cat)
+                cur_cat.execute("""
+                    SELECT service_name, input_weight, min_billable_weight
+                    FROM shop.laundry_services WHERE laundry_id = %s AND is_active = TRUE
+                """, (laundry_id,))
+                _catalog = {r["service_name"].strip().lower(): r for r in cur_cat.fetchall()}
+            _svc_dicts = []
+            for svc in services:
+                nm = (svc.get("serviceName") or svc.get("service") or svc.get("name", "") or "").strip().lower()
+                cat = _catalog.get(nm)
+                _svc_dicts.append({
+                    "service_price": svc.get("servicePrice") or svc.get("price", 0) or 0,
+                    "weight_or_count": svc.get("weightOrCount") or svc.get("weight", 0) or 0,
+                    "input_weight": cat["input_weight"] if cat else svc.get("inputWeight"),
+                    "min_billable_weight": cat["min_billable_weight"] if cat else None,
+                })
+            _prod_dicts = [{
+                "product_price": p.get("productPrice") or p.get("price", 0) or 0,
+                "product_count": p.get("productCount") or p.get("count", 1) or 1,
+            } for p in products]
+            _billing = compute_order_billing(services=_svc_dicts, products=_prod_dicts, apply_minimums=True)
+            sub_total = _billing["sub_total"]
             total_cost = sub_total
-        if grand_total == 0:
             grand_total = round(total_cost + tip_amount, 2)
+        else:
+            # Calculate totals from services/products if not provided
+            if sub_total == 0 and (services or products):
+                for svc in services:
+                    price = float(str(svc.get("servicePrice") or svc.get("price", 0) or 0))
+                    weight = float(str(svc.get("weightOrCount") or svc.get("weight", 0) or 0))
+                    sub_total += price * weight
+                for prod in products:
+                    price = float(str(prod.get("productPrice") or prod.get("price", 0) or 0))
+                    count = float(str(prod.get("productCount") or prod.get("count", 1) or 1))
+                    sub_total += price * count
+                sub_total = round(sub_total, 2)
+
+            if total_cost == 0:
+                total_cost = sub_total
+            if grand_total == 0:
+                grand_total = round(total_cost + tip_amount, 2)
 
         # Apply tax if configured
         tax_amount = 0
@@ -575,6 +638,19 @@ async def instore_place_order(
                 """, (order_id, svc_name, float(str(svc.get("servicePrice") or svc.get("price", 0))),
                       float(str(svc.get("weightOrCount") or svc.get("weight", 0)))))
 
+            # Snapshot catalog input_weight + minimum billable weight onto the
+            # order lines (Phase 2). input_weight must be copied so the recompute
+            # below knows which lines are weight-based and can floor them.
+            cur.execute("""
+                UPDATE orders.order_services os
+                SET input_weight = ls.input_weight,
+                    min_billable_weight = COALESCE(os.min_billable_weight, ls.min_billable_weight)
+                FROM shop.laundry_services ls
+                WHERE os.order_id = %s
+                  AND ls.laundry_id = %s
+                  AND lower(trim(ls.service_name)) = lower(trim(os.service_name))
+            """, (order_id, laundry_id))
+
             for prod in products:
                 cur.execute("""
                     INSERT INTO orders.order_products (order_id, product_name, product_price, product_count)
@@ -697,6 +773,8 @@ async def update_order_endpoint(
             products_to_add = body.get("productsToAdd", [])
             products_to_remove = body.get("productsToRemove", [])
             products_to_update = body.get("productsToUpdate", [])
+            addons_to_add = body.get("addonsToAdd", [])       # Phase 2d: [{addonId, quantity}]
+            addons_to_remove = body.get("addonsToRemove", []) # Phase 2d: [order_addons.id]
             coupon = body.get("coupon")
             laundry_bags = body.get("laundryBags", current_order["laundry_bags"])
 
@@ -748,6 +826,48 @@ async def update_order_endpoint(
                     VALUES (%s, %s, %s, %s)
                 """, (orderId, name, price, woc))
 
+            # Snapshot catalog minimum billable weight onto any order lines that
+            # don't have one yet (newly added services) — Phase 2.
+            cur.execute("""
+                UPDATE orders.order_services os
+                SET min_billable_weight = ls.min_billable_weight
+                FROM shop.laundry_services ls
+                WHERE os.order_id = %s
+                  AND ls.laundry_id = %s
+                  AND lower(trim(ls.service_name)) = lower(trim(os.service_name))
+                  AND os.min_billable_weight IS NULL
+                  AND ls.min_billable_weight IS NOT NULL
+            """, (orderId, laundryId))
+
+            # Phase 2d: staff can add/remove add-ons (processing extras) mid-order.
+            # New add-ons snapshot the catalog name/basis/price; removals are by row id.
+            for _aid in (addons_to_remove or []):
+                cur.execute("DELETE FROM orders.order_addons WHERE id = %s AND order_id = %s", (_aid, orderId))
+            for _a in (addons_to_add or []):
+                _addon_id = _a.get("addonId") or _a.get("addon_id")
+                if not _addon_id:
+                    continue
+                cur.execute("""
+                    SELECT addon_name, pricing_basis, unit_price FROM shop.laundry_addons
+                    WHERE addon_id = %s AND laundry_id = %s AND is_active = TRUE
+                """, (_addon_id, laundryId))
+                _cat = cur.fetchone()
+                if not _cat:
+                    continue
+                if _cat["pricing_basis"] == "per_pound":
+                    _qv = None
+                else:
+                    try:
+                        _qv = float(_a.get("quantity")) if _a.get("quantity") is not None else 1.0
+                    except (TypeError, ValueError):
+                        _qv = 1.0
+                cur.execute("""
+                    INSERT INTO orders.order_addons
+                        (order_id, laundry_id, addon_id, addon_name, pricing_basis, unit_price, quantity)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                """, (orderId, laundryId, _addon_id, _cat["addon_name"],
+                      _cat["pricing_basis"], float(_cat["unit_price"] or 0), _qv))
+
             # Process product changes
             for pid in products_to_remove:
                 if isinstance(pid, int):
@@ -768,14 +888,33 @@ async def update_order_endpoint(
                         UPDATE orders.order_products SET product_count = %s WHERE id = %s AND order_id = %s
                     """, (int(prod.get("productCount", 1)), prod_id, orderId))
 
-            # Recalculate totals
-            cur.execute("SELECT service_price, weight_or_count FROM orders.order_services WHERE order_id = %s", (orderId,))
-            svc_total = sum(float(r["service_price"] or 0) * float(r["weight_or_count"] or 0) for r in cur.fetchall())
-
+            # Recalculate totals via the shared billing helper (Phase 2).
+            cur.execute("SELECT service_price, weight_or_count, input_weight, min_billable_weight FROM orders.order_services WHERE order_id = %s", (orderId,))
+            _svc_rows = cur.fetchall()
             cur.execute("SELECT product_price, product_count FROM orders.order_products WHERE order_id = %s", (orderId,))
-            prod_total = sum(float(r["product_price"] or 0) * float(r["product_count"] or 0) for r in cur.fetchall())
-
-            sub_total = round(svc_total + prod_total, 2)
+            _prod_rows = cur.fetchall()
+            # Tenant opt-in: floor to min billable weight / include add-ons.
+            from app.services.pricing import minimum_applies
+            cur.execute("SELECT min_weight_enabled, addons_enabled, min_weight_scope FROM shop.laundry_shops WHERE laundry_id = %s", (laundryId,))
+            _shop = cur.fetchone() or {}
+            _apply_min = minimum_applies(
+                bool(_shop.get("min_weight_enabled")),
+                _shop.get("min_weight_scope"),
+                current_order.get("order_type"),
+            )
+            _addon_lines = []
+            if _shop.get("addons_enabled"):
+                cur.execute("SELECT addon_name, pricing_basis, unit_price, quantity FROM orders.order_addons WHERE order_id = %s", (orderId,))
+                _addon_lines = [{"name": r["addon_name"], "pricing_basis": r["pricing_basis"],
+                                 "unit_price": r["unit_price"], "quantity": r["quantity"]} for r in cur.fetchall()]
+            _billing = compute_order_billing(
+                services=[{"service_price": r["service_price"], "weight_or_count": r["weight_or_count"],
+                           "input_weight": r.get("input_weight"), "min_billable_weight": r.get("min_billable_weight")} for r in _svc_rows],
+                products=[{"product_price": r["product_price"], "product_count": r["product_count"]} for r in _prod_rows],
+                addons=_addon_lines,
+                apply_minimums=_apply_min,
+            )
+            sub_total = _billing["sub_total"]
             total_cost = sub_total  # Before discount
 
             # Apply discount if coupon exists — always recalculate based on new subtotal
@@ -1003,7 +1142,7 @@ async def update_order_endpoint(
                     # Get customer email and billing_email for dual-email resolution
                     cur.execute("SELECT email, billing_email, first_name, last_name, phone_number FROM shop.customers WHERE customer_id = %s", (current_order["customer_id"],))
                     inv_cust = cur.fetchone()
-                    cur.execute("SELECT laundry_name, contact_email FROM shop.laundry_shops WHERE laundry_id = %s", (laundryId,))
+                    cur.execute("SELECT laundry_name, contact_email, min_weight_enabled, addons_enabled, min_weight_scope FROM shop.laundry_shops WHERE laundry_id = %s", (laundryId,))
                     inv_shop = cur.fetchone()
 
                     # Resolve invoice recipient list using dual-email logic
@@ -1043,17 +1182,52 @@ async def update_order_endpoint(
                             metadata={"order_id": orderId, "laundry_id": laundryId},
                         )
 
-                        # Add line items
+                        # Add itemized line items via the shared billing helper
+                        # (Phase 2). This also fixes a prior bug where this inline
+                        # builder emitted only services and omitted products.
                         cur.execute("SELECT * FROM orders.order_services WHERE order_id = %s", (orderId,))
-                        for svc in cur.fetchall():
-                            amt = int(round(float(svc["service_price"] or 0) * float(svc["weight_or_count"] or 0) * 100))
-                            if amt > 0:
-                                stripe.InvoiceItem.create(customer=stripe_cust.id, invoice=invoice.id, amount=amt, currency="usd",
-                                    description=f"{svc['service_name']} ({svc['weight_or_count']} lbs)")
+                        _inv_svcs = cur.fetchall()
+                        cur.execute("SELECT * FROM orders.order_products WHERE order_id = %s", (orderId,))
+                        _inv_prods = cur.fetchall()
+                        _inv_apply_min = minimum_applies(
+                            bool(inv_shop and inv_shop.get("min_weight_enabled")),
+                            inv_shop.get("min_weight_scope") if inv_shop else None,
+                            current_order.get("order_type"),
+                        )
+                        _inv_addons = []
+                        if inv_shop and inv_shop.get("addons_enabled"):
+                            cur.execute("SELECT addon_name, pricing_basis, unit_price, quantity FROM orders.order_addons WHERE order_id = %s", (orderId,))
+                            _inv_addons = [{"name": r["addon_name"], "pricing_basis": r["pricing_basis"],
+                                            "unit_price": r["unit_price"], "quantity": r["quantity"]} for r in cur.fetchall()]
+                        _inv_billing = compute_order_billing(
+                            services=[{"service_price": s["service_price"], "weight_or_count": s["weight_or_count"],
+                                       "input_weight": s.get("input_weight"), "min_billable_weight": s.get("min_billable_weight"),
+                                       "service_name": s["service_name"]} for s in _inv_svcs],
+                            products=[{"product_price": p["product_price"], "product_count": p["product_count"],
+                                       "product_name": p["product_name"]} for p in _inv_prods],
+                            addons=_inv_addons,
+                            apply_minimums=_inv_apply_min,
+                        )
+                        _emitted_any = False
+                        for _line in _inv_billing["lines"]:
+                            amt = int(round(float(_line["amount"]) * 100))
+                            if amt <= 0:
+                                continue
+                            if _line["kind"] == "service":
+                                _desc = f"{_line['name']} ({_line['qty']} lbs)"
+                            elif _line["kind"] == "product":
+                                _desc = f"{_line['name']} (x{int(_line['qty'])})"
+                            elif _line["kind"] == "addon" and _line.get("pricing_basis") == "per_pound":
+                                _desc = f"{_line['name']} ({_line['qty']} lbs)"
+                            else:
+                                _desc = f"{_line['name']} (x{_line['qty']})"
+                            stripe.InvoiceItem.create(customer=stripe_cust.id, invoice=invoice.id,
+                                amount=amt, currency="usd", description=_desc)
+                            _emitted_any = True
 
                         if not grand_total or grand_total == 0:
                             pass  # No items to invoice
-                        elif not cur.rowcount:
+                        elif not _emitted_any:
                             stripe.InvoiceItem.create(customer=stripe_cust.id, invoice=invoice.id,
                                 amount=int(round(grand_total * 100)), currency="usd",
                                 description=f"Laundry service - Order {orderId}")
@@ -1677,6 +1851,10 @@ def get_single_order(cur, laundry_id, order_id):
         cur.execute("SELECT * FROM orders.order_products WHERE order_id = %s", (order_id,))
         products = [serialize_row(r) for r in cur.fetchall()]
 
+        # Add-ons applied to this order (Phase 2c/2d) — for admin display + editing.
+        cur.execute("SELECT id, addon_id, addon_name, pricing_basis, unit_price, quantity FROM orders.order_addons WHERE order_id = %s ORDER BY id", (order_id,))
+        addons = [serialize_row(r) for r in cur.fetchall()]
+
         cur.execute("SELECT * FROM orders.order_payments WHERE order_id = %s", (order_id,))
         payments = [serialize_row(r) for r in cur.fetchall()]
 
@@ -1756,6 +1934,7 @@ def get_single_order(cur, laundry_id, order_id):
             "paymentStatus": order["payment_status"],
             "services": services,
             "products": products,
+            "addons": addons,
             "specialInstructions": order["special_instructions"],
             "laundryBags": order["laundry_bags"],
             "pricingType": order.get("pricing_type", "per_pound"),

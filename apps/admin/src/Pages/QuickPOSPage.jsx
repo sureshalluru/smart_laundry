@@ -28,6 +28,8 @@ export default function QuickPOSPage({ laundryId, stripePublicKey, stripeTermina
 
   const [services, setServices] = useState([]);
   const [cart, setCart] = useState([]);
+  // Phase 2: whether min billable weight applies to in-store (POS) orders
+  const [minWeightActive, setMinWeightActive] = useState(false);
   const [customerPhone, setCustomerPhone] = useState('');
   const [customerName, setCustomerName] = useState('');
   const [customerId, setCustomerId] = useState('');
@@ -65,6 +67,10 @@ export default function QuickPOSPage({ laundryId, stripePublicKey, stripeTermina
           { params: { operation: 'getLaundryInfo', laundryId }, headers: { Authorization: `Bearer ${authToken}` } });
         if (res.data.status === 'success') {
           setServices(res.data.laundryServices || []);
+          const scope = res.data.minWeightScope || 'all';
+          setMinWeightActive(
+            Boolean(res.data.minWeightEnabled) && (scope === 'all' || scope === 'instore')
+          );
         }
       } catch (err) { console.error(err); }
     };
@@ -169,7 +175,7 @@ export default function QuickPOSPage({ laundryId, stripePublicKey, stripeTermina
     setCart(prev => {
       const existing = prev.find(i => i.serviceName === service.serviceName);
       if (existing) return prev.map(i => i.serviceName === service.serviceName ? { ...i, quantity: i.quantity + 1 } : i);
-      return [...prev, { serviceName: service.serviceName, price, quantity: 1, inputWeight: '', isWeight: !!service.inputWeight }];
+      return [...prev, { serviceName: service.serviceName, price, quantity: 1, inputWeight: '', isWeight: !!service.inputWeight, minBillableWeight: service.minBillableWeight ?? null }];
     });
   }, []);
 
@@ -177,7 +183,16 @@ export default function QuickPOSPage({ laundryId, stripePublicKey, stripeTermina
   const updateWeight = (name, w) => setCart(prev => prev.map(i => i.serviceName === name ? { ...i, inputWeight: w } : i));
   const removeFromCart = (name) => setCart(prev => prev.filter(i => i.serviceName !== name));
 
-  const subtotal = cart.reduce((s, i) => s + (i.price * (i.isWeight ? (parseFloat(i.inputWeight) || 0) : i.quantity)), 0);
+  // Phase 2: preview the FLOORED billed subtotal — per weight-based item, bill at
+  // the service minimum when the tenant's minimum applies to in-store orders and
+  // the entered weight is below it. The entered weight itself is unchanged.
+  const billedQtyFor = (i) => {
+    if (!i.isWeight) return i.quantity;
+    const actual = parseFloat(i.inputWeight) || 0;
+    const min = parseFloat(i.minBillableWeight || 0) || 0;
+    return (minWeightActive && min > 0 && actual < min) ? min : actual;
+  };
+  const subtotal = cart.reduce((s, i) => s + (i.price * billedQtyFor(i)), 0);
   const tipAmount = parseFloat(tip.tipAmount) || 0;
   const total = subtotal + tipAmount;
 
@@ -437,8 +452,10 @@ export default function QuickPOSPage({ laundryId, stripePublicKey, stripeTermina
           ) : (
             <VStack spacing={2} align="stretch">
               {cart.map(item => {
-                const qty = item.isWeight ? (parseFloat(item.inputWeight) || 0) : item.quantity;
+                const actualQty = item.isWeight ? (parseFloat(item.inputWeight) || 0) : item.quantity;
+                const qty = billedQtyFor(item);
                 const lineTotal = item.price * qty;
+                const flooredThis = item.isWeight && qty > actualQty;
                 return (
                   <Box key={item.serviceName} bg="gray.50" borderRadius="lg" p={2} border="1px solid" borderColor="gray.100">
                     <HStack justify="space-between" mb={1}>
@@ -446,6 +463,11 @@ export default function QuickPOSPage({ laundryId, stripePublicKey, stripeTermina
                       <Text fontSize="sm" fontWeight="bold" color="blue.600">${lineTotal.toFixed(2)}</Text>
                       <IconButton icon={<FaTimes />} size="xs" variant="ghost" colorScheme="red" onClick={() => removeFromCart(item.serviceName)} aria-label="x" />
                     </HStack>
+                    {flooredThis && (
+                      <Text fontSize="10px" color="orange.600" mb={1}>
+                        Billed at {item.minBillableWeight} lb min (entered {actualQty} lb)
+                      </Text>
+                    )}
                     <HStack>
                       <Text fontSize="xs" color="gray.500" minW="50px">${item.price.toFixed(2)}{item.isWeight ? '/lb' : ' ea'}</Text>
                       {item.isWeight ? (

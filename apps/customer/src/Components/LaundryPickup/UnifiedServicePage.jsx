@@ -20,6 +20,8 @@ export default function UnifiedServicePage({
   dispatch,
   onContinue,
   themeColor,
+  footerSlot,
+  addonsTotal = 0,
 }) {
   const colorScheme = themeColor || 'blue';
   const cartItems = cart?.items || [];
@@ -101,11 +103,15 @@ export default function UnifiedServicePage({
         )}
       </VStack>
 
+      {/* Optional footer content (e.g. add-on picker) below the service list */}
+      {footerSlot}
+
       {/* Sticky cart bar at the bottom */}
       <StickyCartBar
         items={cartItems}
         onContinue={onContinue}
         themeColor={colorScheme}
+        addonsTotal={addonsTotal}
       />
     </Box>
   );

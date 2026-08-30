@@ -49,6 +49,7 @@ export default function ServiceSelection({
                                              initialSpecialInstructions,
                                              setSaveSpecialInstructions,
                                              laundryServices,
+                                             minWeightActive,
                                              inStorePickupTimeSlots,
                                              deliveryTimeInterval,
                                              laundryTimeZone,
@@ -331,11 +332,20 @@ export default function ServiceSelection({
                             min={1}
                             step={1}
                             onChange={(weightValue) =>
-                                handleServiceChange(index, 'count', true, selectedService.price, weightValue)
+                                handleServiceChange(index, 'count', true, selectedService.price, weightValue, selectedService.minBillableWeight)
                             }
                         >
                             <NumberInputField type="numeric"/>
                         </NumberInput>
+                        {minWeightActive
+                            && parseFloat(selectedService.minBillableWeight || 0) > 0
+                            && parseFloat(service.count || 0) > 0
+                            && parseFloat(service.count) < parseFloat(selectedService.minBillableWeight) && (
+                            <Text fontSize="xs" color="orange.600" mt={1}>
+                                Billed at the {selectedService.minBillableWeight} lb minimum
+                                (entered {service.count} lb)
+                            </Text>
+                        )}
                     </>
                 );
             } else {
@@ -364,7 +374,7 @@ export default function ServiceSelection({
 
     // Handle service changes
     // Handle service changes
-    const handleServiceChange = (index, field, inputWeight, price, value) => {
+    const handleServiceChange = (index, field, inputWeight, price, value, minBillableWeight = null) => {
         const newServices = [...services];
 
         // Reset the count and cost when a new service is selected or overridden
@@ -373,10 +383,20 @@ export default function ServiceSelection({
             newServices[index]['cost'] = ''; // Reset cost
             newServices[index]['basePrice'] = String(price); // Set base price
             newServices[index]['basePriceDisplay'] = inputWeight ? `${price}/lb` : `${price}/piece`; // Set base price Display
+            // Remember the service's minimum + weight-based flag for the floored
+            // total preview (Phase 2). Actual weight entered is still preserved.
+            newServices[index]['inputWeight'] = inputWeight;
+            newServices[index]['minBillableWeight'] = minBillableWeight;
 
         } else if (field === 'count') {
-            // Update cost based on the updated count or weight
-            newServices[index]['cost'] = String(roundToTwo(price * value));
+            // Preview the FLOORED billed cost when the tenant's minimum applies to
+            // in-store orders and this is a weight-based service under its minimum.
+            // The count field still shows the actual weight the customer entered.
+            const min = parseFloat(newServices[index]['minBillableWeight'] ?? minBillableWeight ?? 0) || 0;
+            const isWeight = newServices[index]['inputWeight'] ?? inputWeight;
+            const actual = parseFloat(value) || 0;
+            const billed = (minWeightActive && isWeight && min > 0 && actual < min) ? min : actual;
+            newServices[index]['cost'] = String(roundToTwo(price * billed));
         }
 
         // Update the specific field with the provided value
@@ -527,7 +547,8 @@ export default function ServiceSelection({
                                                                                         'service',
                                                                                         option.inputWeight,
                                                                                         option.price,
-                                                                                        option.serviceName
+                                                                                        option.serviceName,
+                                                                                        option.minBillableWeight
                                                                                     )
                                                                                 }
                                                                                 isDisabled={services.some((s) => s.service === option.serviceName)}

@@ -19,7 +19,8 @@ import SchedulePage from '../Components/LaundryPickup/SchedulePage';
 import UnifiedReviewPage from '../Components/LaundryPickup/UnifiedReviewPage';
 import OrderTypeSelection from '../Components/LaundryPickup/OrderTypeSelection';
 import cartReducer, { initialCartState } from '../Components/LaundryPickup/cartReducer';
-import { buildOrderPayload, getCartSubtotal } from '../Components/LaundryPickup/cartUtils';
+import { buildOrderPayload, getCartSubtotal, getAddonsTotal, getBilledWeight } from '../Components/LaundryPickup/cartUtils';
+import AddonPicker from '../Components/LaundryPickup/AddonPicker';
 import {useNavigate, useSearchParams} from "react-router-dom";
 import { Elements } from '@stripe/react-stripe-js';
 import { loadStripe } from '@stripe/stripe-js';
@@ -106,6 +107,14 @@ export default function LaundryPickupPage({laundryId,customerId,customerPaymentI
 
     // State variables for laundry info
     const [laundryServices, setLaundryServices] = useState([]);
+    // Phase 2: tenant master opt-in for minimum billable weight
+    const [minWeightEnabled, setMinWeightEnabled] = useState(false);
+    // Phase 2c: add-ons
+    const [laundryAddons, setLaundryAddons] = useState([]);
+    const [addonsEnabled, setAddonsEnabled] = useState(false);
+    const [selectedAddons, setSelectedAddons] = useState({}); // addonId -> {addonId, addonName, pricingBasis, unitPrice, quantity}
+    const [saveAddonPrefs, setSaveAddonPrefs] = useState(false); // Phase 2d: save selection as default
+    const [addonPrefsLoaded, setAddonPrefsLoaded] = useState(false);
     const [serviceCategories, setServiceCategories] = useState([]);
     const [servicesLoaded, setServicesLoaded] = useState(false);
     const [deliveryTimeSlots, setDeliveryTimeSlots] = useState([]);
@@ -174,7 +183,21 @@ export default function LaundryPickupPage({laundryId,customerId,customerPaymentI
                         },
                     });
                     if (response.data.status === 'success') {
-                        setLaundryServices(response.data.laundryServices);
+                        {
+                            const mwEnabled = response.data.minWeightEnabled === true;
+                            setMinWeightEnabled(mwEnabled);
+                            // Attach the tenant flag to each service so per-row
+                            // components can show/enforce the minimum without
+                            // extra prop drilling (Phase 2).
+                            setLaundryServices(
+                                (response.data.laundryServices || []).map((s) => ({
+                                    ...s,
+                                    minWeightEnabled: mwEnabled,
+                                }))
+                            );
+                            setAddonsEnabled(response.data.addonsEnabled === true);
+                            setLaundryAddons(response.data.laundryAddons || []);
+                        }
                         setDeliveryTimeSlots(response.data.deliveryTimeSlots);
                         setLaundryTimeZone(response.data.laundryTimeZone);
                         setDeliveryTimeInterval(parseInt(response.data.deliveryTimeInterval, 10));
@@ -237,6 +260,37 @@ export default function LaundryPickupPage({laundryId,customerId,customerPaymentI
             }).catch(() => {}); // Silent — never block the order flow
         }
     }, [servicesLoaded, customerId, laundryId]);
+
+    // Phase 2d: prefill the add-on picker from the customer's saved defaults so
+    // they don't have to re-select their usual extras. Runs once the add-on
+    // catalog is available; matches saved ids against the live catalog so prices
+    // and basis are always current.
+    useEffect(() => {
+        if (addonPrefsLoaded) return;
+        if (!addonsEnabled || !customerId || !laundryId || laundryAddons.length === 0) return;
+        setAddonPrefsLoaded(true);
+        axios.get(`${process.env.REACT_APP_AWS_API_URL}/api/customer/addon-preferences`, {
+            params: { customerId, laundryId },
+            headers: { 'x-api-key': authToken },
+        }).then((res) => {
+            const saved = res.data?.addons || [];
+            if (saved.length === 0) return;
+            const next = {};
+            saved.forEach((s) => {
+                const id = s.addonId ?? s.addon_id;
+                const cat = laundryAddons.find((a) => a.addonId === id);
+                if (!cat) return; // add-on no longer offered — skip
+                next[id] = {
+                    addonId: cat.addonId,
+                    addonName: cat.addonName,
+                    pricingBasis: cat.pricingBasis,
+                    unitPrice: cat.unitPrice,
+                    quantity: cat.pricingBasis === 'per_pound' ? null : (s.quantity || 1),
+                };
+            });
+            if (Object.keys(next).length > 0) setSelectedAddons(next);
+        }).catch(() => {}); // Silent — never block the order flow
+    }, [addonsEnabled, customerId, laundryId, laundryAddons, addonPrefsLoaded, authToken]);
 
     // Task 5.5: Single-service auto-add logic (no auto-skip)
     // If only 1 service exists, auto-add it to cart but let customer stay on step 1
@@ -301,14 +355,22 @@ export default function LaundryPickupPage({laundryId,customerId,customerPaymentI
             return false;
         }
 
-        // Compute grand total
-        const subtotal = getCartSubtotal(cart.items);
+        // Compute grand total (Phase 2c: include selected add-ons)
+        const selectedAddonList = Object.values(selectedAddons);
+        const billedWeight = getBilledWeight(cart.items);
+        const addonsTotal = getAddonsTotal(selectedAddonList, billedWeight);
+        const subtotal = getCartSubtotal(cart.items) + addonsTotal;
         const subscriptionDiscount = orderType === 'subscribe-save' ? (laundryData?.subscriptionDiscount || 0) : 0;
         const discountAmount = subscriptionDiscount > 0 ? subtotal * (subscriptionDiscount / 100) : 0;
         const taxableAmount = subtotal - discountAmount;
         const taxRate = laundryData?.taxRate || 0;
         const tax = taxRate > 0 ? taxableAmount * (taxRate / 100) : 0;
-        const tipAmount = parseFloat(tip.tipAmount || '0') || 0;
+        // For a percentage tip, compute the dollar amount from the taxable
+        // subtotal (there is no tip selector on the review screen that would
+        // have computed it). Otherwise use the entered custom amount.
+        const tipAmount = tip.tipType === 'percentage'
+            ? Math.round(taxableAmount * ((parseFloat(tip.tipPercentage) || 0) / 100) * 100) / 100
+            : (parseFloat(tip.tipAmount || '0') || 0);
         const grandTotal = taxableAmount + tax + tipAmount;
 
         const payload = buildOrderPayload(cart, {
@@ -325,8 +387,11 @@ export default function LaundryPickupPage({laundryId,customerId,customerPaymentI
             frequency: frequency || null,
             laundryBags,
             grandTotal: grandTotal.toFixed(2),
+            subTotal: subtotal.toFixed(2),
+            addons: selectedAddonList,
+            saveAddonPrefs,
             tip: {
-                tipAmount: tip.tipAmount,
+                tipAmount: tipAmount.toFixed(2),
                 tipPercentage: tip.tipPercentage,
                 tipType: tip.tipType,
                 tipMethod: tip.tipMethod,
@@ -725,6 +790,19 @@ export default function LaundryPickupPage({laundryId,customerId,customerPaymentI
                                     dispatch={dispatch}
                                     onContinue={() => setActiveStep(2)}
                                     themeColor={laundryData?.themeColor || 'blue'}
+                                    addonsTotal={getAddonsTotal(Object.values(selectedAddons), getBilledWeight(cart.items))}
+                                    footerSlot={
+                                        addonsEnabled && laundryAddons.length > 0 ? (
+                                            <AddonPicker
+                                                addons={laundryAddons}
+                                                selected={selectedAddons}
+                                                onChange={setSelectedAddons}
+                                                billedWeight={getBilledWeight(cart.items)}
+                                                saveAsDefault={saveAddonPrefs}
+                                                onSaveAsDefaultChange={setSaveAddonPrefs}
+                                            />
+                                        ) : null
+                                    }
                                 />
                             )}
 
@@ -820,6 +898,7 @@ export default function LaundryPickupPage({laundryId,customerId,customerPaymentI
                                     promoDescriptionMessage={promoDescriptionMessage}
                                     frequency={frequency}
                                     subscriptionDiscount={orderType === 'subscribe-save' ? (laundryData?.subscriptionDiscount || 0) : 0}
+                                    selectedAddons={Object.values(selectedAddons)}
                                     onPlaceOrder={handlePlaceOrder}
                                     onEdit={() => setActiveStep(1)}
                                     orderProcessing={orderProcessing}

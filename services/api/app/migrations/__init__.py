@@ -31,6 +31,9 @@ from app.migrations import add_hide_home_address
 from app.migrations import add_order_bags
 from app.migrations import fix_reminder_stage_nullable
 from app.migrations import backfill_employee_joining_date
+from app.migrations import add_order_min_weight
+from app.migrations import add_order_addons
+from app.migrations import add_customer_preferences
 from app.migrations import backfill_customer_stats
 
 logger = logging.getLogger(__name__)
@@ -69,5 +72,8 @@ def run_all():
     add_order_bags.run()
     fix_reminder_stage_nullable.run()
     backfill_employee_joining_date.run()
+    add_order_min_weight.run()
+    add_order_addons.run()
+    add_customer_preferences.run()
     backfill_customer_stats.run()
     logger.info("All migrations complete.")

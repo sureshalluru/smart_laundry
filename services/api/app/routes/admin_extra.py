@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, Query, Body
 from typing import Optional
 from app.database import get_db, get_cursor
 from app.auth import get_current_user
+from app.services.pricing import compute_order_billing
 from app.utils import serialize, serialize_row
 from app.utils.invoice_helpers import is_valid_email
 from datetime import datetime
@@ -318,24 +319,37 @@ async def update_products_services(
             services_to_update = body.get("servicesToUpdate", [])
             services_to_remove = body.get("servicesToRemove", [])
 
+            def _parse_min_weight(raw):
+                """Coerce the per-service minimum to a positive float or None.
+                Blank / 0 / invalid means 'no minimum' for this service."""
+                if raw in (None, "", 0, "0"):
+                    return None
+                try:
+                    v = float(raw)
+                    return v if v > 0 else None
+                except (TypeError, ValueError):
+                    return None
+
             for svc in services_to_add:
                 cur.execute("""
-                    INSERT INTO shop.laundry_services (laundry_id, service_name, price, description, input_weight, customer_access, is_active, category_id)
-                    VALUES (%s, %s, %s, %s, %s, %s, TRUE, %s)
+                    INSERT INTO shop.laundry_services (laundry_id, service_name, price, description, input_weight, customer_access, is_active, category_id, min_billable_weight)
+                    VALUES (%s, %s, %s, %s, %s, %s, TRUE, %s, %s)
                 """, (laundryId, svc.get("serviceName"), float(svc.get("price", 0)),
                       svc.get("description", ""), svc.get("inputWeight", True), svc.get("customerAccess", True),
-                      svc.get("categoryId") or None))
+                      svc.get("categoryId") or None,
+                      _parse_min_weight(svc.get("minBillableWeight"))))
 
             for svc in services_to_update:
                 new_name = svc.get("newServiceName") or svc.get("serviceName")
                 original_name = svc.get("originalServiceName") or svc.get("serviceName")
                 cur.execute("""
                     UPDATE shop.laundry_services
-                    SET service_name = %s, price = %s, description = %s, input_weight = %s, customer_access = %s, category_id = %s
+                    SET service_name = %s, price = %s, description = %s, input_weight = %s, customer_access = %s, category_id = %s, min_billable_weight = %s
                     WHERE laundry_id = %s AND service_name = %s
                 """, (new_name, float(svc.get("price", 0)), svc.get("description", ""),
                       svc.get("inputWeight", True), svc.get("customerAccess", True),
                       svc.get("categoryId") or None,
+                      _parse_min_weight(svc.get("minBillableWeight")),
                       laundryId, original_name))
 
             for svc_name in services_to_remove:
@@ -351,6 +365,20 @@ async def update_products_services(
                 "updated": [s.get("serviceName") for s in services_to_update],
                 "removed": services_to_remove,
             }, performed_by=current_user.get("sub", ""))
+
+            # Master tenant opt-in for minimum billable weight (Phase 2). Only
+            # written when the key is present so unrelated updates don't touch it.
+            if "minWeightEnabled" in body:
+                cur.execute("""
+                    UPDATE shop.laundry_shops SET min_weight_enabled = %s WHERE laundry_id = %s
+                """, (bool(body.get("minWeightEnabled")), laundryId))
+            if "minWeightScope" in body:
+                _scope_val = str(body.get("minWeightScope") or "all").strip().lower()
+                if _scope_val not in ("all", "online", "instore"):
+                    _scope_val = "all"
+                cur.execute("""
+                    UPDATE shop.laundry_shops SET min_weight_scope = %s WHERE laundry_id = %s
+                """, (_scope_val, laundryId))
 
             return {"statusCode": 200, "body": {"message": "Services updated successfully"}}
 
@@ -380,6 +408,53 @@ async def update_products_services(
                 """, (laundryId, prod_name))
 
             return {"statusCode": 200, "body": {"message": "Products updated successfully"}}
+
+        elif operation == "updateAddons":
+            # Add-on / processing-extra catalog management (Phase 2c). Per-tenant,
+            # scoped by laundry_id. pricing_basis is 'per_pound' or 'per_item'.
+            addons_to_add = body.get("addonsToAdd", [])
+            addons_to_update = body.get("addonsToUpdate", [])
+            addons_to_remove = body.get("addonsToRemove", [])  # list of addon_id
+
+            def _basis(raw):
+                return "per_pound" if str(raw or "").strip() == "per_pound" else "per_item"
+
+            for a in addons_to_add:
+                if not (a.get("addonName") or "").strip():
+                    continue
+                cur.execute("""
+                    INSERT INTO shop.laundry_addons (laundry_id, addon_name, description, pricing_basis, unit_price, customer_access, is_active)
+                    VALUES (%s, %s, %s, %s, %s, %s, TRUE)
+                """, (laundryId, a.get("addonName").strip(), a.get("description", ""),
+                      _basis(a.get("pricingBasis")), float(a.get("unitPrice", 0) or 0),
+                      a.get("customerAccess", True)))
+
+            for a in addons_to_update:
+                addon_id = a.get("addonId")
+                if not addon_id:
+                    continue
+                cur.execute("""
+                    UPDATE shop.laundry_addons
+                    SET addon_name = %s, description = %s, pricing_basis = %s, unit_price = %s,
+                        customer_access = %s, updated_at = now()
+                    WHERE addon_id = %s AND laundry_id = %s
+                """, (a.get("addonName", "").strip(), a.get("description", ""),
+                      _basis(a.get("pricingBasis")), float(a.get("unitPrice", 0) or 0),
+                      a.get("customerAccess", True), addon_id, laundryId))
+
+            for addon_id in addons_to_remove:
+                cur.execute("""
+                    UPDATE shop.laundry_addons SET is_active = FALSE, updated_at = now()
+                    WHERE addon_id = %s AND laundry_id = %s
+                """, (addon_id, laundryId))
+
+            # Master tenant opt-in for add-ons (Phase 2). Only written when present.
+            if "addonsEnabled" in body:
+                cur.execute("""
+                    UPDATE shop.laundry_shops SET addons_enabled = %s WHERE laundry_id = %s
+                """, (bool(body.get("addonsEnabled")), laundryId))
+
+            return {"statusCode": 200, "body": {"message": "Add-ons updated successfully"}}
 
         elif operation == "updatePromotions":
             promos_to_add = body.get("promotionsToAdd", [])
@@ -2167,6 +2242,8 @@ async def employee_update_services(
         }
     """
     services_to_update = body.get("servicesToUpdate", [])
+    addons_to_add = body.get("addonsToAdd", [])       # Phase 2d: [{addonId, quantity}]
+    addons_to_remove = body.get("addonsToRemove", []) # Phase 2d: [order_addons.id]
     emp_id = body.get("empId", "")
     order_id = body.get("orderId", "")
     laundry_id = body.get("laundryId", "")
@@ -2174,8 +2251,8 @@ async def employee_update_services(
     if not order_id or not laundry_id or not emp_id:
         return {"statusCode": 400, "body": {"message": "Missing required fields: orderId, laundryId, empId"}}
 
-    if not services_to_update:
-        return {"statusCode": 400, "body": {"message": "No services to update"}}
+    if not services_to_update and not addons_to_add and not addons_to_remove:
+        return {"statusCode": 400, "body": {"message": "No services or add-ons to update"}}
 
     try:
         with get_db() as conn:
@@ -2214,14 +2291,64 @@ async def employee_update_services(
                         WHERE id = %s AND order_id = %s
                     """, (name, price, woc, svc_id, order_id))
 
-            # Recalculate totals
-            cur.execute("SELECT service_price, weight_or_count FROM orders.order_services WHERE order_id = %s", (order_id,))
-            svc_total = sum(float(r["service_price"] or 0) * float(r["weight_or_count"] or 0) for r in cur.fetchall())
+            # Phase 2d: staff can add/remove processing extras mid-order. New
+            # add-ons snapshot the catalog name/basis/price; removals are by row id.
+            for _aid in (addons_to_remove or []):
+                cur.execute("DELETE FROM orders.order_addons WHERE id = %s AND order_id = %s", (_aid, order_id))
+            for _a in (addons_to_add or []):
+                _addon_id = _a.get("addonId") or _a.get("addon_id")
+                if not _addon_id:
+                    continue
+                cur.execute("""
+                    SELECT addon_name, pricing_basis, unit_price FROM shop.laundry_addons
+                    WHERE addon_id = %s AND laundry_id = %s AND is_active = TRUE
+                """, (_addon_id, laundry_id))
+                _cat = cur.fetchone()
+                if not _cat:
+                    continue
+                if _cat["pricing_basis"] == "per_pound":
+                    _qv = None
+                else:
+                    try:
+                        _qv = float(_a.get("quantity")) if _a.get("quantity") is not None else 1.0
+                    except (TypeError, ValueError):
+                        _qv = 1.0
+                cur.execute("""
+                    INSERT INTO orders.order_addons
+                        (order_id, laundry_id, addon_id, addon_name, pricing_basis, unit_price, quantity)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                """, (order_id, laundry_id, _addon_id, _cat["addon_name"],
+                      _cat["pricing_basis"], float(_cat["unit_price"] or 0), _qv))
 
+            # Recalculate totals via the shared billing helper (Phase 2).
+            cur.execute("SELECT service_price, weight_or_count, input_weight, min_billable_weight FROM orders.order_services WHERE order_id = %s", (order_id,))
+            svc_rows = cur.fetchall()
             cur.execute("SELECT product_price, product_count FROM orders.order_products WHERE order_id = %s", (order_id,))
-            prod_total = sum(float(r["product_price"] or 0) * float(r["product_count"] or 0) for r in cur.fetchall())
-
-            sub_total = round(svc_total + prod_total, 2)
+            prod_rows = cur.fetchall()
+            # Tenant opt-in: floor to min billable weight / include add-ons.
+            from app.services.pricing import minimum_applies
+            cur.execute("SELECT min_weight_enabled, addons_enabled, min_weight_scope FROM shop.laundry_shops WHERE laundry_id = %s", (laundry_id,))
+            _shop = cur.fetchone() or {}
+            cur.execute("SELECT order_type FROM orders.orders WHERE order_id = %s", (order_id,))
+            _ot_row = cur.fetchone() or {}
+            _apply_min = minimum_applies(
+                bool(_shop.get("min_weight_enabled")),
+                _shop.get("min_weight_scope"),
+                _ot_row.get("order_type"),
+            )
+            _addon_lines = []
+            if _shop.get("addons_enabled"):
+                cur.execute("SELECT addon_name, pricing_basis, unit_price, quantity FROM orders.order_addons WHERE order_id = %s", (order_id,))
+                _addon_lines = [{"name": r["addon_name"], "pricing_basis": r["pricing_basis"],
+                                 "unit_price": r["unit_price"], "quantity": r["quantity"]} for r in cur.fetchall()]
+            _billing = compute_order_billing(
+                services=[{"service_price": r["service_price"], "weight_or_count": r["weight_or_count"],
+                           "input_weight": r.get("input_weight"), "min_billable_weight": r.get("min_billable_weight")} for r in svc_rows],
+                products=[{"product_price": r["product_price"], "product_count": r["product_count"]} for r in prod_rows],
+                addons=_addon_lines,
+                apply_minimums=_apply_min,
+            )
+            sub_total = _billing["sub_total"]
             total_cost = sub_total
 
             # Apply discount if coupon exists

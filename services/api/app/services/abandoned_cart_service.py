@@ -37,7 +37,7 @@ def process_abandoned_carts():
                   AND c.phone_number IS NOT NULL AND c.phone_number != ''
                   AND NOT EXISTS (
                     SELECT 1 FROM shop.customer_reminders cr
-                    WHERE cr.customer_id = c.customer_id AND cr.laundry_id = %s
+                    WHERE cr.customer_id::text = c.customer_id AND cr.laundry_id = %s
                       AND cr.reminder_type = 'abandoned_cart'
                       AND cr.created_at > NOW() - INTERVAL '7 days'
                   )
@@ -55,7 +55,7 @@ def process_abandoned_carts():
                     send_sms_for_tenant(cust["phone_number"], msg, lid)
                     cur.execute("""
                         INSERT INTO shop.customer_reminders (customer_id, laundry_id, reminder_type)
-                        VALUES (%s, %s, 'abandoned_cart')
+                        VALUES (%s::uuid, %s, 'abandoned_cart')
                     """, (cust["customer_id"], lid))
                     total_sent += 1
                 except Exception as e:
@@ -89,7 +89,7 @@ def process_abandoned_carts():
                     send_sms_for_tenant(cust["phone_number"], msg, lid)
                     cur.execute("""
                         INSERT INTO shop.customer_reminders (customer_id, laundry_id, reminder_type)
-                        VALUES (%s, %s, 'missed_pickup')
+                        VALUES (%s::uuid, %s, 'missed_pickup')
                     """, (cust["customer_id"], lid))
                     total_sent += 1
                 except Exception as e:
@@ -97,9 +97,9 @@ def process_abandoned_carts():
 
             # Segment 3: Customers who started the order flow 2+ hours ago but have no order since then
             cur.execute("""
-                SELECT cr.customer_id, c.first_name, c.phone_number
+                SELECT cr.customer_id::text AS customer_id, c.first_name, c.phone_number
                 FROM shop.customer_reminders cr
-                JOIN shop.customers c ON c.customer_id = cr.customer_id
+                JOIN shop.customers c ON c.customer_id = cr.customer_id::text
                 WHERE cr.laundry_id = %s
                   AND cr.reminder_type = 'cart_started'
                   AND cr.created_at < NOW() - INTERVAL '2 hours'
@@ -107,7 +107,7 @@ def process_abandoned_carts():
                   AND c.phone_number IS NOT NULL AND c.phone_number != ''
                   AND NOT EXISTS (
                     SELECT 1 FROM orders.orders o
-                    WHERE o.customer_id = cr.customer_id AND o.laundry_id = %s
+                    WHERE o.customer_id = cr.customer_id::text AND o.laundry_id = %s
                       AND o.created_at > cr.created_at
                   )
                   AND NOT EXISTS (
@@ -126,12 +126,12 @@ def process_abandoned_carts():
                     send_sms_for_tenant(cust["phone_number"], msg, lid)
                     cur.execute("""
                         INSERT INTO shop.customer_reminders (customer_id, laundry_id, reminder_type)
-                        VALUES (%s, %s, 'abandoned_cart_realtime')
+                        VALUES (%s::uuid, %s, 'abandoned_cart_realtime')
                     """, (cust["customer_id"], lid))
                     # Clean up the cart_started record
                     cur.execute("""
                         DELETE FROM shop.customer_reminders
-                        WHERE customer_id = %s AND laundry_id = %s AND reminder_type = 'cart_started'
+                        WHERE customer_id = %s::uuid AND laundry_id = %s AND reminder_type = 'cart_started'
                     """, (cust["customer_id"], lid))
                     total_sent += 1
                 except Exception as e:

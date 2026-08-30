@@ -253,6 +253,52 @@ async def process_frequencies():
                         """, (order_id, tip_amount, tip_percentage, tip_type, tip_method))
                     logger.info(f"Tip applied to recurring order {order_id}: amount={tip_amount}, pct={tip_percentage}%")
 
+                # Phase 2d: seed recurring order add-ons from the customer's saved
+                # defaults so their preferred extras carry over automatically. Only
+                # when the tenant has add-ons enabled. per_pound add-ons keep qty
+                # NULL and are priced on the billed weight at detect-weight time.
+                try:
+                    with get_db() as conn:
+                        cur = get_cursor(conn)
+                        cur.execute("SELECT addons_enabled FROM shop.laundry_shops WHERE laundry_id = %s", (laundry_id,))
+                        _fshop = cur.fetchone() or {}
+                        if _fshop.get("addons_enabled"):
+                            cur.execute("""
+                                SELECT preferences FROM shop.customer_preferences
+                                WHERE customer_id = %s AND laundry_id = %s
+                            """, (customer_id, laundry_id))
+                            _fpref = cur.fetchone()
+                            _fpref_addons = []
+                            if _fpref and isinstance(_fpref.get("preferences"), dict):
+                                _fpref_addons = _fpref["preferences"].get("addons", []) or []
+                            for _pa in _fpref_addons:
+                                _aid = _pa.get("addonId") or _pa.get("addon_id")
+                                if not _aid:
+                                    continue
+                                cur.execute("""
+                                    SELECT addon_name, pricing_basis, unit_price
+                                    FROM shop.laundry_addons
+                                    WHERE addon_id = %s AND laundry_id = %s AND is_active = TRUE
+                                """, (_aid, laundry_id))
+                                _cat = cur.fetchone()
+                                if not _cat:
+                                    continue
+                                if _cat["pricing_basis"] == "per_pound":
+                                    _qv = None
+                                else:
+                                    try:
+                                        _qv = float(_pa.get("quantity")) if _pa.get("quantity") is not None else 1.0
+                                    except (TypeError, ValueError):
+                                        _qv = 1.0
+                                cur.execute("""
+                                    INSERT INTO orders.order_addons
+                                        (order_id, laundry_id, addon_id, addon_name, pricing_basis, unit_price, quantity)
+                                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                                """, (order_id, laundry_id, _aid, _cat["addon_name"],
+                                      _cat["pricing_basis"], float(_cat["unit_price"] or 0), _qv))
+                except Exception as _addon_err:
+                    logger.warning(f"Failed to seed add-ons for recurring order {order_id}: {_addon_err}")
+
                 # Create $1 hold if payment info exists
                 auto_charge = sub.get("auto_charge", False)
                 if auto_charge and customer_payment_id:

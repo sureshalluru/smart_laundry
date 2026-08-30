@@ -9,6 +9,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, R
 from pydantic import BaseModel
 
 from app.database import get_db, get_cursor
+from app.services.pricing import compute_order_billing, apply_discount_tip_tax, minimum_applies
 from app.services.token_service import generate_token, validate_token, hash_token
 from app.auth import get_current_user
 
@@ -1572,22 +1573,46 @@ async def detect_weight(request: DetectWeightRequest):
                     # employee-update-services): sub_total = services + products,
                     # applying any existing fixed discount, preserving tip.
                     cur.execute(
-                        "SELECT service_price, weight_or_count FROM orders.order_services WHERE order_id = %s",
+                        "SELECT service_price, weight_or_count, input_weight, min_billable_weight FROM orders.order_services WHERE order_id = %s",
                         (request.orderId,),
                     )
-                    svc_total = sum(
-                        float(r["service_price"] or 0) * float(r["weight_or_count"] or 0)
-                        for r in cur.fetchall()
-                    )
+                    svc_rows = cur.fetchall()
                     cur.execute(
                         "SELECT product_price, product_count FROM orders.order_products WHERE order_id = %s",
                         (request.orderId,),
                     )
-                    prod_total = sum(
-                        float(r["product_price"] or 0) * float(r["product_count"] or 0)
-                        for r in cur.fetchall()
+                    prod_rows = cur.fetchall()
+                    # Tenant opt-in: floor to min billable weight / include add-ons.
+                    cur.execute(
+                        "SELECT min_weight_enabled, addons_enabled, min_weight_scope FROM shop.laundry_shops WHERE laundry_id = %s",
+                        (request.laundryId,),
                     )
-                    sub_total = round(svc_total + prod_total, 2)
+                    _shop = cur.fetchone() or {}
+                    cur.execute("SELECT order_type FROM orders.orders WHERE order_id = %s", (request.orderId,))
+                    _ot_row = cur.fetchone() or {}
+                    _apply_min = minimum_applies(
+                        bool(_shop.get("min_weight_enabled")),
+                        _shop.get("min_weight_scope"),
+                        _ot_row.get("order_type"),
+                    )
+                    _addon_lines = []
+                    if _shop.get("addons_enabled"):
+                        cur.execute(
+                            "SELECT addon_name, pricing_basis, unit_price, quantity FROM orders.order_addons WHERE order_id = %s",
+                            (request.orderId,),
+                        )
+                        _addon_lines = [{"name": r["addon_name"], "pricing_basis": r["pricing_basis"],
+                                         "unit_price": r["unit_price"], "quantity": r["quantity"]} for r in cur.fetchall()]
+                    # Shared billing helper (Phase 2). Per-pound add-ons reprice on
+                    # the new (possibly floored) billed weight automatically.
+                    billing = compute_order_billing(
+                        services=[{"service_price": r["service_price"], "weight_or_count": r["weight_or_count"],
+                                   "input_weight": r.get("input_weight"), "min_billable_weight": r.get("min_billable_weight")} for r in svc_rows],
+                        products=[{"product_price": r["product_price"], "product_count": r["product_count"]} for r in prod_rows],
+                        addons=_addon_lines,
+                        apply_minimums=_apply_min,
+                    )
+                    sub_total = billing["sub_total"]
 
                     cur.execute("""
                         SELECT o.discounted_price, ot.tip_amount
@@ -1598,8 +1623,9 @@ async def detect_weight(request: DetectWeightRequest):
                     row = cur.fetchone() or {}
                     discounted_price = float(row.get("discounted_price") or 0)
                     tip_amount = float(row.get("tip_amount") or 0)
-                    total_cost = round(sub_total - discounted_price, 2) if discounted_price > 0 else sub_total
-                    grand_total = round(total_cost + tip_amount, 2)
+                    totals = apply_discount_tip_tax(sub_total, discounted_price, tip_amount)
+                    total_cost = totals["total_cost"]
+                    grand_total = totals["grand_total"]
 
                     cur.execute("""
                         UPDATE orders.orders

@@ -135,6 +135,10 @@ const OrdersInfo = ({orderOperation, validateEmpCredentials, stripePublicKey, st
     const [serviceNames, setServiceNames] = useState([]);
     const [productsToAdd, setProductsToAdd] = useState([]);
     const [productsToRemove, setProductsToRemove] = useState([]);
+    // Phase 2d: processing extras (add-ons) added/removed by staff on an order
+    const [availableAddons, setAvailableAddons] = useState([]);
+    const [addonsToAdd, setAddonsToAdd] = useState([]);       // [{addonId, addonName, pricingBasis, unitPrice, quantity}]
+    const [addonsToRemove, setAddonsToRemove] = useState([]); // [order_addons.id]
     const [productsToUpdate, setProductsToUpdate] = useState([]);
     const [orderHistory, setOrderHistory] = useState(null);
     const [orderLoading, setOrderLoading] = useState(false);
@@ -338,6 +342,7 @@ const getInstantPickupWindow = (laundryTimeZone) => {
             await Promise.all([
                 fetchLaundryOrders(laundryId, orderOperation),
                 fetchProducts(),
+                fetchAddonCatalog(),
                 fetchLaundryServices(laundryId),
                 fetchLaundryStatuses(laundryId),
             ]);
@@ -929,6 +934,21 @@ useEffect(() => {
         }
     };
 
+    const fetchAddonCatalog = async () => {
+        try {
+            const res = await axios.get(
+                `${process.env.REACT_APP_AWS_API_URL}/api/admin/laundry-products-info`,
+                {
+                    params: { operation: "viewAddons", laundryId },
+                    headers: { 'Authorization': `Bearer ${authToken}` },
+                }
+            );
+            setAvailableAddons(res.data?.body?.addons || []);
+        } catch (error) {
+            console.error("Error fetching add-on catalog:", error);
+        }
+    };
+
     const fetchProducts = async () => {
         try {
             const productsResponse = await fetchLaundryProducts(laundryId);
@@ -1514,6 +1534,28 @@ const { open: openCancelUber, ModalUI: CancelUberModal } = useCancelUberHandoff(
             });
         };
 
+
+        // Phase 2d: staff add/remove processing extras (add-ons) on an order.
+        const handleAddOrderAddon = (addon) => {
+            setAddonsToAdd((prev) => [
+                ...prev,
+                {
+                    addonId: addon.addonId,
+                    addonName: addon.addonName,
+                    pricingBasis: addon.pricingBasis,
+                    unitPrice: addon.unitPrice,
+                    quantity: addon.pricingBasis === 'per_pound' ? null : 1,
+                },
+            ]);
+        };
+
+        const handleRemoveExistingAddon = (rowId) => {
+            setAddonsToRemove((prev) => (prev.includes(rowId) ? prev : [...prev, rowId]));
+        };
+
+        const handleRemovePendingAddon = (idx) => {
+            setAddonsToAdd((prev) => prev.filter((_, i) => i !== idx));
+        };
 
         const handleAddProduct = (product) => {
 
@@ -2463,6 +2505,70 @@ const { open: openCancelUber, ModalUI: CancelUberModal } = useCancelUberHandoff(
                                         </Box>
                                     )}
 
+                                    {/* Phase 2d: Processing Extras (add-ons) */}
+                                    {availableAddons.length > 0 && (
+                                        <Box mb={3}>
+                                            <HStack mb={1}>
+                                                <Text fontWeight="semibold" fontSize={fontSize}>Processing Extras</Text>
+                                            </HStack>
+                                            {(selectedOrderDetails.addons || [])
+                                                .filter((a) => !addonsToRemove.includes(a.id))
+                                                .map((a) => (
+                                                    <Flex key={`ex-${a.id}`} justify="space-between" align="center" py={1}>
+                                                        <Text fontSize={fontSize}>
+                                                            {a.addonName}
+                                                            {a.pricingBasis === 'per_pound'
+                                                                ? ` ($${roundToTwo(a.unitPrice || 0)}/lb)`
+                                                                : ` ($${roundToTwo(a.unitPrice || 0)} × ${a.quantity || 1})`}
+                                                        </Text>
+                                                        {isEditMode && canEditServices && (
+                                                            <Button size="xs" colorScheme="red" variant="ghost"
+                                                                onClick={() => handleRemoveExistingAddon(a.id)}>
+                                                                Remove
+                                                            </Button>
+                                                        )}
+                                                    </Flex>
+                                                ))}
+                                            {(addonsToAdd || []).map((a, idx) => (
+                                                <Flex key={`ex-new-${idx}`} justify="space-between" align="center" py={1}>
+                                                    <Text fontSize={fontSize} color="green.600">
+                                                        {a.addonName}
+                                                        {a.pricingBasis === 'per_pound'
+                                                            ? ` ($${roundToTwo(a.unitPrice || 0)}/lb)`
+                                                            : ` ($${roundToTwo(a.unitPrice || 0)} × ${a.quantity || 1})`} (new)
+                                                    </Text>
+                                                    {isEditMode && canEditServices && (
+                                                        <Button size="xs" colorScheme="red" variant="ghost"
+                                                            onClick={() => handleRemovePendingAddon(idx)}>
+                                                            Remove
+                                                        </Button>
+                                                    )}
+                                                </Flex>
+                                            ))}
+                                            {isEditMode && canEditServices && (
+                                                <Box mt={2}>
+                                                    <Menu>
+                                                        <MenuButton as={Button} rightIcon={<ChevronDownIcon/>} size={buttonSize}>
+                                                            Add Extra
+                                                        </MenuButton>
+                                                        <MenuList maxH="70vh" overflowY="auto">
+                                                            {availableAddons.map((addon) => (
+                                                                <MenuItem key={addon.addonId} onClick={() => handleAddOrderAddon(addon)}>
+                                                                    <Flex justify="space-between" w="100%">
+                                                                        <Text fontSize={fontSize}>{truncateText(addon.addonName)}</Text>
+                                                                        <Text fontSize={fontSize}>
+                                                                            ${roundToTwo(addon.unitPrice || 0)}{addon.pricingBasis === 'per_pound' ? '/lb' : ''}
+                                                                        </Text>
+                                                                    </Flex>
+                                                                </MenuItem>
+                                                            ))}
+                                                        </MenuList>
+                                                    </Menu>
+                                                </Box>
+                                            )}
+                                        </Box>
+                                    )}
+
                                     {/* Special Instructions and Bags */}
                                     <Flex direction={{base: "column", md: "row"}} gap={3} mb={3}>
                                         <Box flex="1">
@@ -2820,7 +2926,7 @@ const { open: openCancelUber, ModalUI: CancelUberModal } = useCancelUberHandoff(
                                     <Text fontSize="md" fontWeight="bold" mb={2}>Payments</Text>
                                     <Stack spacing={3} bg="gray.50" p={3} borderRadius="md">
                                         {/* Itemized breakdown showing how subtotal is calculated */}
-                                        {(selectedOrderDetails.services?.length > 0 || selectedOrderDetails.products?.length > 0) && (
+                                        {(selectedOrderDetails.services?.length > 0 || selectedOrderDetails.products?.length > 0 || selectedOrderDetails.addons?.length > 0) && (
                                             <Box mb={1} pb={2} borderBottom="1px dashed" borderColor="gray.300">
                                                 <Text fontSize="xs" fontWeight="bold" color="gray.600" mb={1}>Cart Breakdown:</Text>
                                                 {selectedOrderDetails.services?.map((svc, idx) => (
@@ -2843,6 +2949,31 @@ const { open: openCancelUber, ModalUI: CancelUberModal } = useCancelUberHandoff(
                                                         </Text>
                                                     </Flex>
                                                 ))}
+                                                {(() => {
+                                                    // Add-on lines (Phase 2c). per_pound add-ons are priced on the
+                                                    // order's billed weight (sum of weight-based service quantities),
+                                                    // matching how the backend computes the total.
+                                                    const billedWeight = (selectedOrderDetails.services || [])
+                                                        .filter((s) => s.inputWeight === true || s.inputWeight === 'true')
+                                                        .reduce((sum, s) => sum + (parseFloat(s.weightOrCount) || 0), 0);
+                                                    return (selectedOrderDetails.addons || []).map((addon, idx) => {
+                                                        const unit = parseFloat(addon.unitPrice) || 0;
+                                                        const qty = addon.pricingBasis === 'per_pound'
+                                                            ? billedWeight
+                                                            : (parseFloat(addon.quantity) || 0);
+                                                        return (
+                                                            <Flex key={`addon-${idx}`} justify="space-between" align="center" mb={0.5}>
+                                                                <Text fontSize="xs" color="gray.600" noOfLines={1} maxW="60%">
+                                                                    {addon.addonName}
+                                                                    {addon.pricingBasis === 'per_pound' ? ` × ${qty} lb` : ` × ${qty}`}
+                                                                </Text>
+                                                                <Text fontSize="xs" color="gray.600">
+                                                                    ${roundToTwo(unit * qty)}
+                                                                </Text>
+                                                            </Flex>
+                                                        );
+                                                    });
+                                                })()}
                                             </Box>
                                         )}
 
@@ -3399,6 +3530,13 @@ const handleAssignLaundryDriver = async (customAddress) => {
                 productCount
             }));
         }
+        // Phase 2d: processing extras (add-ons) added/removed by staff.
+        if ((addonsToAdd || []).length > 0) {
+            payload.addonsToAdd = addonsToAdd.map(({ addonId, quantity }) => ({ addonId, quantity }));
+        }
+        if ((addonsToRemove || []).length > 0) {
+            payload.addonsToRemove = addonsToRemove;
+        }
 
         const updatedOrder = {...updatedOrderDetails, orderStatus, services};
 
@@ -3447,6 +3585,8 @@ const handleAssignLaundryDriver = async (customAddress) => {
                 setProductsToUpdate([]);
                 setServicesToAddMap((prev) => ({...prev, [orderId]: []}));
                 setServicesToRemoveMap((prev) => ({...prev, [orderId]: []}));
+                setAddonsToAdd([]);
+                setAddonsToRemove([]);
 
                 setSelectedOrderDetails((prev) => ({
                     ...prev,

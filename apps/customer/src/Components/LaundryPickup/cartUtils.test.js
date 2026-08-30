@@ -5,7 +5,66 @@ import {
   derivePricingType,
   buildOrderPayload,
   groupServicesByCategory,
+  getBilledWeight,
+  getAddonsTotal,
 } from './cartUtils';
+
+describe('getBilledWeight (Phase 2c)', () => {
+  it('sums only weight-based item quantities', () => {
+    const items = [
+      { quantity: 10, price: 1.5, inputWeight: true },
+      { quantity: 5, price: 2, inputWeight: true },
+      { quantity: 3, price: 8, inputWeight: false }, // per-piece, excluded
+    ];
+    expect(getBilledWeight(items)).toBe(15);
+  });
+  it('returns 0 for empty / null', () => {
+    expect(getBilledWeight([])).toBe(0);
+    expect(getBilledWeight(null)).toBe(0);
+  });
+});
+
+describe('getAddonsTotal (Phase 2c)', () => {
+  it('prices per_pound add-ons on billed weight', () => {
+    const addons = [{ pricingBasis: 'per_pound', unitPrice: 0.25 }];
+    expect(getAddonsTotal(addons, 20)).toBeCloseTo(5.0, 5);
+  });
+  it('prices per_item add-ons on quantity', () => {
+    const addons = [{ pricingBasis: 'per_item', unitPrice: 0.5, quantity: 3 }];
+    expect(getAddonsTotal(addons, 20)).toBeCloseTo(1.5, 5);
+  });
+  it('mixes per_pound and per_item', () => {
+    const addons = [
+      { pricingBasis: 'per_pound', unitPrice: 0.25, quantity: null },
+      { pricingBasis: 'per_item', unitPrice: 2, quantity: 2 },
+    ];
+    expect(getAddonsTotal(addons, 10)).toBeCloseTo(2.5 + 4, 5);
+  });
+  it('returns 0 for empty / null', () => {
+    expect(getAddonsTotal([], 10)).toBe(0);
+    expect(getAddonsTotal(null, 10)).toBe(0);
+  });
+});
+
+describe('buildOrderPayload add-ons (Phase 2c)', () => {
+  it('includes addons as {addonId, quantity} and honors subTotal override', () => {
+    const cart = { items: [{ serviceName: 'W&F', quantity: 10, price: 1.5, inputWeight: true, categoryId: 'c1' }] };
+    const payload = buildOrderPayload(cart, {
+      customerId: 'c', laundryId: 'l',
+      addons: [{ addonId: 7, addonName: 'Softener', pricingBasis: 'per_pound', unitPrice: 0.25, quantity: null }],
+      subTotal: '17.50',
+      grandTotal: '17.50',
+    });
+    expect(payload.addons).toEqual([{ addonId: 7, quantity: null }]);
+    expect(payload.subTotal).toBe('17.50');
+    expect(payload.totalCost).toBe('17.50');
+  });
+  it('defaults addons to empty array when none provided', () => {
+    const cart = { items: [{ serviceName: 'W&F', quantity: 10, price: 1.5, inputWeight: true, categoryId: 'c1' }] };
+    const payload = buildOrderPayload(cart, { customerId: 'c', laundryId: 'l' });
+    expect(payload.addons).toEqual([]);
+  });
+});
 
 describe('getCartSubtotal', () => {
   it('returns 0 for empty array', () => {

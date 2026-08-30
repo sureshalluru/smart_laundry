@@ -228,7 +228,8 @@ function App() {
                     <EmployeeAuthProvider>
                         <EmployeeAuthGuard>
                             <Suspense fallback={<LoadingSpinner/>}>
-                                <WrappedOrderInfoManagement orderOperation="active"/>
+                                <WrappedOrderInfoManagement orderOperation="active"
+                                                            validateEmpCredentials={validateEmpCredentials}/>
                             </Suspense>
                         </EmployeeAuthGuard>
                     </EmployeeAuthProvider>
@@ -270,14 +271,16 @@ function App() {
                     <Route path="completed-orders" element={
                         <ProtectedRoute feature={FEATURES.ORDERS}>
                         <Suspense fallback={<LoadingSpinner/>}>
-                            <WrappedOrderInfoManagement orderOperation="completed"/>
+                            <WrappedOrderInfoManagement orderOperation="completed"
+                                                        validateEmpCredentials={validateEmpCredentials}/>
                         </Suspense>
                         </ProtectedRoute>
                     }/>
                     <Route path="canceled-orders" element={
                         <ProtectedRoute feature={FEATURES.ORDERS}>
                         <Suspense fallback={<LoadingSpinner/>}>
-                            <WrappedOrderInfoManagement orderOperation="canceled"/>
+                            <WrappedOrderInfoManagement orderOperation="canceled"
+                                                        validateEmpCredentials={validateEmpCredentials}/>
                         </Suspense>
                         </ProtectedRoute>
                     }/>

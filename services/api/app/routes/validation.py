@@ -104,7 +104,7 @@ def _get_laundry_info(cur, laundry_id, is_customer=None):
         SELECT laundry_name, laundry_timezone, stripe_public_key, stripe_terminal_id,
                delivery_time_interval, user_domain,
                street, city, state, zip_code, country, serviceable_zip_codes, bag_price, tax_rate, site_content, laundry_logo, subscription_discount,
-               hide_home_address
+               hide_home_address, min_weight_enabled, addons_enabled, min_weight_scope
         FROM shop.laundry_shops WHERE laundry_id = %s
     """, (laundry_id,))
     shop = cur.fetchone()
@@ -113,7 +113,7 @@ def _get_laundry_info(cur, laundry_id, is_customer=None):
 
     # Services
     cur.execute("""
-        SELECT service_id, service_name, price, description, input_weight, customer_access, category_id
+        SELECT service_id, service_name, price, description, input_weight, customer_access, category_id, min_billable_weight
         FROM shop.laundry_services
         WHERE laundry_id = %s AND is_active = TRUE ORDER BY service_id
     """, (laundry_id,))
@@ -125,9 +125,39 @@ def _get_laundry_info(cur, laundry_id, is_customer=None):
         "inputWeight": r["input_weight"],
         "customerAccess": r["customer_access"],
         "categoryId": r["category_id"],
+        "minBillableWeight": float(r["min_billable_weight"]) if r["min_billable_weight"] is not None else None,
     } for r in cur.fetchall()]
 
     laundry_services = [s for s in all_services if s["customerAccess"]] if is_customer else all_services
+
+    # Minimum billable weight. For the customer (online) client we surface the
+    # EFFECTIVE online value (master flag AND scope includes online). For the
+    # admin (is_customer False) we surface the RAW master flag + scope so the
+    # admin create-order UI can decide instore applicability itself.
+    _scope = (str(shop.get("min_weight_scope") or "all")).strip().lower()
+    _min_weight_raw = bool(shop.get("min_weight_enabled"))
+    _min_weight_online = _min_weight_raw and _scope in ("all", "online")
+    _min_weight_out = _min_weight_online if is_customer else _min_weight_raw
+
+    # Add-on / processing-extra catalog (Phase 2c). Only surfaced to customers
+    # when the tenant enabled add-ons; admins always get the full active list.
+    addons_enabled = bool(shop.get("addons_enabled"))
+    laundry_addons = []
+    if addons_enabled or not is_customer:
+        cur.execute("""
+            SELECT addon_id, addon_name, description, pricing_basis, unit_price, customer_access
+            FROM shop.laundry_addons
+            WHERE laundry_id = %s AND is_active = TRUE ORDER BY addon_id
+        """, (laundry_id,))
+        all_addons = [{
+            "addonId": r["addon_id"],
+            "addonName": r["addon_name"],
+            "description": r["description"] or "",
+            "pricingBasis": r["pricing_basis"],
+            "unitPrice": float(r["unit_price"] or 0),
+            "customerAccess": r["customer_access"],
+        } for r in cur.fetchall()]
+        laundry_addons = [a for a in all_addons if a["customerAccess"]] if is_customer else all_addons
 
     # Service categories
     cur.execute("""
@@ -226,6 +256,14 @@ def _get_laundry_info(cur, laundry_id, is_customer=None):
         "siteContent": site_content,
         "laundryLogo": shop.get("laundry_logo") or "",
         "subscriptionDiscount": float(shop.get("subscription_discount") or 0),
+        # min_weight_enabled surfaced to the customer client is the EFFECTIVE
+        # online value: the master flag AND the scope including online. So a
+        # tenant scoped to in-store only won't show/apply minimums on the
+        # customer ordering screen. minWeightScope is included for reference.
+        "minWeightEnabled": _min_weight_out,
+        "minWeightScope": _scope,
+        "addonsEnabled": addons_enabled,
+        "laundryAddons": laundry_addons,
     }
 
 
