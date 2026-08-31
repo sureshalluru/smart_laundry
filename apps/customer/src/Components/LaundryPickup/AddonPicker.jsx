@@ -25,6 +25,13 @@ export default function AddonPicker({ addons, selected, onChange, billedWeight, 
 
   const isSelected = (id) => Boolean(selected[id]);
 
+  // Whether any selected add-on is priced per item (hangers, etc.). Per-item
+  // counts entered here are an estimate — the final charge reflects the actual
+  // quantity processed, so we surface a disclaimer to cover the laundry.
+  const hasPerItemSelected = Object.values(selected || {}).some(
+    (s) => s && s.pricingBasis === 'per_item'
+  );
+
   const toggle = (addon) => {
     const next = { ...selected };
     if (next[addon.addonId]) {
@@ -122,6 +129,16 @@ export default function AddonPicker({ addons, selected, onChange, billedWeight, 
           </Flex>
         ))}
       </VStack>
+
+      {hasPerItemSelected && (
+        <Box mt={3} p={2} borderRadius="md" bg="orange.50" border="1px solid" borderColor="orange.200">
+          <Text fontSize="xs" color="orange.800">
+            Quantities you enter are an estimate. Your final charge is based on the
+            actual number of items processed at our facility, which may differ from
+            the amount selected here.
+          </Text>
+        </Box>
+      )}
 
       {Object.keys(selected || {}).length > 0 && onSaveAsDefaultChange && (
         <Checkbox
