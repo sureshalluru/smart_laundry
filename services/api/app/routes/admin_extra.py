@@ -380,6 +380,40 @@ async def update_products_services(
                     UPDATE shop.laundry_shops SET min_weight_scope = %s WHERE laundry_id = %s
                 """, (_scope_val, laundryId))
 
+            # Delivery fee config (Phase 3). Each field written only when present
+            # so unrelated saves don't touch it. When the mode is written, keep
+            # the delivery_fee_enabled mirror consistent (enabled = mode != none).
+            if "deliveryFeeMode" in body:
+                _dmode = str(body.get("deliveryFeeMode") or "none").strip().lower()
+                if _dmode not in ("none", "flat", "distance"):
+                    _dmode = "none"
+                cur.execute("""
+                    UPDATE shop.laundry_shops
+                    SET delivery_fee_mode = %s, delivery_fee_enabled = %s
+                    WHERE laundry_id = %s
+                """, (_dmode, _dmode != "none", laundryId))
+
+            def _num_or_none(v):
+                try:
+                    return round(float(v), 2) if v is not None and str(v) != "" else None
+                except (TypeError, ValueError):
+                    return None
+
+            for _key, _col in (
+                ("deliveryFeeFlat", "delivery_fee_flat"),
+                ("deliveryFeeBase", "delivery_fee_base"),
+                ("deliveryFeePerMile", "delivery_fee_per_mile"),
+                ("deliveryFeeFreeRadiusMi", "delivery_fee_free_radius_mi"),
+                ("deliveryFeeMax", "delivery_fee_max"),
+                ("deliveryFeeRoadFactor", "delivery_fee_road_factor"),
+                ("maxServiceableDistanceMi", "max_serviceable_distance_mi"),
+            ):
+                if _key in body:
+                    cur.execute(
+                        f"UPDATE shop.laundry_shops SET {_col} = %s WHERE laundry_id = %s",
+                        (_num_or_none(body.get(_key)), laundryId),
+                    )
+
             return {"statusCode": 200, "body": {"message": "Services updated successfully"}}
 
         elif operation == "updateProducts":

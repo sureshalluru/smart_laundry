@@ -1,4 +1,5 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
+import axios from 'axios';
 import {
   Box,
   VStack,
@@ -35,6 +36,9 @@ import { getCartSubtotal, getAddonsTotal, getBilledWeight, billedQuantity } from
 export default function UnifiedReviewPage({
   cart,
   dispatch,
+  laundryId,
+  address,
+  dropoffService,
   pickupDate,
   pickupTime,
   dropoffDate,
@@ -86,8 +90,37 @@ export default function UnifiedReviewPage({
     }
   }, [tip?.tipType, tip?.tipPercentage, taxableAmount, tip?.tipAmount, setTip]);
 
-  // Grand total
-  const grandTotal = taxableAmount + tax + tipAmount;
+  // Delivery fee (Phase 3). Quoted from the server so the customer sees the fee
+  // as its own line before paying. The server is authoritative — it recomputes
+  // the same fee at order create. When the tenant is on mode 'none' (or the
+  // dropoff leg is Uber, which prices itself) the quote returns applies:false
+  // and nothing is shown. Fails silently to $0 so it never blocks the flow.
+  const [deliveryFeeInfo, setDeliveryFeeInfo] = useState({ applies: false, fee: 0, distanceMi: null });
+  useEffect(() => {
+    if (!laundryId) return;
+    let active = true;
+    const base = process.env.REACT_APP_AWS_API_URL || '';
+    axios.get(`${base}/api/customer/quote-delivery-fee`, {
+      params: { laundryId, address: address || '', dropoffService: dropoffService || 'LaundryDriver' },
+    }).then((res) => {
+      const d = res?.data || {};
+      if (active) {
+        setDeliveryFeeInfo({
+          applies: !!d.applies,
+          fee: parseFloat(d.fee || 0) || 0,
+          distanceMi: d.distanceMi != null ? parseFloat(d.distanceMi) : null,
+        });
+      }
+    }).catch(() => {
+      if (active) setDeliveryFeeInfo({ applies: false, fee: 0, distanceMi: null });
+    });
+    return () => { active = false; };
+  }, [laundryId, address, dropoffService]);
+
+  const deliveryFee = deliveryFeeInfo.applies ? (deliveryFeeInfo.fee || 0) : 0;
+
+  // Grand total (delivery fee folded in after tax + tip, matching the server).
+  const grandTotal = taxableAmount + tax + tipAmount + deliveryFee;
 
   // Check if any per-pound items exist
   const hasPerPoundItems = items.some(item => item.inputWeight === true);
@@ -416,6 +449,15 @@ export default function UnifiedReviewPage({
               Tip{tip?.tipType === 'percentage' && tip?.tipPercentage ? ` (${tip.tipPercentage}%)` : ''}
             </Text>
             <Text fontSize="sm" color="gray.500">${tipAmount.toFixed(2)}</Text>
+          </Flex>
+        )}
+
+        {deliveryFee > 0 && (
+          <Flex justify="space-between" align="center" mt={1}>
+            <Text fontSize="sm" color="gray.500">
+              Delivery fee{deliveryFeeInfo.distanceMi != null ? ` (${deliveryFeeInfo.distanceMi.toFixed(1)} mi)` : ''}
+            </Text>
+            <Text fontSize="sm" color="gray.500">${deliveryFee.toFixed(2)}</Text>
           </Flex>
         )}
 

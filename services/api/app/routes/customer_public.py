@@ -1150,6 +1150,8 @@ async def get_customer_order_detail(
                     "dropoffStatus": order.get("dropoff_status"),
                     "uberPickupFee": float(order["uber_pickup_fee"]) if order.get("uber_pickup_fee") else None,
                     "uberDropoffFee": float(order["uber_dropoff_fee"]) if order.get("uber_dropoff_fee") else None,
+                    "deliveryFee": float(order["delivery_fee"]) if order.get("delivery_fee") else 0,
+                    "deliveryDistanceMi": float(order["delivery_distance_mi"]) if order.get("delivery_distance_mi") is not None else None,
                     "tip": {
                         "tipAmount": float(order["tip_amount"] or 0),
                         "tipPercentage": float(order["tip_percentage"] or 0) if order["tip_percentage"] else None,

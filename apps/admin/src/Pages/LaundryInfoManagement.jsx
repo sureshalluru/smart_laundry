@@ -650,6 +650,14 @@ const LaundryInfoManagement = ({ validateEmpCredentials, type, empPrefix }) => {
     // Phase 2: which order channels the minimum applies to ('all'|'online'|'instore')
     const [minWeightScope, setMinWeightScope] = useState("all");
     const [originalMinWeightScope, setOriginalMinWeightScope] = useState("all");
+
+    // Phase 3: distance/flat delivery fee config (mode: none|flat|distance)
+    const [deliveryFee, setDeliveryFee] = useState({
+        mode: "none", flat: 0, base: 0, perMile: 0, freeRadiusMi: 0, max: "", roadFactor: 1.0, maxServiceableMi: "",
+    });
+    const [originalDeliveryFee, setOriginalDeliveryFee] = useState({
+        mode: "none", flat: 0, base: 0, perMile: 0, freeRadiusMi: 0, max: "", roadFactor: 1.0, maxServiceableMi: "",
+    });
     // Phase 2c: add-ons / processing extras catalog
     const [addonsData, setAddonsData] = useState([]);
     const [newAddons, setNewAddons] = useState([]);
@@ -885,6 +893,18 @@ const LaundryInfoManagement = ({ validateEmpCredentials, type, empPrefix }) => {
             setOriginalMinWeightEnabled(Boolean(laundryInfo.minWeightEnabled));
             setMinWeightScope(laundryInfo.minWeightScope || "all");
             setOriginalMinWeightScope(laundryInfo.minWeightScope || "all");
+            const _df = {
+                mode: laundryInfo.deliveryFeeMode || "none",
+                flat: laundryInfo.deliveryFeeFlat ?? 0,
+                base: laundryInfo.deliveryFeeBase ?? 0,
+                perMile: laundryInfo.deliveryFeePerMile ?? 0,
+                freeRadiusMi: laundryInfo.deliveryFeeFreeRadiusMi ?? 0,
+                max: laundryInfo.deliveryFeeMax ?? "",
+                roadFactor: laundryInfo.deliveryFeeRoadFactor ?? 1.0,
+                maxServiceableMi: laundryInfo.maxServiceableDistanceMi ?? "",
+            };
+            setDeliveryFee(_df);
+            setOriginalDeliveryFee(_df);
             setAddonsEnabled(Boolean(laundryInfo.addonsEnabled));
             setOriginalAddonsEnabled(Boolean(laundryInfo.addonsEnabled));
             setIsLogoDomainFetched(true);
@@ -1289,14 +1309,24 @@ const LaundryInfoManagement = ({ validateEmpCredentials, type, empPrefix }) => {
             servicesToRemove: servicesToRemove || [],
             minWeightEnabled: minWeightEnabled,
             minWeightScope: minWeightScope,
+            deliveryFeeMode: deliveryFee.mode,
+            deliveryFeeFlat: parseFloat(deliveryFee.flat) || 0,
+            deliveryFeeBase: parseFloat(deliveryFee.base) || 0,
+            deliveryFeePerMile: parseFloat(deliveryFee.perMile) || 0,
+            deliveryFeeFreeRadiusMi: parseFloat(deliveryFee.freeRadiusMi) || 0,
+            deliveryFeeMax: (deliveryFee.max === "" || deliveryFee.max == null) ? null : parseFloat(deliveryFee.max),
+            deliveryFeeRoadFactor: parseFloat(deliveryFee.roadFactor) || 1.0,
+            maxServiceableDistanceMi: (deliveryFee.maxServiceableMi === "" || deliveryFee.maxServiceableMi == null) ? null : parseFloat(deliveryFee.maxServiceableMi),
         };
     
+        const deliveryFeeChanged = JSON.stringify(deliveryFee) !== JSON.stringify(originalDeliveryFee);
         if (
             payload.servicesToAdd.length === 0 &&
             payload.servicesToUpdate.length === 0 &&
             payload.servicesToRemove.length === 0 &&
             minWeightEnabled === originalMinWeightEnabled &&
-            minWeightScope === originalMinWeightScope
+            minWeightScope === originalMinWeightScope &&
+            !deliveryFeeChanged
         ) {
             toast({
                 title: "No Changes",
@@ -1338,6 +1368,7 @@ const LaundryInfoManagement = ({ validateEmpCredentials, type, empPrefix }) => {
                 setServicesToRemove([]);
                 setOriginalMinWeightEnabled(minWeightEnabled);
                 setOriginalMinWeightScope(minWeightScope);
+                setOriginalDeliveryFee(deliveryFee);
                 fetchServices();
                 setIsServiceEditMode(false);
             } else {
@@ -2022,6 +2053,103 @@ const LaundryInfoManagement = ({ validateEmpCredentials, type, empPrefix }) => {
                                 </select>
                             </Flex>
                         )}
+                        {!isServiceEditMode && (
+                            <Text fontSize="xs" color="gray.400" mt={2}>
+                                Click "Edit" to change these settings.
+                            </Text>
+                        )}
+                    </Box>
+
+                    {/* Delivery fee — tenant choice: none / flat / distance (Phase 3) */}
+                    <Box mb={4} p={4} bg="gray.50" borderRadius="md" border="1px solid" borderColor="gray.200">
+                        <Box>
+                            <Text fontWeight="bold">🚚 Delivery Fee</Text>
+                            <Text fontSize="xs" color="gray.500" mt={1}>
+                                Choose whether to charge for delivery. <b>None</b> = free delivery.
+                                <b> Flat</b> = one fixed fee per delivery. <b>Distance-based</b> = a base
+                                fee plus a per-mile rate (with an optional free radius and cap). Applies to
+                                the delivery leg only, and is skipped when a delivery is fulfilled by Uber.
+                            </Text>
+                        </Box>
+                        <Flex align="center" gap={3} mt={3}>
+                            <Text fontSize="sm" color="gray.700" fontWeight="500">Mode:</Text>
+                            <select
+                                value={deliveryFee.mode}
+                                onChange={(e) => setDeliveryFee((p) => ({ ...p, mode: e.target.value }))}
+                                disabled={!isServiceEditMode}
+                                style={{ padding: "0.25rem 0.5rem", fontSize: "0.875rem", borderRadius: "6px", border: "1px solid #CBD5E0" }}
+                            >
+                                <option value="none">None (free delivery)</option>
+                                <option value="flat">Flat fee</option>
+                                <option value="distance">Distance-based</option>
+                            </select>
+                        </Flex>
+
+                        {deliveryFee.mode === "flat" && (
+                            <Flex align="center" gap={3} mt={3} wrap="wrap">
+                                <Text fontSize="sm" color="gray.700" fontWeight="500">Flat fee ($):</Text>
+                                <Input
+                                    type="number" min="0" step="0.01" size="sm" width="120px"
+                                    value={deliveryFee.flat}
+                                    isDisabled={!isServiceEditMode}
+                                    onChange={(e) => setDeliveryFee((p) => ({ ...p, flat: e.target.value }))}
+                                />
+                            </Flex>
+                        )}
+
+                        {deliveryFee.mode === "distance" && (
+                            <Box mt={3}>
+                                <Flex align="center" gap={3} mb={2} wrap="wrap">
+                                    <Text fontSize="sm" color="gray.700" fontWeight="500" minW="140px">Base fee ($):</Text>
+                                    <Input type="number" min="0" step="0.01" size="sm" width="120px"
+                                        value={deliveryFee.base} isDisabled={!isServiceEditMode}
+                                        onChange={(e) => setDeliveryFee((p) => ({ ...p, base: e.target.value }))} />
+                                </Flex>
+                                <Flex align="center" gap={3} mb={2} wrap="wrap">
+                                    <Text fontSize="sm" color="gray.700" fontWeight="500" minW="140px">Per mile ($):</Text>
+                                    <Input type="number" min="0" step="0.01" size="sm" width="120px"
+                                        value={deliveryFee.perMile} isDisabled={!isServiceEditMode}
+                                        onChange={(e) => setDeliveryFee((p) => ({ ...p, perMile: e.target.value }))} />
+                                </Flex>
+                                <Flex align="center" gap={3} mb={2} wrap="wrap">
+                                    <Text fontSize="sm" color="gray.700" fontWeight="500" minW="140px">Free radius (mi):</Text>
+                                    <Input type="number" min="0" step="0.1" size="sm" width="120px"
+                                        value={deliveryFee.freeRadiusMi} isDisabled={!isServiceEditMode}
+                                        onChange={(e) => setDeliveryFee((p) => ({ ...p, freeRadiusMi: e.target.value }))} />
+                                </Flex>
+                                <Flex align="center" gap={3} mb={2} wrap="wrap">
+                                    <Text fontSize="sm" color="gray.700" fontWeight="500" minW="140px">Max cap ($, optional):</Text>
+                                    <Input type="number" min="0" step="0.01" size="sm" width="120px" placeholder="no cap"
+                                        value={deliveryFee.max} isDisabled={!isServiceEditMode}
+                                        onChange={(e) => setDeliveryFee((p) => ({ ...p, max: e.target.value }))} />
+                                </Flex>
+                                <Flex align="center" gap={3} wrap="wrap">
+                                    <Text fontSize="sm" color="gray.700" fontWeight="500" minW="140px">Road factor:</Text>
+                                    <Input type="number" min="1" step="0.1" size="sm" width="120px"
+                                        value={deliveryFee.roadFactor} isDisabled={!isServiceEditMode}
+                                        onChange={(e) => setDeliveryFee((p) => ({ ...p, roadFactor: e.target.value }))} />
+                                    <Text fontSize="xs" color="gray.400">multiplier for straight-line → driving distance (e.g. 1.3)</Text>
+                                </Flex>
+                            </Box>
+                        )}
+
+                        {/* Max serviceable distance — applies to all modes (serviceability gate) */}
+                        <Flex align="center" gap={3} mt={4} pt={3} wrap="wrap" borderTop="1px dashed" borderColor="gray.200">
+                            <Text fontSize="sm" color="gray.700" fontWeight="500" minW="180px">Max serviceable distance (mi):</Text>
+                            <Input
+                                type="number" min="0" step="0.1" size="sm" width="120px" placeholder="no limit"
+                                value={deliveryFee.maxServiceableMi}
+                                isDisabled={!isServiceEditMode}
+                                onChange={(e) => setDeliveryFee((p) => ({ ...p, maxServiceableMi: e.target.value }))}
+                            />
+                        </Flex>
+                        <Text fontSize="xs" color="gray.400" mt={1}>
+                            When set, addresses farther than this from the shop are treated as not serviceable
+                            (even if their zip is serviceable) — the customer is asked to call, and the address is
+                            saved to demand. Distance uses the road factor above (so 30 ≈ 30 driving miles when
+                            road factor is 1.3). Leave blank for no limit.
+                        </Text>
+
                         {!isServiceEditMode && (
                             <Text fontSize="xs" color="gray.400" mt={2}>
                                 Click "Edit" to change these settings.

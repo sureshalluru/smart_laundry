@@ -50,6 +50,9 @@ const Address = () => {
     const [notifyEmail, setNotifyEmail] = useState('');
     const [notifyPhone, setNotifyPhone] = useState('');
     const [notifySubmitting, setNotifySubmitting] = useState(false);
+    // When an address is serviceable by zip but beyond the shop's max delivery
+    // distance, the backend returns reason:"too_far" + the shop's phone.
+    const [tooFar, setTooFar] = useState(null); // { contactPhone, distanceMi, maxDistanceMi } | null
 
     const handleSubmit = async (e) => {
         e.preventDefault();
@@ -70,9 +73,28 @@ const Address = () => {
             const data = response.data;
             if (data.status === 'success') {
                 if (data.serviceable) {
+                    setTooFar(null);
                     localStorage.setItem('customerAddress', address);
                     navigate(`/${laundryId}/login`);
+                } else if (data.reason === 'too_far') {
+                    // Zip is serviced, but the address is beyond the max delivery
+                    // distance. The backend already recorded it as demand; show a
+                    // "please call us" message with the shop's number.
+                    setTooFar({
+                        contactPhone: data.contactPhone || '',
+                        distanceMi: data.distanceMi,
+                        maxDistanceMi: data.maxDistanceMi,
+                    });
+                    setShowNotifyForm(false);
+                    toast({
+                        title: "Outside delivery range",
+                        description: data.contactPhone
+                            ? `This address is beyond our delivery range. Please call us at ${data.contactPhone}.`
+                            : 'This address is beyond our delivery range. Please contact us.',
+                        status: "warning", duration: 6000, isClosable: true,
+                    });
                 } else {
+                    setTooFar(null);
                     setShowNotifyForm(true);
                     toast({ title: "Not Serviceable", description: 'This area is not yet serviced. Leave your info to be notified when we expand!', status: "info", duration: 5000, isClosable: true });
                 }
@@ -183,6 +205,31 @@ const Address = () => {
                             <Text fontSize="xs" color="gray.500" fontWeight="500">Live Tracking</Text>
                         </VStack>
                     </HStack>
+
+                    {/* Outside delivery range — serviceable zip but beyond max distance */}
+                    {tooFar && (
+                        <Box bg="orange.50" borderRadius="xl" p={5} boxShadow="md" w="full" mt={4} border="1px solid" borderColor="orange.200">
+                            <VStack spacing={2} align="stretch">
+                                <Text fontWeight="700" color="orange.700" fontSize="sm">
+                                    This address is outside our delivery range
+                                </Text>
+                                <Text fontSize="xs" color="gray.600">
+                                    We'd love to serve you! This address is a bit too far for our standard delivery.
+                                    Please give us a call{tooFar.contactPhone ? '' : ''} and we'll see what we can do.
+                                </Text>
+                                {tooFar.contactPhone && (
+                                    <Button
+                                        as="a"
+                                        href={`tel:${tooFar.contactPhone}`}
+                                        size="sm"
+                                        colorScheme="orange"
+                                    >
+                                        Call {tooFar.contactPhone}
+                                    </Button>
+                                )}
+                            </VStack>
+                        </Box>
+                    )}
 
                     {/* Notify Me Form — shows when address is not serviceable */}
                     {showNotifyForm && (

@@ -93,6 +93,13 @@ def run():
                 ALTER TABLE shop.laundry_shops
                 ADD COLUMN IF NOT EXISTS longitude NUMERIC(10,7)
             """)
+            # Max serviceable distance (miles) from the shop. NULL = no limit.
+            # When set, an address farther than this is treated as not
+            # serviceable even if its zip is in serviceable_zip_codes.
+            cur.execute("""
+                ALTER TABLE shop.laundry_shops
+                ADD COLUMN IF NOT EXISTS max_serviceable_distance_mi NUMERIC(10,2)
+            """)
 
             # ── Per-order snapshot on orders.orders ──────────────────────────
             cur.execute("""

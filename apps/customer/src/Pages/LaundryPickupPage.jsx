@@ -466,6 +466,19 @@ export default function LaundryPickupPage({laundryId,customerId,customerPaymentI
                 if (data.serviceable) {
                     setIsAddressValidated(true);
                     localStorage.setItem('customerAddress', addr);
+                } else if (data.reason === 'too_far') {
+                    // Serviceable zip but beyond the shop's max delivery distance.
+                    // Backend already captured it as demand; ask them to call.
+                    toast({
+                        title: "Outside delivery range",
+                        description: data.contactPhone
+                            ? `This address is beyond our delivery range. Please call us at ${data.contactPhone}.`
+                            : "This address is beyond our delivery range. Please contact us.",
+                        status: "warning",
+                        duration: 8000,
+                        isClosable: true,
+                    });
+                    setIsAddressValidated(false);
                 } else {
                     toast({
                         title: "Address Not Serviceable",
@@ -887,6 +900,9 @@ export default function LaundryPickupPage({laundryId,customerId,customerPaymentI
                                 <UnifiedReviewPage
                                     cart={cart}
                                     dispatch={dispatch}
+                                    laundryId={laundryId}
+                                    address={address}
+                                    dropoffService={dropoffService}
                                     pickupDate={pickupDate}
                                     pickupTime={pickupTime}
                                     dropoffDate={dropoffDate}

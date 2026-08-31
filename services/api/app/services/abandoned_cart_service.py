@@ -39,7 +39,7 @@ def process_abandoned_carts():
                     SELECT 1 FROM shop.customer_reminders cr
                     WHERE cr.customer_id::text = c.customer_id AND cr.laundry_id = %s
                       AND cr.reminder_type = 'abandoned_cart'
-                      AND cr.created_at > NOW() - INTERVAL '7 days'
+                      AND cr.sent_at > NOW() - INTERVAL '7 days'
                   )
                 LIMIT 50
             """, (lid, lid))
@@ -71,9 +71,9 @@ def process_abandoned_carts():
                   AND c.phone_number IS NOT NULL AND c.phone_number != ''
                   AND NOT EXISTS (
                     SELECT 1 FROM shop.customer_reminders cr
-                    WHERE cr.customer_id = lf.customer_id::text AND cr.laundry_id = %s
+                    WHERE cr.customer_id::text = lf.customer_id::text AND cr.laundry_id = %s
                       AND cr.reminder_type = 'missed_pickup'
-                      AND cr.created_at > NOW() - INTERVAL '7 days'
+                      AND cr.sent_at > NOW() - INTERVAL '7 days'
                   )
                 LIMIT 50
             """, (lid, lid))
@@ -102,19 +102,19 @@ def process_abandoned_carts():
                 JOIN shop.customers c ON c.customer_id = cr.customer_id::text
                 WHERE cr.laundry_id = %s
                   AND cr.reminder_type = 'cart_started'
-                  AND cr.created_at < NOW() - INTERVAL '2 hours'
-                  AND cr.created_at > NOW() - INTERVAL '24 hours'
+                  AND cr.sent_at < NOW() - INTERVAL '2 hours'
+                  AND cr.sent_at > NOW() - INTERVAL '24 hours'
                   AND c.phone_number IS NOT NULL AND c.phone_number != ''
                   AND NOT EXISTS (
                     SELECT 1 FROM orders.orders o
                     WHERE o.customer_id = cr.customer_id::text AND o.laundry_id = %s
-                      AND o.created_at > cr.created_at
+                      AND o.created_at > cr.sent_at
                   )
                   AND NOT EXISTS (
                     SELECT 1 FROM shop.customer_reminders cr2
                     WHERE cr2.customer_id = cr.customer_id AND cr2.laundry_id = %s
                       AND cr2.reminder_type = 'abandoned_cart_realtime'
-                      AND cr2.created_at > NOW() - INTERVAL '24 hours'
+                      AND cr2.sent_at > NOW() - INTERVAL '24 hours'
                   )
                 LIMIT 50
             """, (lid, lid, lid))

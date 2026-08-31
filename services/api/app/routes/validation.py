@@ -60,7 +60,7 @@ async def validate_laundry(
             return _get_laundry_info(cur, laundryId, is_cust)
 
         elif operation == 'validateAddress':
-            return _validate_address(cur, laundryId, address)
+            return _validate_address(cur, laundryId, address, conn=conn)
 
         elif operation == 'checkPhoneNumber':
             return _check_phone_number(cur, phoneNumber, laundryId)
@@ -102,9 +102,12 @@ def _get_laundry_info(cur, laundry_id, is_customer=None):
     """Full laundry info — exact port from Lambda."""
     cur.execute("""
         SELECT laundry_name, laundry_timezone, stripe_public_key, stripe_terminal_id,
-               delivery_time_interval, user_domain,
+               delivery_time_interval, user_domain, contact_phone,
                street, city, state, zip_code, country, serviceable_zip_codes, bag_price, tax_rate, site_content, laundry_logo, subscription_discount,
-               hide_home_address, min_weight_enabled, addons_enabled, min_weight_scope
+               hide_home_address, min_weight_enabled, addons_enabled, min_weight_scope,
+               delivery_fee_mode, delivery_fee_flat, delivery_fee_base,
+               delivery_fee_per_mile, delivery_fee_free_radius_mi,
+               delivery_fee_max, delivery_fee_road_factor, max_serviceable_distance_mi
         FROM shop.laundry_shops WHERE laundry_id = %s
     """, (laundry_id,))
     shop = cur.fetchone()
@@ -264,11 +267,31 @@ def _get_laundry_info(cur, laundry_id, is_customer=None):
         "minWeightScope": _scope,
         "addonsEnabled": addons_enabled,
         "laundryAddons": laundry_addons,
+        # Delivery fee config (Phase 3) — for display/estimate; the authoritative
+        # fee is quoted server-side via /quote-delivery-fee and recomputed at create.
+        "deliveryFeeMode": shop.get("delivery_fee_mode") or "none",
+        "deliveryFeeFlat": float(shop["delivery_fee_flat"]) if shop.get("delivery_fee_flat") is not None else 0,
+        "deliveryFeeBase": float(shop["delivery_fee_base"]) if shop.get("delivery_fee_base") is not None else 0,
+        "deliveryFeePerMile": float(shop["delivery_fee_per_mile"]) if shop.get("delivery_fee_per_mile") is not None else 0,
+        "deliveryFeeFreeRadiusMi": float(shop["delivery_fee_free_radius_mi"]) if shop.get("delivery_fee_free_radius_mi") is not None else 0,
+        "deliveryFeeMax": float(shop["delivery_fee_max"]) if shop.get("delivery_fee_max") is not None else None,
+        "deliveryFeeRoadFactor": float(shop["delivery_fee_road_factor"]) if shop.get("delivery_fee_road_factor") is not None else 1.0,
+        "maxServiceableDistanceMi": float(shop["max_serviceable_distance_mi"]) if shop.get("max_serviceable_distance_mi") is not None else None,
+        "contactPhone": shop.get("contact_phone") or "",
     }
 
 
-def _validate_address(cur, laundry_id, address):
-    """Check if address zip code is serviceable."""
+def _validate_address(cur, laundry_id, address, conn=None):
+    """Check if address zip code is serviceable, and (optionally) within the
+    tenant's maximum serviceable driving distance.
+
+    Even when the zip IS in serviceable_zip_codes, if the tenant has set
+    max_serviceable_distance_mi and the address is farther than that from the
+    shop, we treat it as NOT serviceable, return reason 'too_far' + the shop's
+    contact phone (so the customer can call), and record the address in the
+    zip-demand table (shop.zip_code_interest). Distance resolution fails OPEN:
+    if we can't geocode, we do NOT block the order.
+    """
     import re
     if not address:
         return {"status": "error", "message": "Missing address"}
@@ -281,23 +304,68 @@ def _validate_address(cur, laundry_id, address):
     if not zip_code:
         return {"status": "error", "message": "Could not determine zip code from address"}
 
-    # Demo zip code: 78664 is always serviceable for all laundries (for demos/testing)
-    # This is Round Rock's zip — use any real address in 78664 during demos
-    if zip_code == "78664":
-        return {"status": "success", "serviceable": True}
-
-    cur.execute("SELECT serviceable_zip_codes FROM shop.laundry_shops WHERE laundry_id = %s", (laundry_id,))
+    cur.execute("""
+        SELECT serviceable_zip_codes, max_serviceable_distance_mi, contact_phone,
+               delivery_fee_road_factor,
+               latitude, longitude, street, city, state, zip_code, laundry_id
+        FROM shop.laundry_shops WHERE laundry_id = %s
+    """, (laundry_id,))
     row = cur.fetchone()
     if not row:
         return {"status": "error", "message": "Laundry not found"}
 
-    serviceable = row["serviceable_zip_codes"] or []
-    if isinstance(serviceable, dict):
-        serviceable = list(serviceable.keys())
+    # Demo zip code: 78664 is always serviceable for all laundries (for demos/testing).
+    # Still subject to the max-distance gate below.
+    zip_ok = False
+    if zip_code == "78664":
+        zip_ok = True
+    else:
+        serviceable = row["serviceable_zip_codes"] or []
+        if isinstance(serviceable, dict):
+            serviceable = list(serviceable.keys())
+        zip_ok = zip_code in serviceable
 
-    if zip_code in serviceable:
-        return {"status": "success", "serviceable": True}
-    return {"status": "success", "serviceable": False}
+    if not zip_ok:
+        return {"status": "success", "serviceable": False, "reason": "zip"}
+
+    # Zip is serviceable. Apply the max-distance gate when configured.
+    max_mi = row.get("max_serviceable_distance_mi")
+    if max_mi is not None and float(max_mi) > 0 and conn is not None:
+        try:
+            from app.services.delivery_fee import resolve_distance_miles
+            straight_mi = resolve_distance_miles(conn, row, address)
+            # Compare against the ROAD-adjusted distance (straight-line × road
+            # factor) so "max 30 miles" means ~30 driving miles, consistent with
+            # how the distance delivery fee is computed. Road factor defaults 1.0.
+            try:
+                _rf = float(row.get("delivery_fee_road_factor")) if row.get("delivery_fee_road_factor") is not None else 1.0
+            except (TypeError, ValueError):
+                _rf = 1.0
+            if _rf <= 0:
+                _rf = 1.0
+            dist = (straight_mi * _rf) if straight_mi is not None else None
+            # Fail open: only reject when we have a real distance over the max.
+            if dist is not None and dist > float(max_mi):
+                # Record the out-of-range address as demand (best-effort).
+                try:
+                    cur.execute("""
+                        INSERT INTO shop.zip_code_interest (laundry_id, zip_code, address)
+                        VALUES (%s, %s, %s)
+                    """, (laundry_id, zip_code, address))
+                except Exception as _demand_err:
+                    logger.warning(f"zip_code_interest capture failed (too_far): {_demand_err}")
+                return {
+                    "status": "success",
+                    "serviceable": False,
+                    "reason": "too_far",
+                    "distanceMi": round(float(dist), 1),
+                    "maxDistanceMi": float(max_mi),
+                    "contactPhone": row.get("contact_phone") or "",
+                }
+        except Exception as _dist_err:
+            logger.warning(f"max-distance check failed (fail-open): {_dist_err}")
+
+    return {"status": "success", "serviceable": True}
 
 
 def _check_phone_number(cur, phone_number, laundry_id):
@@ -381,7 +449,7 @@ async def validate_address_public(
     """Validate customer address — public endpoint (no auth required)."""
     with get_db() as conn:
         cur = get_cursor(conn)
-        return _validate_address(cur, laundryId, address)
+        return _validate_address(cur, laundryId, address, conn=conn)
 
 
 @router.post("/zip-interest")

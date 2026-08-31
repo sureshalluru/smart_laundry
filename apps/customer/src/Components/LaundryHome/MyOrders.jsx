@@ -1198,6 +1198,12 @@ const MyOrders = ({ customerId, laundryId, laundryTimeZone }) => {
                                                 <Text>${Number(orderDetails.tip.tipAmount).toFixed(2)}</Text>
                                             </Flex>
                                         )}
+                                        {orderDetails.deliveryFee > 0 && (
+                                            <Flex justify="space-between" fontSize="sm" color="gray.600" mb={1}>
+                                                <Text>Delivery fee{orderDetails.deliveryDistanceMi != null ? ` (${Number(orderDetails.deliveryDistanceMi).toFixed(1)} mi)` : ''}</Text>
+                                                <Text>${Number(orderDetails.deliveryFee).toFixed(2)}</Text>
+                                            </Flex>
+                                        )}
                                         <Flex justify="space-between" fontWeight="bold" fontSize="md" mt={1}>
                                             <Text>Total</Text>
                                             <Text>${Number(orderDetails.grandTotal || orderDetails.totalCost).toFixed(2)}</Text>

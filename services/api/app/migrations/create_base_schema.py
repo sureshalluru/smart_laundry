@@ -848,6 +848,7 @@ def run():
                     delivery_fee_road_factor    NUMERIC(6,3) DEFAULT 1.0,
                     latitude                    NUMERIC(10,7),
                     longitude                   NUMERIC(10,7),
+                    max_serviceable_distance_mi NUMERIC(10,2),
                     address_verified            BOOLEAN DEFAULT false,
                     address_verified_at         TIMESTAMP,
                     referred_by_name            VARCHAR(255),

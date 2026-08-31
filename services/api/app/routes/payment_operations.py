@@ -394,6 +394,22 @@ async def create_invoice(
                 description=desc,
             )
 
+        # Delivery fee line (Phase 3) — its own itemized line so the invoice
+        # total matches the order's grand_total. Only when a fee was charged.
+        _df_amt = float(order.get("delivery_fee") or 0)
+        if (services or products) and _df_amt > 0:
+            _df_dist = order.get("delivery_distance_mi")
+            _df_desc = "Delivery fee"
+            if _df_dist is not None:
+                _df_desc += f" ({float(_df_dist):.1f} mi)"
+            stripe_lib.InvoiceItem.create(
+                customer=stripe_customer.id,
+                invoice=invoice.id,
+                amount=int(round(_df_amt * 100)),
+                currency="usd",
+                description=_df_desc,
+            )
+
         # If no line items from services/products, use grand_total
         if not services and not products:
             amount_cents = int(round(float(order["grand_total"] or 0) * 100))

@@ -3008,6 +3008,18 @@ const { open: openCancelUber, ModalUI: CancelUberModal } = useCancelUberHandoff(
                                             </Text>
                                         </Flex>
 
+                                        {/* Delivery fee (Phase 3) — shown only when charged */}
+                                        {(selectedOrderDetails.deliveryFee || 0) > 0 && (
+                                            <Flex justify="space-between" align="center">
+                                                <Text fontWeight="medium" fontSize={fontSize}>
+                                                    Delivery fee{selectedOrderDetails.deliveryDistanceMi != null ? ` (${Number(selectedOrderDetails.deliveryDistanceMi).toFixed(1)} mi)` : ""}:
+                                                </Text>
+                                                <Text fontSize={fontSize}>
+                                                    ${roundToTwo(selectedOrderDetails.deliveryFee || 0)}
+                                                </Text>
+                                            </Flex>
+                                        )}
+
                                         {/* Coupon - Third item */}
                                         <Flex justify="space-between" align="center">
                                             <Text fontWeight="medium" fontSize={fontSize}>Coupon:</Text>
