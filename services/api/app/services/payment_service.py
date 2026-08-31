@@ -255,15 +255,24 @@ def check_payment_gate(order, target_status, laundry_id):
     if order.get('payment_status') == 'Paid':
         return {"allowed": True}
 
-    # Commercial / pay-by-invoice orders bypass the payment gate
-    # (they'll be invoiced after ProcessingCompleted)
+    # Pay-by-invoice orders:
+    #   - COMMERCIAL accounts get net-terms: they bypass the gate and may be
+    #     delivered before the invoice is paid (invoiced, pay later).
+    #   - NON-commercial invoice orders (e.g. a call-in customer who declined a
+    #     card) must have the invoice PAID before delivery — so they are gated
+    #     just like any other unpaid order (blocked until payment_status='Paid').
     if order.get('pay_by_invoice'):
-        logger.info(
-            f"Payment gate BYPASS for order {order.get('order_id', '?')}: "
-            f"order_type={order.get('order_type')}, pay_by_invoice={order.get('pay_by_invoice')}, "
-            f"target_status={target_status}"
-        )
-        return {"allowed": True}
+        if order.get('order_type') == 'Commercial':
+            logger.info(
+                f"Payment gate BYPASS (commercial net-terms) for order {order.get('order_id', '?')}: "
+                f"target_status={target_status}"
+            )
+            return {"allowed": True}
+        # Non-commercial invoice order — require the invoice to be paid first.
+        return {
+            "allowed": False,
+            "error": "This order is invoiced. It can be delivered once the invoice is paid."
+        }
 
     # Unpaid order targeting a gated status — enforce payment gate
     if order.get('order_type') == 'Online':

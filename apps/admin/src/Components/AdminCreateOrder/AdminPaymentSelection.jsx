@@ -447,7 +447,10 @@ export default function PaymentSelection({
                 customerId: customerId,
                 laundryId: laundryId,
                 orderType: isCommercialOrder ? "Commercial" : "InStore",
-                payByInvoice: isCommercialOrder,
+                // pay_by_invoice is true for commercial accounts (net-terms) OR when
+                // the operator chose "Send Invoice" for a call-in customer. The latter
+                // stays order_type=InStore, so it is gated: delivery only after paid.
+                payByInvoice: isCommercialOrder || paymentOption === "Invoice",
                 address: address,
                 doorNumber: doorNumber,
                 addressInstructions: deliveryInstructions,
@@ -608,7 +611,10 @@ export default function PaymentSelection({
             });
             return;
         }
-        if (paymentOption === 'PayLater') {
+        if (paymentOption === 'PayLater' || paymentOption === 'Invoice') {
+            // No card taken now. For "Invoice" the payload flags payByInvoice so
+            // an invoice is emailed at Processing Completed and delivery is gated
+            // until it's paid.
             handlePlaceOrder(false, '');
         } else if (paymentOption === 'PayNow') {
             // If Terminal Payment is selected, open the confirmation modal.
@@ -849,8 +855,23 @@ export default function PaymentSelection({
                                         <Text fontSize={smallTextSize} color="gray.500">Pay at pickup</Text>
                                     </Box>
                                 </Radio>
+                                {!isCommercialOrder && (
+                                    <Radio value="Invoice" size="md">
+                                        <Box ml={2}>
+                                            <Text fontWeight="medium" fontSize={textSize}>Send Invoice</Text>
+                                            <Text fontSize={smallTextSize} color="gray.500">Email an invoice; deliver after it's paid</Text>
+                                        </Box>
+                                    </Radio>
+                                )}
                             </HStack>
                         </RadioGroup>
+
+                        {paymentOption === "Invoice" && (
+                            <Text fontSize={smallTextSize} color="gray.600" mt={1}>
+                                No card is taken now. An invoice is emailed when the order reaches
+                                "Processing Completed"; the order can be delivered once the invoice is paid.
+                            </Text>
+                        )}
 
                         {isCommercialOrder && (
                             <Text fontSize={smallTextSize} color="gray.600" mt={1}>

@@ -1975,15 +1975,19 @@ const { open: openCancelUber, ModalUI: CancelUberModal } = useCancelUberHandoff(
                                                         // Don't allow admin to set Delivered for online orders (driver only)
                                                         const isTerminalStatus = status === "Delivered" || (status === "OrderPickedUp" && selectedOrderDetails?.orderType === "Online");
 
-                                                        // Payment logic:
-                                                        // - Can't go past ProcessingCompleted unless paid (or invoice sent)
-                                                        // - Exception: In-store can go to OrderPickedUp (pay at counter)
-                                                        // - Exception: Commercial/pay-by-invoice orders skip payment gate entirely
-                                                        const isPaid = selectedOrderDetails?.paymentStatus === "Paid" || selectedOrderDetails?.paymentStatus === "Invoice Sent";
+                                                        // Payment logic (mirrors backend check_payment_gate):
+                                                        // - Can't go past ProcessingCompleted unless the order is actually Paid.
+                                                        // - COMMERCIAL accounts get net-terms: they bypass the gate (deliver, pay
+                                                        //   the invoice later).
+                                                        // - NON-commercial invoice orders (call-in customer, no card) must have the
+                                                        //   invoice PAID first — "Invoice Sent" alone is NOT enough to deliver.
+                                                        const isCommercialNetTerms = selectedOrderDetails?.orderType === "Commercial";
+                                                        // "Invoice Sent" only counts as paid-enough for commercial net-terms.
+                                                        const isPaid = selectedOrderDetails?.paymentStatus === "Paid"
+                                                            || (isCommercialNetTerms && selectedOrderDetails?.paymentStatus === "Invoice Sent");
                                                         const isInStoreOrder = selectedOrderDetails?.orderType === "InStore";
-                                                        const isCommercialOrder = selectedOrderDetails?.payByInvoice;
                                                         const isPastProcessing = ["ReadyForDelivery", "EnRouteToDelivery", "Delivered", "OrderPickedUp"].includes(status);
-                                                        const isBlockedByPayment = isPastProcessing && !isPaid && !isCommercialOrder;
+                                                        const isBlockedByPayment = isPastProcessing && !isPaid && !isCommercialNetTerms;
 
                                                         // For in-store orders: allow jumping from ProcessingCompleted to OrderPickedUp
                                                         const isPickedUpFromProcessing = isInStoreOrder && status === "OrderPickedUp" && baseStatus === "ProcessingCompleted";
