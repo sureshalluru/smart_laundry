@@ -204,6 +204,27 @@ async def process_frequencies():
                 order_type = 'Commercial' if is_commercial else 'Online'
                 pay_by_invoice = True if is_commercial else False
 
+                # Derive tip amount BEFORE the INSERT so grand_total includes it.
+                # This mirrors the customer_public.py and orders_info.py tip logic.
+                tip_amount = float(sub.get("freq_tip_amount") or 0)
+                tip_percentage = float(sub.get("freq_tip_percentage") or 0)
+                tip_type = sub.get("freq_tip_type") or ""
+                tip_method = sub.get("freq_tip_method") or ""
+
+                # Server-authoritative percentage tip: derive $ from this order's
+                # total when the subscription stored % but $0 (e.g. set up before
+                # weigh-in, or total changed due to subscription discount).
+                if (str(tip_type).strip().lower() == "percentage"
+                        and tip_percentage > 0 and tip_amount <= 0):
+                    try:
+                        tip_amount = round(float(order_total or 0) * (tip_percentage / 100), 2)
+                    except Exception as _ftip_err:
+                        logger.warning(f"Recurring percentage tip derivation error for {order_id}: {_ftip_err}")
+
+                # Include tip in grand_total so the order total is correct from creation.
+                if tip_amount > 0:
+                    order_grand_total = round(order_grand_total + tip_amount, 2)
+
                 with get_db() as conn:
                     cur = get_cursor(conn)
                     cur.execute("""
@@ -234,23 +255,7 @@ async def process_frequencies():
                         pay_by_invoice,
                     ))
 
-                # Insert tip data from frequency subscription
-                tip_amount = float(sub.get("freq_tip_amount") or 0)
-                tip_percentage = float(sub.get("freq_tip_percentage") or 0)
-                tip_type = sub.get("freq_tip_type") or ""
-                tip_method = sub.get("freq_tip_method") or ""
-
-                # Server-authoritative percentage tip: if the subscription stored a
-                # percentage but a $0 amount (or the recurring total differs from
-                # when it was set up), derive the dollar amount from this order's
-                # total so recurring orders never carry a "5%" tip worth $0.
-                if (str(tip_type).strip().lower() == "percentage"
-                        and tip_percentage > 0 and tip_amount <= 0):
-                    try:
-                        tip_amount = round(float(order_total or 0) * (tip_percentage / 100), 2)
-                    except Exception as _ftip_err:
-                        logger.warning(f"Recurring percentage tip derivation error for {order_id}: {_ftip_err}")
-
+                # Insert tip into order_tips so it shows up on the order.
                 if tip_amount > 0 or tip_percentage > 0:
                     with get_db() as conn:
                         cur = get_cursor(conn)

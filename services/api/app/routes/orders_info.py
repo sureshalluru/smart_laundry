@@ -963,6 +963,31 @@ async def update_order_endpoint(
                 total_cost = round(sub_total - discounted_price, 2)
 
             # Tip recalculation
+            # If the request body contains an explicit tip update, apply it first
+            # (upsert into order_tips), then recalculate as normal.
+            new_tip_data = body.get("tip")  # e.g. {"tipType": "custom", "tipAmount": 5.00}
+            if new_tip_data and isinstance(new_tip_data, dict):
+                nt_type = new_tip_data.get("tipType") or "noTip"
+                nt_amount = float(new_tip_data.get("tipAmount") or 0)
+                nt_pct = float(new_tip_data.get("tipPercentage") or 0) if nt_type == "percentage" else None
+                nt_method = new_tip_data.get("tipMethod") or current_order.get("tip_method") or None
+                nt_receiver = empId or current_order.get("tip_receiver_id") or None
+                cur.execute("""
+                    INSERT INTO orders.order_tips (order_id, tip_amount, tip_percentage, tip_type, tip_method, tip_receiver_id)
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (order_id) DO UPDATE SET
+                        tip_amount = EXCLUDED.tip_amount,
+                        tip_percentage = EXCLUDED.tip_percentage,
+                        tip_type = EXCLUDED.tip_type,
+                        tip_method = COALESCE(EXCLUDED.tip_method, orders.order_tips.tip_method),
+                        tip_receiver_id = COALESCE(EXCLUDED.tip_receiver_id, orders.order_tips.tip_receiver_id)
+                """, (orderId, nt_amount, nt_pct, nt_type, nt_method, nt_receiver))
+                # Refresh current_order tip fields so the recompute below uses the new values
+                current_order = dict(current_order)
+                current_order["tip_type"] = nt_type
+                current_order["tip_amount"] = nt_amount
+                current_order["tip_percentage"] = nt_pct
+
             tip_type = current_order["tip_type"] or "noTip"
             tip_amount = float(current_order["tip_amount"] or 0)
             if tip_type == "percentage":

@@ -2997,19 +2997,89 @@ const { open: openCancelUber, ModalUI: CancelUberModal } = useCancelUberHandoff(
                                                 fontSize={fontSize}>${roundToTwo(selectedOrderDetails.subTotal || 0)}</Text>
                                         </Flex>
 
-                                        {/* Tip - Second item */}
-                                        <Flex justify="space-between" align="center">
+                                        {/* Tip — editable in edit mode */}
+                                        <Flex justify="space-between" align="center" wrap="wrap" gap={1}>
                                             <Text fontWeight="medium" fontSize={fontSize}>
                                                 Tip:{" "}
-                                                {selectedOrderDetails.tip?.tipType === "percentage"
-                                                    ? `${selectedOrderDetails.tip?.tipPercentage || 0}%`
-                                                    : selectedOrderDetails.tip?.tipType === "custom"
-                                                        ? "(custom)"
-                                                        : "(none)"}
+                                                {!isEditMode && (
+                                                    selectedOrderDetails.tip?.tipType === "percentage"
+                                                        ? `${selectedOrderDetails.tip?.tipPercentage || 0}%`
+                                                        : selectedOrderDetails.tip?.tipType === "custom"
+                                                            ? "(custom)"
+                                                            : "(none)"
+                                                )}
                                             </Text>
-                                            <Text fontSize={fontSize}>
-                                                ${roundToTwo(selectedOrderDetails.tip?.tipAmount || 0)}
-                                            </Text>
+                                            {isEditMode && canEditServices ? (
+                                                <HStack spacing={1}>
+                                                    <Box
+                                                        as="select"
+                                                        size={inputSize}
+                                                        fontSize={fontSize}
+                                                        borderRadius="md"
+                                                        border="1px solid"
+                                                        borderColor="gray.300"
+                                                        p="4px 6px"
+                                                        bg="white"
+                                                        value={selectedOrderDetails.tip?.tipType || "noTip"}
+                                                        onChange={(e) => {
+                                                            const tt = e.target.value;
+                                                            setSelectedOrderDetails((prev) => ({
+                                                                ...prev,
+                                                                tip: {
+                                                                    ...prev.tip,
+                                                                    tipType: tt,
+                                                                    tipAmount: tt === "noTip" ? 0 : (prev.tip?.tipAmount || 0),
+                                                                    tipPercentage: tt === "percentage" ? (prev.tip?.tipPercentage || 0) : null,
+                                                                },
+                                                            }));
+                                                        }}
+                                                    >
+                                                        <option value="noTip">No tip</option>
+                                                        <option value="custom">$ Amount</option>
+                                                        <option value="percentage">% of subtotal</option>
+                                                    </Box>
+                                                    {selectedOrderDetails.tip?.tipType === "percentage" ? (
+                                                        <Input
+                                                            type="number"
+                                                            min="0"
+                                                            max="100"
+                                                            step="1"
+                                                            size={inputSize}
+                                                            width="70px"
+                                                            textAlign="right"
+                                                            placeholder="%"
+                                                            value={selectedOrderDetails.tip?.tipPercentage ?? ""}
+                                                            onChange={(e) =>
+                                                                setSelectedOrderDetails((prev) => ({
+                                                                    ...prev,
+                                                                    tip: { ...prev.tip, tipPercentage: parseFloat(e.target.value) || 0 },
+                                                                }))
+                                                            }
+                                                        />
+                                                    ) : selectedOrderDetails.tip?.tipType === "custom" ? (
+                                                        <Input
+                                                            type="number"
+                                                            min="0"
+                                                            step="0.01"
+                                                            size={inputSize}
+                                                            width="80px"
+                                                            textAlign="right"
+                                                            placeholder="$0.00"
+                                                            value={selectedOrderDetails.tip?.tipAmount ?? ""}
+                                                            onChange={(e) =>
+                                                                setSelectedOrderDetails((prev) => ({
+                                                                    ...prev,
+                                                                    tip: { ...prev.tip, tipAmount: parseFloat(e.target.value) || 0 },
+                                                                }))
+                                                            }
+                                                        />
+                                                    ) : null}
+                                                </HStack>
+                                            ) : (
+                                                <Text fontSize={fontSize}>
+                                                    ${roundToTwo(selectedOrderDetails.tip?.tipAmount || 0)}
+                                                </Text>
+                                            )}
                                         </Flex>
 
                                         {/* Delivery fee (Phase 3) — shown only when charged */}
@@ -3562,6 +3632,20 @@ const handleAssignLaundryDriver = async (customAddress) => {
         }
         if ((addonsToRemove || []).length > 0) {
             payload.addonsToRemove = addonsToRemove;
+        }
+
+        // Include tip when it has been edited (tipType is set to something meaningful).
+        const tipData = updatedOrderDetails.tip;
+        if (tipData && tipData.tipType && tipData.tipType !== "noTip") {
+            payload.tip = {
+                tipType: tipData.tipType,
+                tipAmount: tipData.tipType === "custom" ? (parseFloat(tipData.tipAmount) || 0) : 0,
+                tipPercentage: tipData.tipType === "percentage" ? (parseFloat(tipData.tipPercentage) || 0) : null,
+                tipMethod: tipData.tipMethod || null,
+            };
+        } else if (tipData && tipData.tipType === "noTip") {
+            // Explicitly clear tip when admin sets it to none.
+            payload.tip = { tipType: "noTip", tipAmount: 0, tipPercentage: null };
         }
 
         const updatedOrder = {...updatedOrderDetails, orderStatus, services};
