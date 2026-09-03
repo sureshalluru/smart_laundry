@@ -11,13 +11,13 @@ import {
 } from '@chakra-ui/react';
 import { FiCalendar, FiStar, FiSmile } from 'react-icons/fi';
 
-const steps = [
+const defaultSteps = [
     {
         number: '1',
         icon: FiCalendar,
         title: 'Schedule a Pickup',
         description:
-            'Choose a day and time that works for you. We offer 7-day-a-week service with flexible time slots.',
+            'Choose a day and time that works for you. We offer flexible time slots that fit your schedule.',
     },
     {
         number: '2',
@@ -35,7 +35,20 @@ const steps = [
     },
 ];
 
-export default function SiteHowItWorks() {
+export default function SiteHowItWorks({ config }) {
+    const sc = config?.siteContent || {};
+    // Per-tenant overrides: a tenant can supply their own step titles/descriptions
+    // via site_content.howItWorksSteps (array of {title, description}). Falls back
+    // to the defaults so existing tenants are unchanged.
+    const custom = Array.isArray(sc.howItWorksSteps) ? sc.howItWorksSteps : null;
+    const steps = custom
+        ? defaultSteps.map((d, i) => ({
+            ...d,
+            title: custom[i]?.title || d.title,
+            description: custom[i]?.description || d.description,
+        }))
+        : defaultSteps;
+
     return (
         <Box id="how-it-works" py={{ base: 16, md: 20 }} bg="gray.50">
             <Container maxW="1200px">

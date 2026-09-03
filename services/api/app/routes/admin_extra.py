@@ -1700,7 +1700,17 @@ async def update_hero_content(
 
 # The public storefront hides a section when the corresponding flag is TRUE.
 # Absent flag => section shows (today's default behavior).
-_SECTION_FLAGS = ("hideHowItWorks", "hidePricing", "hideLocation", "hideAbout")
+#
+# Section flags hide whole page sections; nav flags hide individual navbar
+# links. All are stored in site_content and default to FALSE (visible), so
+# existing tenants are unaffected until they opt in.
+_SECTION_FLAGS = (
+    "hideHowItWorks", "hidePricing", "hideLocation", "hideAbout",
+    "hideNavServices",     # hide the "Services" item in the public navbar
+    "hideNavStaffLinks",   # hide the Admin + Driver shortcuts from public nav
+    "hidePickupOnlyCopy",  # pickup/delivery-only: hide storefront-specific copy
+                           # (the hero "Visit Our Location" button)
+)
 
 
 @router.get("/site-sections")
@@ -1739,6 +1749,54 @@ async def update_site_sections(
         """, (json.dumps(payload), laundryId))
 
     return {"status": "success", "message": "Site sections updated", **payload}
+
+
+# Allowed theme colors — must match the customer site's themeColors map
+# (SiteHero.jsx) and the onboarding picker (OnboardingPage.jsx).
+_THEME_COLORS = ("blue", "green", "purple", "teal", "orange", "red", "pink", "cyan")
+
+
+@router.get("/site-theme")
+async def get_site_theme(
+    laundryId: str = Query(...),
+    current_user: dict = Depends(get_current_user),
+):
+    """Get the public site theme color from site_content (defaults to blue)."""
+    with get_db() as conn:
+        cur = get_cursor(conn)
+        cur.execute("SELECT site_content FROM shop.laundry_shops WHERE laundry_id = %s", (laundryId,))
+        row = cur.fetchone()
+    sc = row["site_content"] if row and row.get("site_content") else {}
+    theme = sc.get("themeColor", "blue")
+    if theme not in _THEME_COLORS:
+        theme = "blue"
+    return {"themeColor": theme, "options": list(_THEME_COLORS)}
+
+
+@router.put("/site-theme")
+async def update_site_theme(
+    laundryId: str = Query(...),
+    body: dict = Body({}),
+    current_user: dict = Depends(get_current_user),
+):
+    """Update the public site theme color in site_content.
+
+    Only a value from the known palette is accepted; anything else is
+    rejected so we never write a color the customer site can't render.
+    """
+    theme = (body.get("themeColor") or "").strip().lower()
+    if theme not in _THEME_COLORS:
+        return {"statusCode": 400, "body": {"error": f"Invalid theme color. Must be one of {list(_THEME_COLORS)}"}}
+
+    with get_db() as conn:
+        cur = get_cursor(conn)
+        cur.execute("""
+            UPDATE shop.laundry_shops
+            SET site_content = COALESCE(site_content, '{}'::jsonb) || %s::jsonb
+            WHERE laundry_id = %s
+        """, (json.dumps({"themeColor": theme}), laundryId))
+
+    return {"status": "success", "message": "Theme color updated", "themeColor": theme}
 
 
 # ── Financial Reports (added directly to admin_extra to avoid routing issues) ──

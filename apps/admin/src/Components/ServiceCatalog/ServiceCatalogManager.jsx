@@ -86,8 +86,16 @@ const ServiceCatalogManager = ({ laundryId, currentServices }) => {
         hidePricing: false,
         hideLocation: false,
         hideAbout: false,
+        hideNavServices: false,
+        hideNavStaffLinks: false,
+        hidePickupOnlyCopy: false,
     });
     const [savingSections, setSavingSections] = useState(false);
+
+    // Public site theme color (site_content.themeColor).
+    const THEME_COLOR_OPTIONS = ["blue", "green", "purple", "teal", "orange", "red", "pink", "cyan"];
+    const [themeColor, setThemeColor] = useState("blue");
+    const [savingTheme, setSavingTheme] = useState(false);
 
     // Fetch catalog on mount
     useEffect(() => {
@@ -95,7 +103,40 @@ const ServiceCatalogManager = ({ laundryId, currentServices }) => {
         fetchBadges();
         fetchHero();
         fetchSections();
+        fetchTheme();
     }, [laundryId]);
+
+    const fetchTheme = async () => {
+        try {
+            const res = await axios.get(
+                `${process.env.REACT_APP_AWS_API_URL}/api/admin/site-theme`,
+                { params: { laundryId }, headers: { Authorization: `Bearer ${authToken}` } }
+            );
+            if (res.data?.themeColor) setThemeColor(res.data.themeColor);
+        } catch (err) {
+            console.error("Error fetching site theme:", err);
+        }
+    };
+
+    const handleSelectTheme = async (color) => {
+        const prev = themeColor;
+        setThemeColor(color); // optimistic
+        setSavingTheme(true);
+        try {
+            await axios.put(
+                `${process.env.REACT_APP_AWS_API_URL}/api/admin/site-theme`,
+                { themeColor: color },
+                { params: { laundryId }, headers: { Authorization: `Bearer ${authToken}` } }
+            );
+            toast({ title: "Theme color updated", status: "success", duration: 2000, isClosable: true });
+        } catch (err) {
+            console.error("Error saving site theme:", err);
+            setThemeColor(prev); // revert on failure
+            toast({ title: "Could not update theme", status: "error", duration: 3000, isClosable: true });
+        } finally {
+            setSavingTheme(false);
+        }
+    };
 
     const fetchSections = async () => {
         try {
@@ -108,6 +149,9 @@ const ServiceCatalogManager = ({ laundryId, currentServices }) => {
                 hidePricing: !!res.data?.hidePricing,
                 hideLocation: !!res.data?.hideLocation,
                 hideAbout: !!res.data?.hideAbout,
+                hideNavServices: !!res.data?.hideNavServices,
+                hideNavStaffLinks: !!res.data?.hideNavStaffLinks,
+                hidePickupOnlyCopy: !!res.data?.hidePickupOnlyCopy,
             });
         } catch (err) {
             console.error("Error fetching site sections:", err);
@@ -127,6 +171,9 @@ const ServiceCatalogManager = ({ laundryId, currentServices }) => {
                 hidePricing: !!res.data?.hidePricing,
                 hideLocation: !!res.data?.hideLocation,
                 hideAbout: !!res.data?.hideAbout,
+                hideNavServices: !!res.data?.hideNavServices,
+                hideNavStaffLinks: !!res.data?.hideNavStaffLinks,
+                hidePickupOnlyCopy: !!res.data?.hidePickupOnlyCopy,
             });
             toast({
                 title: "Sections updated",
@@ -510,6 +557,40 @@ const ServiceCatalogManager = ({ laundryId, currentServices }) => {
                 </HStack>
             </Box>
 
+            {/* Public site theme color */}
+            <Box mb={8} p={4} borderWidth="1px" borderRadius="md" borderColor="gray.200" bg="gray.50">
+                <Text fontWeight="bold" mb={1}>Theme Color</Text>
+                <Text fontSize="xs" color="gray.500" mb={3}>
+                    Sets the accent color for your public site — buttons, badges, and highlights. Click a swatch to apply. Saves automatically.
+                </Text>
+                <HStack spacing={3} flexWrap="wrap">
+                    {THEME_COLOR_OPTIONS.map((color) => (
+                        <Box
+                            key={color}
+                            as="button"
+                            type="button"
+                            onClick={() => handleSelectTheme(color)}
+                            disabled={savingTheme}
+                            title={color}
+                            aria-label={`Theme ${color}`}
+                            w="36px"
+                            h="36px"
+                            borderRadius="full"
+                            bg={`${color}.500`}
+                            border="3px solid"
+                            borderColor={themeColor === color ? "gray.800" : "transparent"}
+                            boxShadow={themeColor === color ? "md" : "none"}
+                            cursor={savingTheme ? "not-allowed" : "pointer"}
+                            transition="all 0.15s"
+                            _hover={{ transform: savingTheme ? "none" : "scale(1.1)" }}
+                        />
+                    ))}
+                </HStack>
+                <Text fontSize="xs" color="gray.500" mt={2}>
+                    Current: <Badge colorScheme={themeColor}>{themeColor}</Badge>
+                </Text>
+            </Box>
+
             {/* Homepage section visibility toggles */}
             <Box mb={8} p={4} borderWidth="1px" borderRadius="md" borderColor="gray.200" bg="gray.50">
                 <Text fontWeight="bold" mb={1}>Homepage Sections</Text>
@@ -522,6 +603,33 @@ const ServiceCatalogManager = ({ laundryId, currentServices }) => {
                         { key: "hidePricing", label: "Pricing" },
                         { key: "hideLocation", label: "Location / Service Area" },
                         { key: "hideAbout", label: "About" },
+                    ].map((row) => (
+                        <Flex key={row.key} justify="space-between" align="center">
+                            <Text fontSize="sm">{row.label}</Text>
+                            <Switch
+                                colorScheme="green"
+                                isChecked={!sections[row.key]}
+                                isDisabled={savingSections}
+                                onChange={() => handleToggleSection(row.key)}
+                            />
+                        </Flex>
+                    ))}
+                </VStack>
+            </Box>
+
+            {/* Navigation & public link toggles */}
+            <Box mb={8} p={4} borderWidth="1px" borderRadius="md" borderColor="gray.200" bg="gray.50">
+                <Text fontWeight="bold" mb={1}>Navigation & Public Links</Text>
+                <Text fontSize="xs" color="gray.500" mb={3}>
+                    Control which links and buttons appear to public visitors. Turn one on to show it, off to hide it.
+                    Hiding Admin & Driver keeps them out of the public menu — you still reach them from your own bookmarks.
+                    Changes save automatically.
+                </Text>
+                <VStack spacing={2} align="stretch">
+                    {[
+                        { key: "hideNavServices", label: "\"Services\" menu link" },
+                        { key: "hideNavStaffLinks", label: "Admin & Driver links (staff)" },
+                        { key: "hidePickupOnlyCopy", label: "\"Visit Our Location\" button (storefront)" },
                     ].map((row) => (
                         <Flex key={row.key} justify="space-between" align="center">
                             <Text fontSize="sm">{row.label}</Text>

@@ -109,13 +109,18 @@ export default function SiteHero({ config }) {
                             boxShadow="lg" _hover={{ transform: 'translateY(-2px)', boxShadow: 'xl' }}>
                             Schedule Free Pickup
                         </Button>
-                        <Button as="a" href="#location" size="lg" variant="outline"
-                            borderColor={videoLoaded ? 'whiteAlpha.600' : 'gray.400'}
-                            color={videoLoaded ? 'white' : 'gray.700'}
-                            borderRadius="full" px={8}
-                            _hover={{ bg: videoLoaded ? 'whiteAlpha.200' : 'white', borderColor: `${themeColor}.400` }}>
-                            Visit Our Location
-                        </Button>
+                        {/* Secondary hero button. Pickup/delivery-only operators
+                            can hide the storefront "Visit Our Location" button via
+                            hidePickupOnlyCopy, or customize its label/target. */}
+                        {!sc.hidePickupOnlyCopy && (
+                            <Button as="a" href={sc.heroSecondaryButtonHref || '#location'} size="lg" variant="outline"
+                                borderColor={videoLoaded ? 'whiteAlpha.600' : 'gray.400'}
+                                color={videoLoaded ? 'white' : 'gray.700'}
+                                borderRadius="full" px={8}
+                                _hover={{ bg: videoLoaded ? 'whiteAlpha.200' : 'white', borderColor: `${themeColor}.400` }}>
+                                {sc.heroSecondaryButtonLabel || 'Visit Our Location'}
+                            </Button>
+                        )}
                     </HStack>
 
                     {/* Trust indicators */}

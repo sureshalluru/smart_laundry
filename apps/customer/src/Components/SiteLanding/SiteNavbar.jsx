@@ -25,9 +25,20 @@ export default function SiteNavbar({ config }) {
     const serviceCategories = config?.serviceCategories || [];
     const hasSaree = services.some(s => s.serviceName?.toLowerCase().includes('saree')) ||
                      serviceCategories.some(c => c.categoryName?.toLowerCase().includes('saree'));
-    const navLinks = hasSaree
+    let navLinks = hasSaree
         ? [...baseNavLinks.slice(0, 3), { label: 'Saree Rolling', href: `/${laundryId}/saree-rolling` }, ...baseNavLinks.slice(3)]
         : baseNavLinks;
+
+    // Per-tenant nav visibility flags (site_content). Default = show, so
+    // existing tenants are unchanged until they opt in from the admin panel.
+    if (sc.hideNavServices) {
+        navLinks = navLinks.filter((l) => l.href !== '#services');
+    }
+    if (sc.hideNavStaffLinks) {
+        // Hide Admin + Driver shortcuts from the public navbar. Staff still
+        // reach them via direct URL (/:laundryId/admin, /:laundryId/driver/home).
+        navLinks = navLinks.filter((l) => !l.isAdmin && !l.isDriver);
+    }
 
     return (
         <Box as="nav" position="sticky" top="0" zIndex="1000" bg="white" borderBottom="1px solid" borderColor="gray.100" boxShadow="sm">
