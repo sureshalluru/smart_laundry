@@ -653,10 +653,10 @@ const LaundryInfoManagement = ({ validateEmpCredentials, type, empPrefix }) => {
 
     // Phase 3: distance/flat delivery fee config (mode: none|flat|distance)
     const [deliveryFee, setDeliveryFee] = useState({
-        mode: "none", flat: 0, base: 0, perMile: 0, freeRadiusMi: 0, max: "", roadFactor: 1.0, maxServiceableMi: "",
+        mode: "none", flat: 0, base: 0, perMile: 0, freeRadiusMi: 0, max: "", roadFactor: 1.0, maxServiceableMi: "", tiers: [],
     });
     const [originalDeliveryFee, setOriginalDeliveryFee] = useState({
-        mode: "none", flat: 0, base: 0, perMile: 0, freeRadiusMi: 0, max: "", roadFactor: 1.0, maxServiceableMi: "",
+        mode: "none", flat: 0, base: 0, perMile: 0, freeRadiusMi: 0, max: "", roadFactor: 1.0, maxServiceableMi: "", tiers: [],
     });
     // Phase 2c: add-ons / processing extras catalog
     const [addonsData, setAddonsData] = useState([]);
@@ -902,6 +902,13 @@ const LaundryInfoManagement = ({ validateEmpCredentials, type, empPrefix }) => {
                 max: laundryInfo.deliveryFeeMax ?? "",
                 roadFactor: laundryInfo.deliveryFeeRoadFactor ?? 1.0,
                 maxServiceableMi: laundryInfo.maxServiceableDistanceMi ?? "",
+                tiers: Array.isArray(laundryInfo.deliveryFeeTiers)
+                    ? laundryInfo.deliveryFeeTiers.map((t) => ({
+                          upToMi: (t.up_to_mi ?? t.upToMi) == null ? "" : String(t.up_to_mi ?? t.upToMi),
+                          flat: t.flat ?? 0,
+                          perMileOver: t.per_mile_over ?? t.perMileOver ?? 0,
+                      }))
+                    : [],
             };
             setDeliveryFee(_df);
             setOriginalDeliveryFee(_df);
@@ -1316,6 +1323,11 @@ const LaundryInfoManagement = ({ validateEmpCredentials, type, empPrefix }) => {
             deliveryFeeFreeRadiusMi: parseFloat(deliveryFee.freeRadiusMi) || 0,
             deliveryFeeMax: (deliveryFee.max === "" || deliveryFee.max == null) ? null : parseFloat(deliveryFee.max),
             deliveryFeeRoadFactor: parseFloat(deliveryFee.roadFactor) || 1.0,
+            deliveryFeeTiers: (deliveryFee.tiers || []).map((t) => ({
+                upToMi: (t.upToMi === "" || t.upToMi == null) ? null : parseFloat(t.upToMi),
+                flat: parseFloat(t.flat) || 0,
+                perMileOver: parseFloat(t.perMileOver) || 0,
+            })),
             maxServiceableDistanceMi: (deliveryFee.maxServiceableMi === "" || deliveryFee.maxServiceableMi == null) ? null : parseFloat(deliveryFee.maxServiceableMi),
         };
     
@@ -1733,7 +1745,11 @@ const LaundryInfoManagement = ({ validateEmpCredentials, type, empPrefix }) => {
                 }
             );
 
-            if (response.status === 200) {
+            // The API returns HTTP 200 even for handled errors, carrying the real
+            // outcome in body.statusCode. Treat a non-200 inner status as a failure
+            // so a save can never silently appear successful without writing.
+            const innerStatus = response.data?.statusCode ?? response.data?.body?.statusCode;
+            if (response.status === 200 && (innerStatus === undefined || innerStatus === 200)) {
                 toast({
                     title: "Success",
                     description: "Laundry info updated successfully!",
@@ -1743,8 +1759,10 @@ const LaundryInfoManagement = ({ validateEmpCredentials, type, empPrefix }) => {
                     position: "top",
                 });
                 setIsLogoDomainEditMode(false);
+                await fetchLaundryLogoAndDomain();
             } else {
-                throw new Error(response.data.error || "Failed to update.");
+                const msg = response.data?.body?.message || response.data?.error || "Failed to update.";
+                throw new Error(msg);
             }
         } catch (error) {
             toast({
@@ -1759,7 +1777,47 @@ const LaundryInfoManagement = ({ validateEmpCredentials, type, empPrefix }) => {
             setIsSavingInfo(false);
         }
     };
-    
+
+    // Non-blocking sanity checks for the tiered delivery-fee bands. Surfaced as
+    // an inline notice so a tenant sees a mis-entered table (empty/duplicate/
+    // out-of-order "up to" bounds, or an "and above" row that isn't last) before
+    // it silently prices orders wrong. The backend still sorts on save; this is
+    // guidance, not enforcement.
+    const deliveryFeeTierWarnings = (() => {
+        if (deliveryFee.mode !== "tiered") return [];
+        const rows = deliveryFee.tiers || [];
+        const warnings = [];
+        if (rows.length === 0) {
+            warnings.push('No bands added yet — this charges $0 until you add at least one.');
+            return warnings;
+        }
+        const bounds = rows.map((t) => (t.upToMi === "" || t.upToMi == null ? null : parseFloat(t.upToMi)));
+        // Open-ended ("& above") rows must only be the last row.
+        const openIdx = bounds.findIndex((b) => b === null);
+        const openCount = bounds.filter((b) => b === null).length;
+        if (openCount > 1) {
+            warnings.push('Only one "and above" band (blank "Up to") is allowed.');
+        } else if (openIdx !== -1 && openIdx !== rows.length - 1) {
+            warnings.push('The "and above" band (blank "Up to") should be the last row.');
+        }
+        // Finite bounds must be positive, unique, and strictly increasing.
+        const finite = bounds.filter((b) => b !== null);
+        if (finite.some((b) => Number.isNaN(b) || b <= 0)) {
+            warnings.push('Each "Up to" must be a number greater than 0 (or blank on the last row).');
+        }
+        const seen = new Set();
+        for (const b of finite) {
+            if (!Number.isNaN(b)) {
+                if (seen.has(b)) warnings.push(`Duplicate "Up to" value: ${b} mi.`);
+                seen.add(b);
+            }
+        }
+        const sortedFinite = [...finite].sort((a, b) => a - b);
+        if (JSON.stringify(finite) !== JSON.stringify(sortedFinite)) {
+            warnings.push('Bands are not in ascending order — they will be sorted on save.');
+        }
+        return warnings;
+    })();
 
     return (
         <Box 
@@ -2082,6 +2140,7 @@ const LaundryInfoManagement = ({ validateEmpCredentials, type, empPrefix }) => {
                                 <option value="none">None (free delivery)</option>
                                 <option value="flat">Flat fee</option>
                                 <option value="distance">Distance-based</option>
+                                <option value="tiered">Tiered by distance</option>
                             </select>
                         </Flex>
 
@@ -2124,6 +2183,73 @@ const LaundryInfoManagement = ({ validateEmpCredentials, type, empPrefix }) => {
                                         onChange={(e) => setDeliveryFee((p) => ({ ...p, max: e.target.value }))} />
                                 </Flex>
                                 <Flex align="center" gap={3} wrap="wrap">
+                                    <Text fontSize="sm" color="gray.700" fontWeight="500" minW="140px">Road factor:</Text>
+                                    <Input type="number" min="1" step="0.1" size="sm" width="120px"
+                                        value={deliveryFee.roadFactor} isDisabled={!isServiceEditMode}
+                                        onChange={(e) => setDeliveryFee((p) => ({ ...p, roadFactor: e.target.value }))} />
+                                    <Text fontSize="xs" color="gray.400">multiplier for straight-line → driving distance (e.g. 1.3)</Text>
+                                </Flex>
+                            </Box>
+                        )}
+
+                        {deliveryFee.mode === "tiered" && (
+                            <Box mt={3}>
+                                <Text fontSize="xs" color="gray.500" mb={2}>
+                                    Add a row per distance band. Each band charges its flat fee plus (optionally)
+                                    a per-mile rate on the miles beyond the previous band. Leave the last band's
+                                    "Up to" blank to mean "and above". Distance uses the road factor below.
+                                </Text>
+                                {(deliveryFee.tiers || []).map((t, idx) => (
+                                    <Flex key={idx} align="center" gap={2} mb={2} wrap="wrap">
+                                        <Text fontSize="xs" color="gray.600" minW="52px">Up to (mi):</Text>
+                                        <Input type="number" min="0" step="0.1" size="sm" width="90px" placeholder="& above"
+                                            value={t.upToMi} isDisabled={!isServiceEditMode}
+                                            onChange={(e) => setDeliveryFee((p) => {
+                                                const tiers = [...(p.tiers || [])];
+                                                tiers[idx] = { ...tiers[idx], upToMi: e.target.value };
+                                                return { ...p, tiers };
+                                            })} />
+                                        <Text fontSize="xs" color="gray.600">$ flat:</Text>
+                                        <Input type="number" min="0" step="0.01" size="sm" width="90px"
+                                            value={t.flat} isDisabled={!isServiceEditMode}
+                                            onChange={(e) => setDeliveryFee((p) => {
+                                                const tiers = [...(p.tiers || [])];
+                                                tiers[idx] = { ...tiers[idx], flat: e.target.value };
+                                                return { ...p, tiers };
+                                            })} />
+                                        <Text fontSize="xs" color="gray.600">$/mi over prev:</Text>
+                                        <Input type="number" min="0" step="0.01" size="sm" width="90px"
+                                            value={t.perMileOver} isDisabled={!isServiceEditMode}
+                                            onChange={(e) => setDeliveryFee((p) => {
+                                                const tiers = [...(p.tiers || [])];
+                                                tiers[idx] = { ...tiers[idx], perMileOver: e.target.value };
+                                                return { ...p, tiers };
+                                            })} />
+                                        <Button size="xs" colorScheme="red" variant="ghost" isDisabled={!isServiceEditMode}
+                                            onClick={() => setDeliveryFee((p) => ({
+                                                ...p, tiers: (p.tiers || []).filter((_, i) => i !== idx),
+                                            }))}>
+                                            Remove
+                                        </Button>
+                                    </Flex>
+                                ))}
+                                {(deliveryFee.tiers || []).length === 0 && (
+                                    <Text fontSize="xs" color="gray.400" mb={2}>No bands yet — add one to start.</Text>
+                                )}
+                                <Button size="xs" colorScheme="teal" variant="outline" isDisabled={!isServiceEditMode}
+                                    onClick={() => setDeliveryFee((p) => ({
+                                        ...p, tiers: [...(p.tiers || []), { upToMi: "", flat: 0, perMileOver: 0 }],
+                                    }))}>
+                                    + Add distance band
+                                </Button>
+                                {deliveryFeeTierWarnings.length > 0 && (
+                                    <Box mt={3} p={2} bg="orange.50" borderRadius="md" border="1px solid" borderColor="orange.200">
+                                        {deliveryFeeTierWarnings.map((w, i) => (
+                                            <Text key={i} fontSize="xs" color="orange.700">⚠ {w}</Text>
+                                        ))}
+                                    </Box>
+                                )}
+                                <Flex align="center" gap={3} mt={3} wrap="wrap">
                                     <Text fontSize="sm" color="gray.700" fontWeight="500" minW="140px">Road factor:</Text>
                                     <Input type="number" min="1" step="0.1" size="sm" width="120px"
                                         value={deliveryFee.roadFactor} isDisabled={!isServiceEditMode}
@@ -2981,7 +3107,7 @@ function HomepagePromoSection({ laundryId }) {
                 />
             </Flex>
             {promoEnabled && (
-                <Flex gap={3} flexWrap="wrap" align="flex-end">
+                <Flex gap={3} flexWrap="wrap" align="flex-end" mb={3}>
                     <Box flex="1" minW="140px">
                         <Text fontSize="xs" fontWeight="bold" mb={1}>Promo Code</Text>
                         <Input
@@ -3003,11 +3129,14 @@ function HomepagePromoSection({ laundryId }) {
                             w="80px"
                         />
                     </Box>
-                    <Button size="sm" colorScheme="orange" onClick={handleSave} isLoading={saving}>
-                        Save
-                    </Button>
                 </Flex>
             )}
+            {/* Save is ALWAYS rendered — otherwise turning the banner OFF unmounts
+                the button before the OFF state can be persisted, and it reverts on
+                refresh. */}
+            <Button size="sm" colorScheme="orange" onClick={handleSave} isLoading={saving}>
+                Save
+            </Button>
             {promoEnabled && promoCode && (
                 <Text fontSize="xs" color="gray.500" mt={2}>
                     Make sure promo code "{promoCode.toUpperCase()}" exists in Promotions with {promoDiscount}% discount.

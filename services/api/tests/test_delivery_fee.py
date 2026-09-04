@@ -9,7 +9,7 @@ Validates: Requirements P1.2, P1.6, P2.1, P2.8, P2.9, P2.10, P2.11
 """
 import math
 
-from app.services.delivery_fee import haversine_miles, compute_delivery_fee
+from app.services.delivery_fee import haversine_miles, compute_delivery_fee, compute_tiered_fee
 
 
 class TestHaversine:
@@ -135,3 +135,105 @@ class TestModeDistance:
         cfg = {"base": 0, "per_mile": 1.0, "free_radius_mi": 0}
         r = compute_delivery_fee("distance", distance_mi=7, config=cfg)
         assert r["fee"] == 7.0
+
+
+# Shelly / Fetch & Fold tiered structure, used across the tiered tests:
+#   0–10 mi   -> free
+#   10–20 mi  -> $15 flat
+#   20–30 mi  -> $15 + $1.50/mi over 20
+#   30+ mi    -> $25 + $2.00/mi over 30
+SHELLY_TIERS = [
+    {"up_to_mi": 10, "flat": 0, "per_mile_over": 0},
+    {"up_to_mi": 20, "flat": 15, "per_mile_over": 0},
+    {"up_to_mi": 30, "flat": 15, "per_mile_over": 1.5},
+    {"up_to_mi": None, "flat": 25, "per_mile_over": 2.0},
+]
+
+
+class TestModeTiered:
+    def _fee(self, miles, tiers=None, road_factor=1.0):
+        cfg = {"tiers": tiers if tiers is not None else SHELLY_TIERS, "road_factor": road_factor}
+        return compute_delivery_fee("tiered", distance_mi=miles, config=cfg)
+
+    def test_free_band(self):
+        assert self._fee(5)["fee"] == 0.0
+        assert self._fee(5)["applies"] is False
+
+    def test_lower_boundary_stays_in_free_band(self):
+        # Exactly 10 falls in the first band (<= up_to), still free.
+        assert self._fee(10)["fee"] == 0.0
+
+    def test_flat_band(self):
+        r = self._fee(15)
+        assert r["fee"] == 15.0
+        assert r["applies"] is True
+
+    def test_flat_band_upper_boundary(self):
+        assert self._fee(20)["fee"] == 15.0
+
+    def test_per_mile_band(self):
+        # 25 mi: 15 + 1.5*(25-20) = 22.50
+        assert self._fee(25)["fee"] == 22.5
+
+    def test_per_mile_band_upper_boundary(self):
+        # 30 mi: 15 + 1.5*(30-20) = 30.00
+        assert self._fee(30)["fee"] == 30.0
+
+    def test_open_ended_top_band(self):
+        # 35 mi: 25 + 2*(35-30) = 35.00
+        assert self._fee(35)["fee"] == 35.0
+
+    def test_road_factor_pushes_into_higher_band(self):
+        # 8 straight-line * 1.3 = 10.4 road miles -> lands in the $15 flat band.
+        r = self._fee(8, road_factor=1.3)
+        assert r["fee"] == 15.0
+        assert r["distance_mi"] == 8.0  # reports the straight-line input
+
+    def test_distance_unavailable_fails_open(self):
+        r = self._fee(None)
+        assert r["fee"] == 0.0
+        assert r["applies"] is False
+
+    def test_empty_tiers_fails_open(self):
+        r = self._fee(50, tiers=[])
+        assert r["fee"] == 0.0
+        assert r["applies"] is False
+
+    def test_missing_tiers_key_fails_open(self):
+        r = compute_delivery_fee("tiered", distance_mi=50, config={"road_factor": 1.0})
+        assert r["fee"] == 0.0
+
+    def test_unsorted_tiers_are_normalized(self):
+        # Same bands, shuffled — result must match the sorted table.
+        shuffled = [SHELLY_TIERS[2], SHELLY_TIERS[0], SHELLY_TIERS[3], SHELLY_TIERS[1]]
+        assert self._fee(25, tiers=shuffled)["fee"] == 22.5
+
+    def test_all_finite_bands_over_top_uses_last_band(self):
+        # No open-ended band; a distance beyond the top finite bound still
+        # charges the highest band rather than silently dropping to $0.
+        finite = [
+            {"up_to_mi": 10, "flat": 0, "per_mile_over": 0},
+            {"up_to_mi": 20, "flat": 15, "per_mile_over": 1.0},
+        ]
+        # 25 mi > 20: 15 + 1.0*(25-10) = 30.00 (billed beyond the 10-mi lower edge)
+        assert self._fee(25, tiers=finite)["fee"] == 30.0
+
+    def test_camelcase_keys_accepted(self):
+        camel = [
+            {"upToMi": 10, "flat": 0, "perMileOver": 0},
+            {"upToMi": None, "flat": 20, "perMileOver": 0},
+        ]
+        assert self._fee(15, tiers=camel)["fee"] == 20.0
+
+
+class TestTieredPureFunction:
+    def test_compute_tiered_fee_returns_fee_and_billable(self):
+        fee, billable = compute_tiered_fee(25, SHELLY_TIERS)
+        assert fee == 22.5
+        assert billable == 5.0
+
+    def test_compute_tiered_fee_none_distance(self):
+        assert compute_tiered_fee(None, SHELLY_TIERS) == (0.0, 0.0)
+
+    def test_compute_tiered_fee_no_tiers(self):
+        assert compute_tiered_fee(25, []) == (0.0, 0.0)

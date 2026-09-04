@@ -846,6 +846,7 @@ def run():
                     delivery_fee_free_radius_mi NUMERIC(10,2) DEFAULT 0,
                     delivery_fee_max            NUMERIC(10,2),
                     delivery_fee_road_factor    NUMERIC(6,3) DEFAULT 1.0,
+                    delivery_fee_tiers          JSONB DEFAULT '[]'::jsonb,
                     latitude                    NUMERIC(10,7),
                     longitude                   NUMERIC(10,7),
                     max_serviceable_distance_mi NUMERIC(10,2),

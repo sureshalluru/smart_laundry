@@ -85,6 +85,13 @@ def run():
                 ALTER TABLE shop.laundry_shops
                 ADD COLUMN IF NOT EXISTS delivery_fee_road_factor NUMERIC(6,3) DEFAULT 1.0
             """)
+            # 'tiered' mode bracket table. JSON array of
+            # {up_to_mi, flat, per_mile_over}; empty [] for every existing tenant
+            # so no live billing change. Only consulted when mode = 'tiered'.
+            cur.execute("""
+                ALTER TABLE shop.laundry_shops
+                ADD COLUMN IF NOT EXISTS delivery_fee_tiers JSONB DEFAULT '[]'::jsonb
+            """)
             cur.execute("""
                 ALTER TABLE shop.laundry_shops
                 ADD COLUMN IF NOT EXISTS latitude NUMERIC(10,7)

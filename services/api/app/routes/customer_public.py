@@ -102,7 +102,7 @@ async def quote_delivery_fee(
             cur.execute("""
                 SELECT laundry_id, delivery_fee_mode, delivery_fee_flat,
                        delivery_fee_base, delivery_fee_per_mile, delivery_fee_free_radius_mi,
-                       delivery_fee_max, delivery_fee_road_factor,
+                       delivery_fee_max, delivery_fee_road_factor, delivery_fee_tiers,
                        latitude, longitude, street, city, state, zip_code
                 FROM shop.laundry_shops WHERE laundry_id = %s
             """, (laundryId,))
@@ -124,10 +124,11 @@ async def quote_delivery_fee(
                 "free_radius_mi": shop.get("delivery_fee_free_radius_mi"),
                 "max_cap": shop.get("delivery_fee_max"),
                 "road_factor": shop.get("delivery_fee_road_factor"),
+                "tiers": shop.get("delivery_fee_tiers"),
             }
 
             distance_mi = None
-            if mode == "distance":
+            if mode in ("distance", "tiered"):
                 distance_mi = resolve_distance_miles(conn, shop, address)
 
             result = compute_delivery_fee(mode, distance_mi=distance_mi, config=cfg)
@@ -380,7 +381,7 @@ async def customer_place_order(
                 cur_df.execute("""
                     SELECT laundry_id, delivery_fee_mode, delivery_fee_flat,
                            delivery_fee_base, delivery_fee_per_mile, delivery_fee_free_radius_mi,
-                           delivery_fee_max, delivery_fee_road_factor,
+                           delivery_fee_max, delivery_fee_road_factor, delivery_fee_tiers,
                            latitude, longitude, street, city, state, zip_code
                     FROM shop.laundry_shops WHERE laundry_id = %s
                 """, (laundry_id,))
@@ -395,9 +396,10 @@ async def customer_place_order(
                         "free_radius_mi": _shop_df.get("delivery_fee_free_radius_mi"),
                         "max_cap": _shop_df.get("delivery_fee_max"),
                         "road_factor": _shop_df.get("delivery_fee_road_factor"),
+                        "tiers": _shop_df.get("delivery_fee_tiers"),
                     }
                     _dist = None
-                    if _mode == "distance":
+                    if _mode in ("distance", "tiered"):
                         _dist = resolve_distance_miles(conn_df, _shop_df, address_text)
                     _fee_res = compute_delivery_fee(_mode, distance_mi=_dist, config=_cfg)
                     delivery_fee = float(_fee_res["fee"] or 0)

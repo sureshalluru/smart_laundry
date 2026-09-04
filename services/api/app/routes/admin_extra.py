@@ -385,13 +385,48 @@ async def update_products_services(
             # the delivery_fee_enabled mirror consistent (enabled = mode != none).
             if "deliveryFeeMode" in body:
                 _dmode = str(body.get("deliveryFeeMode") or "none").strip().lower()
-                if _dmode not in ("none", "flat", "distance"):
+                if _dmode not in ("none", "flat", "distance", "tiered"):
                     _dmode = "none"
                 cur.execute("""
                     UPDATE shop.laundry_shops
                     SET delivery_fee_mode = %s, delivery_fee_enabled = %s
                     WHERE laundry_id = %s
                 """, (_dmode, _dmode != "none", laundryId))
+
+            # 'tiered' mode brackets. Written only when present so unrelated
+            # saves never touch it. Each bracket is normalized to
+            # {up_to_mi: float|None, flat: float, per_mile_over: float}; blank/
+            # non-positive up_to_mi becomes null ("and above"). Sorted ascending.
+            if "deliveryFeeTiers" in body:
+                import json as _json
+                _raw_tiers = body.get("deliveryFeeTiers") or []
+                _clean_tiers = []
+                if isinstance(_raw_tiers, list):
+                    for _t in _raw_tiers:
+                        if not isinstance(_t, dict):
+                            continue
+                        _up_raw = _t.get("upToMi", _t.get("up_to_mi"))
+                        try:
+                            _up = float(_up_raw)
+                            _up = _up if _up > 0 else None
+                        except (TypeError, ValueError):
+                            _up = None
+                        def _fnum(v):
+                            try:
+                                return round(float(v), 2)
+                            except (TypeError, ValueError):
+                                return 0.0
+                        _clean_tiers.append({
+                            "up_to_mi": _up,
+                            "flat": _fnum(_t.get("flat")),
+                            "per_mile_over": _fnum(_t.get("perMileOver", _t.get("per_mile_over"))),
+                        })
+                    _clean_tiers.sort(key=lambda b: (b["up_to_mi"] is None,
+                                                     b["up_to_mi"] if b["up_to_mi"] is not None else 0.0))
+                cur.execute(
+                    "UPDATE shop.laundry_shops SET delivery_fee_tiers = %s::jsonb WHERE laundry_id = %s",
+                    (_json.dumps(_clean_tiers), laundryId),
+                )
 
             def _num_or_none(v):
                 try:
@@ -581,6 +616,59 @@ async def update_products_services(
             cur.execute("UPDATE shop.laundry_shops SET serviceable_zip_codes = %s::jsonb WHERE laundry_id = %s",
                         (json.dumps(updated_zips), laundryId))
             return {"statusCode": 200, "body": {"message": "Zip codes updated successfully"}}
+
+        elif operation == "updateLaundryInfo":
+            # Logo + admin/user domain update. Payload from LaundryInfoManagement
+            # handleSaveLogoAndDomain: { imageBase64, laundryDomain: {adminDomain, userDomain} }.
+            # Logo upload mirrors onboarding (platform_admin): push to the
+            # laundrylogos S3 bucket and store the URL; on any failure fall back
+            # to storing the data-URI base64 directly so the logo still shows.
+            updated_fields = []
+
+            image_base64 = body.get("imageBase64")
+            if image_base64:
+                # Strip a data-URI prefix if present so we base64-decode raw bytes.
+                raw_b64 = image_base64
+                if "," in raw_b64 and raw_b64.strip().startswith("data:"):
+                    raw_b64 = raw_b64.split(",", 1)[1]
+                logo_stored = False
+                try:
+                    from app.services.s3_service import get_s3_client
+                    import base64
+                    logo_bytes = base64.b64decode(raw_b64)
+                    s3_key = f"logos/{laundryId}/logo.png"
+                    s3 = get_s3_client()
+                    s3.put_object(Bucket="laundrylogos", Key=s3_key, Body=logo_bytes, ContentType="image/png")
+                    logo_url = f"https://laundrylogos.s3.amazonaws.com/{s3_key}"
+                    cur.execute("UPDATE shop.laundry_shops SET laundry_logo = %s WHERE laundry_id = %s",
+                                (logo_url, laundryId))
+                    logo_stored = True
+                except Exception as logo_err:
+                    logger.warning(f"Logo S3 upload failed for {laundryId}, falling back to base64: {logo_err}")
+                    fallback = image_base64 if image_base64.strip().startswith("data:") else f"data:image/png;base64,{raw_b64}"
+                    cur.execute("UPDATE shop.laundry_shops SET laundry_logo = %s WHERE laundry_id = %s",
+                                (fallback, laundryId))
+                    logo_stored = True
+                if logo_stored:
+                    updated_fields.append("logo")
+
+            domain = body.get("laundryDomain") or {}
+            if "adminDomain" in domain or "userDomain" in domain:
+                cur.execute("""
+                    UPDATE shop.laundry_shops
+                    SET admin_domain = COALESCE(%s, admin_domain),
+                        user_domain = COALESCE(%s, user_domain)
+                    WHERE laundry_id = %s
+                """, (domain.get("adminDomain"), domain.get("userDomain"), laundryId))
+                updated_fields.append("domain")
+
+            if not updated_fields:
+                return {"statusCode": 400, "body": {"message": "Nothing to update"}}
+
+            from app.services.audit_service import log_action
+            log_action(laundryId, "update_laundry_info", "shop", None, {"updated": updated_fields})
+            return {"statusCode": 200, "body": {"message": "Laundry info updated successfully",
+                                                "updated": updated_fields}}
 
     return {"statusCode": 400, "body": {"message": "Unknown operation"}}
 

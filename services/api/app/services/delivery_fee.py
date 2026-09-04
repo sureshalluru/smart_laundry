@@ -26,7 +26,7 @@ from typing import Optional
 # Mean Earth radius in miles (matches common haversine references).
 EARTH_RADIUS_MI = 3958.7613
 
-VALID_MODES = ("none", "flat", "distance")
+VALID_MODES = ("none", "flat", "distance", "tiered")
 
 
 def _f(value) -> float:
@@ -76,20 +76,118 @@ def _normalize_mode(mode) -> str:
     return m if m in VALID_MODES else "none"
 
 
+def _normalize_tiers(tiers) -> list:
+    """Coerce a raw tiers config into a clean, ascending list of brackets.
+
+    Each input bracket is a dict with:
+        up_to_mi     -> upper bound of the bracket in miles (None/""/<=0 on the
+                        LAST bracket means "and above", i.e. open-ended).
+        flat         -> fixed fee for orders that fall in this bracket.
+        per_mile_over-> per-mile rate charged on miles beyond the PREVIOUS
+                        bracket's upper bound (0 for the first).
+
+    Accepts both snake_case and camelCase keys so it can consume the DB JSON or
+    a raw API body without a translation layer. Brackets are sorted ascending
+    by their finite upper bound; any bracket with a missing/blank/<=0 upper
+    bound is treated as the open-ended top bracket and sorted last.
+
+    Returns a list of {"up_to": float|None, "flat": float, "per_mile_over": float}.
+    """
+    if not isinstance(tiers, (list, tuple)):
+        return []
+
+    cleaned = []
+    for t in tiers:
+        if not isinstance(t, dict):
+            continue
+        raw_up = t.get("up_to_mi", t.get("upToMi", t.get("up_to")))
+        if raw_up in (None, "", "null"):
+            up_to = None
+        else:
+            try:
+                v = float(raw_up)
+                up_to = v if v > 0 else None
+            except (TypeError, ValueError):
+                up_to = None
+        flat = _f(t.get("flat"))
+        per_mile_over = _f(t.get("per_mile_over", t.get("perMileOver")))
+        cleaned.append({"up_to": up_to, "flat": flat, "per_mile_over": per_mile_over})
+
+    # Sort finite bounds ascending; open-ended (None) brackets go last.
+    cleaned.sort(key=lambda b: (b["up_to"] is None, b["up_to"] if b["up_to"] is not None else 0.0))
+    return cleaned
+
+
+def compute_tiered_fee(distance_mi, tiers) -> tuple:
+    """Compute a bracketed delivery fee for a (road-adjusted) distance.
+
+    Pure. Walks ascending brackets and charges the FIRST bracket whose upper
+    bound the distance falls within (<= up_to), or the open-ended top bracket
+    if the distance exceeds every finite bound. Within the matched bracket:
+
+        fee = flat + per_mile_over * max(0, distance - previous_upper_bound)
+
+    Example (Shelly's structure), distance already road-adjusted in miles:
+        [{up_to:10, flat:0,  per_mile_over:0},      # 0–10  -> free
+         {up_to:20, flat:15, per_mile_over:0},      # 10–20 -> $15 flat
+         {up_to:30, flat:15, per_mile_over:1.50},   # 20–30 -> $15 + $1.50/mi over 20
+         {up_to:None, flat:25, per_mile_over:2.0}]  # 30+   -> $25 + $2/mi over 30
+
+    Args:
+        distance_mi: road-adjusted miles (caller applies road_factor). If None
+            or no brackets are configured, returns (0.0, 0.0) — fail open.
+        tiers: raw bracket list (see _normalize_tiers).
+
+    Returns:
+        (fee, billable_miles) — fee rounded to 2 dp; billable_miles is the
+        portion charged per-mile within the matched bracket (0 when the bracket
+        is flat-only). Returns (0.0, 0.0) when no bracket applies.
+    """
+    if distance_mi is None:
+        return 0.0, 0.0
+    brackets = _normalize_tiers(tiers)
+    if not brackets:
+        return 0.0, 0.0
+
+    dist = _f(distance_mi)
+    prev_bound = 0.0
+    for b in brackets:
+        up_to = b["up_to"]
+        in_bracket = up_to is None or dist <= up_to
+        if in_bracket:
+            billable = max(0.0, dist - prev_bound)
+            fee = b["flat"] + billable * b["per_mile_over"]
+            return round(fee, 2), round(billable, 2)
+        prev_bound = up_to
+
+    # Distance exceeds every finite bound and there was no open-ended bracket.
+    # Charge the last (highest) finite bracket's flat + per-mile beyond its
+    # lower edge, so a missing "and above" row never silently drops the fee.
+    last = brackets[-1]
+    lower = 0.0
+    if len(brackets) >= 2:
+        lower = brackets[-2]["up_to"] or 0.0
+    billable = max(0.0, dist - lower)
+    fee = last["flat"] + billable * last["per_mile_over"]
+    return round(fee, 2), round(billable, 2)
+
+
 def compute_delivery_fee(mode, distance_mi=None, config=None) -> dict:
     """Compute the delivery fee for one order.
 
     Args:
-        mode: 'none' | 'flat' | 'distance' (anything else → 'none').
+        mode: 'none' | 'flat' | 'distance' | 'tiered' (anything else → 'none').
         distance_mi: straight-line miles between shop and delivery address.
-            Only used in 'distance' mode. None = unavailable (fail-open to $0).
+            Used in 'distance' and 'tiered' modes. None = unavailable
+            (fail-open to $0).
         config: {
             "flat": float,            # 'flat' mode amount
             "base": float,            # 'distance' mode base fee
             "per_mile": float,        # 'distance' mode per-mile rate
             "free_radius_mi": float,  # 'distance' mode: first N miles free
             "max_cap": float | None,  # 'distance' mode: cap (None = no cap)
-            "road_factor": float,     # 'distance' mode: straight-line → road (default 1.0)
+            "road_factor": float,     # 'distance'/'tiered': straight-line → road (default 1.0)
+            "tiers": list,            # 'tiered' mode: bracket list (see compute_tiered_fee)
         }
 
     Returns:
@@ -117,6 +215,21 @@ def compute_delivery_fee(mode, distance_mi=None, config=None) -> dict:
 
     if m == "flat":
         fee = round(_f(cfg.get("flat")), 2)
+        result["fee"] = fee
+        result["applies"] = fee > 0
+        return result
+
+    if m == "tiered":
+        # Bracket pricing on road-adjusted miles. Fail open to $0 when distance
+        # is unavailable, exactly like 'distance' mode.
+        if distance_mi is None:
+            return result
+        dist = _f(distance_mi)
+        road_factor = _f(cfg.get("road_factor")) or 1.0
+        road_dist = road_factor * dist
+        fee, billable = compute_tiered_fee(road_dist, cfg.get("tiers"))
+        result["distance_mi"] = round(dist, 2)
+        result["billable_miles"] = round(billable, 2)
         result["fee"] = fee
         result["applies"] = fee > 0
         return result

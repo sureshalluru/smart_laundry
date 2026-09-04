@@ -172,7 +172,7 @@ async def get_laundry_products_info(
                        min_weight_enabled, addons_enabled, min_weight_scope,
                        delivery_fee_mode, delivery_fee_flat, delivery_fee_base,
                        delivery_fee_per_mile, delivery_fee_free_radius_mi,
-                       delivery_fee_max, delivery_fee_road_factor,
+                       delivery_fee_max, delivery_fee_road_factor, delivery_fee_tiers,
                        max_serviceable_distance_mi
                 FROM shop.laundry_shops WHERE laundry_id = %s
             """, (laundryId,))
@@ -203,6 +203,7 @@ async def get_laundry_products_info(
                 "deliveryFeeFreeRadiusMi": float(row["delivery_fee_free_radius_mi"]) if row.get("delivery_fee_free_radius_mi") is not None else 0,
                 "deliveryFeeMax": float(row["delivery_fee_max"]) if row.get("delivery_fee_max") is not None else None,
                 "deliveryFeeRoadFactor": float(row["delivery_fee_road_factor"]) if row.get("delivery_fee_road_factor") is not None else 1.0,
+                "deliveryFeeTiers": row.get("delivery_fee_tiers") or [],
                 "maxServiceableDistanceMi": float(row["max_serviceable_distance_mi"]) if row.get("max_serviceable_distance_mi") is not None else None,
             }}
 

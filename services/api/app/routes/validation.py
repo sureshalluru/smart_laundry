@@ -107,7 +107,8 @@ def _get_laundry_info(cur, laundry_id, is_customer=None):
                hide_home_address, min_weight_enabled, addons_enabled, min_weight_scope,
                delivery_fee_mode, delivery_fee_flat, delivery_fee_base,
                delivery_fee_per_mile, delivery_fee_free_radius_mi,
-               delivery_fee_max, delivery_fee_road_factor, max_serviceable_distance_mi
+               delivery_fee_max, delivery_fee_road_factor, delivery_fee_tiers,
+               max_serviceable_distance_mi
         FROM shop.laundry_shops WHERE laundry_id = %s
     """, (laundry_id,))
     shop = cur.fetchone()
@@ -276,6 +277,7 @@ def _get_laundry_info(cur, laundry_id, is_customer=None):
         "deliveryFeeFreeRadiusMi": float(shop["delivery_fee_free_radius_mi"]) if shop.get("delivery_fee_free_radius_mi") is not None else 0,
         "deliveryFeeMax": float(shop["delivery_fee_max"]) if shop.get("delivery_fee_max") is not None else None,
         "deliveryFeeRoadFactor": float(shop["delivery_fee_road_factor"]) if shop.get("delivery_fee_road_factor") is not None else 1.0,
+        "deliveryFeeTiers": shop.get("delivery_fee_tiers") or [],
         "maxServiceableDistanceMi": float(shop["max_serviceable_distance_mi"]) if shop.get("max_serviceable_distance_mi") is not None else None,
         "contactPhone": shop.get("contact_phone") or "",
     }
