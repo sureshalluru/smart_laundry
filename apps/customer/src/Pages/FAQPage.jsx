@@ -307,6 +307,79 @@ const FAQPage = () => {
         },
     ];
 
+    const pricingExtrasItems = [
+        {
+            question: 'What are add-ons / processing extras?',
+            answer: (
+                <VStack align="start" spacing={2}>
+                    <Text>Add-ons are optional extras your laundry may offer on top of the base wash — for example hang-dry, extra rinse, hypoallergenic detergent, or fabric softener.</Text>
+                    <UnorderedList spacing={1} pl={4}>
+                        <ListItem>You can select any available add-ons while building your order.</ListItem>
+                        <ListItem>Some add-ons are priced per item and some per pound, so the exact amount for weight-based add-ons is finalized after your laundry is weighed.</ListItem>
+                        <ListItem>Your order review shows an estimate; the final total reflects the actual weight.</ListItem>
+                    </UnorderedList>
+                </VStack>
+            ),
+        },
+        {
+            question: 'How is the delivery fee calculated?',
+            answer: (
+                <VStack align="start" spacing={2}>
+                    <Text>Whether there's a delivery fee depends on how your laundry has set it up. Common options are:</Text>
+                    <UnorderedList spacing={1} pl={4}>
+                        <ListItem><strong>No fee:</strong> delivery is included.</ListItem>
+                        <ListItem><strong>Flat fee:</strong> a single fixed amount per delivery.</ListItem>
+                        <ListItem><strong>Distance-based:</strong> based on how far your address is from the shop, often with a free radius.</ListItem>
+                        <ListItem><strong>Tiered by distance:</strong> different rates for different distance bands (e.g. free nearby, then a flat rate, then a per-mile rate farther out).</ListItem>
+                    </UnorderedList>
+                    <Text>Any applicable fee is shown on your order review before you confirm, so you always see it upfront.</Text>
+                </VStack>
+            ),
+        },
+        {
+            question: 'How do tips work?',
+            answer: (
+                <VStack align="start" spacing={2}>
+                    <Text>Tipping is optional and always up to you:</Text>
+                    <UnorderedList spacing={1} pl={4}>
+                        <ListItem>You can add a tip as a percentage or a fixed dollar amount, or choose no tip.</ListItem>
+                        <ListItem>Tips can be added when you place an order, and on recurring orders your tip preference carries forward.</ListItem>
+                        <ListItem>A tip can also be added or adjusted on an existing order before it's finalized.</ListItem>
+                    </UnorderedList>
+                </VStack>
+            ),
+        },
+    ];
+
+    const trackingTechItems = [
+        {
+            question: 'What is AI item tracking?',
+            answer: (
+                <VStack align="start" spacing={2}>
+                    <Text>Some laundries use AI-assisted item counting to help verify the garments in your order before and after washing.</Text>
+                    <UnorderedList spacing={1} pl={4}>
+                        <ListItem>It helps reduce lost or mismatched items by recording an itemized count.</ListItem>
+                        <ListItem>Not every laundry uses this — many run a simple weight-and-tag process instead, and both are reliable.</ListItem>
+                        <ListItem>If your laundry uses it, it works behind the scenes; there's nothing extra you need to do.</ListItem>
+                    </UnorderedList>
+                </VStack>
+            ),
+        },
+        {
+            question: 'What if my address is outside the delivery area?',
+            answer: (
+                <VStack align="start" spacing={2}>
+                    <Text>If you try to schedule from an address the laundry doesn't currently serve, you'll be let know it's out of range and given a way to reach them.</Text>
+                    <UnorderedList spacing={1} pl={4}>
+                        <ListItem>Your area is recorded as demand, so the laundry can see where customers are asking for service.</ListItem>
+                        <ListItem>Some laundries also offer a "bring service to my area" form on their website you can submit.</ListItem>
+                        <ListItem>As service areas expand, previously out-of-range addresses may become available.</ListItem>
+                    </UnorderedList>
+                </VStack>
+            ),
+        },
+    ];
+
     return (
         <Container maxW="container.lg" py={8}>
             <VStack spacing={8} align="stretch">
@@ -323,7 +396,9 @@ const FAQPage = () => {
 
                 <FAQSection title="👕 Placing Orders" color="blue" items={placingOrdersItems} />
                 <FAQSection title="💳 Payments" color="green" items={paymentItems} />
+                <FAQSection title="🧺 Pricing, Add-ons & Tips" color="orange" items={pricingExtrasItems} />
                 <FAQSection title="📍 Order Tracking" color="purple" items={orderTrackingItems} />
+                <FAQSection title="🤖 Item Tracking & Service Area" color="pink" items={trackingTechItems} />
                 <FAQSection title="🔄 Recurring Orders" color="cyan" items={recurringItems} />
                 <FAQSection title="👤 Account" color="teal" items={accountItems} />
                 <FAQSection title="❌ Cancellation" color="red" items={cancellationItems} />

@@ -140,6 +140,31 @@ FAQ_TEMPLATES = [
         "category": "Wash & Fold",
         "display_order": 4,
     },
+    {
+        "question": "Do you offer add-ons like hang-dry or hypoallergenic detergent?",
+        "answer_template": (
+            "Yes! {{shop_name}} offers optional add-ons to tailor your wash — such as hang-drying "
+            "delicate items, an extra rinse, fabric softener, or hypoallergenic/fragrance-free "
+            "detergent. Just select the extras you'd like when you place your order, and we'll "
+            "take care of the rest. Call {{phone}} or stop by {{address}} if you have a special "
+            "request."
+        ),
+        "slug": "do-you-offer-wash-and-fold-add-ons",
+        "category": "Wash & Fold",
+        "display_order": 5,
+    },
+    {
+        "question": "Can I add a tip for the team?",
+        "answer_template": (
+            "Absolutely, and it's always appreciated but never required. When you order with "
+            "{{shop_name}} you can add a tip as a percentage or a fixed amount, and your tip "
+            "carries over on recurring orders so you don't have to set it each time. One hundred "
+            "percent of your tip supports the team that cleans and cares for your laundry."
+        ),
+        "slug": "can-i-add-a-tip",
+        "category": "Wash & Fold",
+        "display_order": 6,
+    },
     # -----------------------------------------------------------------------
     # Category: Pickup & Delivery (display_order 0-2)
     # -----------------------------------------------------------------------
@@ -178,6 +203,32 @@ FAQ_TEMPLATES = [
         "slug": "what-areas-do-you-deliver-to",
         "category": "Pickup & Delivery",
         "display_order": 2,
+    },
+    {
+        "question": "Is there a delivery fee?",
+        "answer_template": (
+            "{{shop_name}} keeps delivery pricing simple and transparent. Depending on your "
+            "distance from us, delivery may be included or carry a small fee, and any fee is "
+            "always shown before you confirm your order — no surprises. Nearby addresses often "
+            "qualify for free or reduced delivery. Questions about your address? Call {{phone}} "
+            "or schedule online to see your exact total."
+        ),
+        "slug": "is-there-a-delivery-fee",
+        "category": "Pickup & Delivery",
+        "display_order": 3,
+    },
+    {
+        "question": "How do I schedule a recurring pickup?",
+        "answer_template": (
+            "Setting up recurring laundry with {{shop_name}} is easy. When you place an order "
+            "online, choose a recurring schedule — weekly, bi-weekly, or monthly — and we'll "
+            "automatically create each pickup on your chosen day and notify you beforehand. "
+            "It's the effortless way to never think about laundry day again. Call {{phone}} or "
+            "book online to get started."
+        ),
+        "slug": "how-do-i-schedule-a-recurring-pickup",
+        "category": "Pickup & Delivery",
+        "display_order": 4,
     },
     # -----------------------------------------------------------------------
     # Category: Comforter & Bedding (display_order 0-1)
