@@ -36,6 +36,7 @@ from app.migrations import add_order_addons
 from app.migrations import add_customer_preferences
 from app.migrations import add_delivery_fee
 from app.migrations import backfill_customer_stats
+from app.migrations import backfill_tenant_faqs
 
 logger = logging.getLogger(__name__)
 
@@ -78,4 +79,7 @@ def run_all():
     add_customer_preferences.run()
     add_delivery_fee.run()
     backfill_customer_stats.run()
+    # Push newly-added FAQ templates into already-onboarded tenants (the
+    # per-tenant seeder only runs for brand-new tenants). Insert-only by slug.
+    backfill_tenant_faqs.run()
     logger.info("All migrations complete.")

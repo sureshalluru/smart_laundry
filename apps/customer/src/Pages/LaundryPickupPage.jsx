@@ -17,16 +17,14 @@ import PaymentPage from '../Components/LaundryPickup/PaymentPage';
 import UnifiedServicePage from '../Components/LaundryPickup/UnifiedServicePage';
 import SchedulePage from '../Components/LaundryPickup/SchedulePage';
 import UnifiedReviewPage from '../Components/LaundryPickup/UnifiedReviewPage';
-import OrderTypeSelection from '../Components/LaundryPickup/OrderTypeSelection';
 import cartReducer, { initialCartState } from '../Components/LaundryPickup/cartReducer';
-import { buildOrderPayload, getCartSubtotal, getAddonsTotal, getBilledWeight } from '../Components/LaundryPickup/cartUtils';
+import { buildOrderPayload, getCartSubtotal, getAddonsTotal, getBilledWeight, derivePricingType } from '../Components/LaundryPickup/cartUtils';
 import AddonPicker from '../Components/LaundryPickup/AddonPicker';
 import {useNavigate, useSearchParams} from "react-router-dom";
 import { Elements } from '@stripe/react-stripe-js';
 import { loadStripe } from '@stripe/stripe-js';
 import axios from "axios";
 import {StandaloneSearchBox} from "@react-google-maps/api";
-import LaundryPickupImage from "../images/laundry-pickup.svg";
 import {formatISO, parseISO} from "date-fns";
 import { toZonedTime, format } from 'date-fns-tz';
 import {addDays} from 'date-fns';
@@ -34,16 +32,21 @@ import {LaundryContext} from "../Components/Contexts/LaundryContext";
 
 export default function LaundryPickupPage({laundryId,customerId,customerPaymentId,setCustomerPaymentId, laundryTimeZone, setLaundryTimeZone, specialInstructions, setSpecialInstructions}) {
     // Fixed 5-step stepper (Order Type + Services + Schedule + Payment + Review)
+    // Effortless-ordering flow: lead with services, ask for address only after
+    // the customer has built their cart. Serviceability is enforced at the
+    // Address step (can't advance unless validated) and re-checked at place-order.
     const steps = [
-        { title: 'Order Type' },
         { title: 'Services' },
+        { title: 'Address' },
         { title: 'Schedule' },
         { title: 'Payment' },
         { title: 'Review' },
     ];
 
-    // Order type state
-    const [orderType, setOrderType] = useState(null); // 'one-time' | 'frequency' | 'subscribe-save'
+    // Order type. There is no separate Order Type step anymore — the plan
+    // (one-time / recurring / subscribe & save) is chosen on the Schedule page.
+    // Default to one-time so the customer lands straight on Services.
+    const [orderType, setOrderType] = useState('one-time'); // 'one-time' | 'frequency' | 'subscribe-save'
 
     // Pre-selected order type from landing page navigation
     const [preSelectedType] = useState(() => {
@@ -126,6 +129,7 @@ export default function LaundryPickupPage({laundryId,customerId,customerPaymentI
     const [uberExists, setUberExists] = useState(false);
     const [uberEnv, setUberEnv] = useState("");
     const [laundryAddress, setLaundryAddress] = useState('');
+    const [contactPhone, setContactPhone] = useState('');
     const [uberPickupFrequency, setUberPickupFrequency] = useState(false);
     const [uberDropoffFrequency, setUberDropoffFrequency] = useState(false);
 
@@ -204,6 +208,7 @@ export default function LaundryPickupPage({laundryId,customerId,customerPaymentI
                         setLaundryFrequency(response.data.frequencyInterval);
                         setFrequencyPromotions(response.data.frequencyPromotions || []);
                         setLaundryAddress(response.data.laundryAddress || '');
+                        setContactPhone(response.data.contactPhone || '');
                         setUberEnv(response.data.uberEnv || '');
                         setUberExists(response.data?.uberCredentialsExist === true);
 
@@ -296,7 +301,7 @@ export default function LaundryPickupPage({laundryId,customerId,customerPaymentI
     // If only 1 service exists, auto-add it to cart but let customer stay on step 1
     // so they can optionally enter weight before continuing
     useEffect(() => {
-        if (servicesLoaded && laundryServices.length === 1 && cart.items.length === 0 && orderType && activeStep === 1) {
+        if (servicesLoaded && laundryServices.length === 1 && cart.items.length === 0 && orderType && activeStep === 0) {
             const singleService = laundryServices[0];
             const isWeight = singleService.inputWeight === true || singleService.inputWeight === 'true';
             dispatch({
@@ -315,35 +320,72 @@ export default function LaundryPickupPage({laundryId,customerId,customerPaymentI
         }
     }, [servicesLoaded, laundryServices, cart.items.length, orderType, activeStep]);
 
-    // Handle order type selection
-    const handleOrderTypeSelect = (type) => {
+    // The current cart's pricing shape drives which plans are offered on the
+    // Schedule page. Subscribe & Save applies to bag-only (all per-item) carts.
+    const cartPricingType = derivePricingType(cart.items); // 'per_pound'|'per_item'|'per_bag'|'mixed'
+    const cartIsBagOnly = cartPricingType === 'per_item' || cartPricingType === 'per_bag';
+    // Tenant offers Subscribe & Save when it has frequency options AND at least
+    // one per-bag (per-item) service in its catalog.
+    const tenantHasPerBag = laundryServices.some(
+        (s) => s.inputWeight === false || s.inputWeight === 'false'
+    );
+    const subscribeSaveAvailable =
+        (laundryFrequency && laundryFrequency.length > 0) && tenantHasPerBag;
+
+    // Plan selection now happens on the Schedule page (no separate Order Type
+    // step). This sets orderType + frequency WITHOUT clearing the cart or
+    // changing the step. Subscribe & Save is only selectable for a bag-only cart
+    // (rule C): if the cart isn't bag-only we fall back to recurring.
+    const handleSelectPlan = (type) => {
+        if (type === 'subscribe-save' && !(subscribeSaveAvailable && cartIsBagOnly)) {
+            return; // guarded by UI, but never accept S&S for a non-bag cart
+        }
         setOrderType(type);
-        // Clear cart when changing order type (prevents stale items from wrong category)
-        dispatch({ type: 'CLEAR_CART' });
         if (type === 'subscribe-save') {
-            // Auto-set frequency to first available if not already set
             if (!frequency && laundryFrequency.length > 0) {
                 setFrequency(laundryFrequency[0]);
             }
         } else if (type === 'one-time') {
-            // Clear frequency for one-time orders
             setFrequency(null);
         }
-        setActiveStep(1);
+        // 'frequency' keeps whatever interval is (or isn't) chosen; the Schedule
+        // page requires one before Continue.
     };
 
-    // Get filtered services based on order type
-    const getFilteredServicesForOrderType = () => {
-        if (orderType === 'subscribe-save') {
-            return laundryServices.filter(s => s.inputWeight === false || s.inputWeight === 'false');
+    // Safety net: if the cart stops being bag-only while Subscribe & Save is
+    // selected (customer went back and added a per-pound item), demote to a
+    // plain recurring order so the bag-only discount never applies to a mixed cart.
+    useEffect(() => {
+        if (orderType === 'subscribe-save' && !cartIsBagOnly) {
+            setOrderType('frequency');
         }
-        return laundryServices;
-    };
+    }, [orderType, cartIsBagOnly]);
+
+    // Honor a plan pre-selected from the landing page (e.g. a "Recurring" or
+    // "Subscribe & Save" CTA). The Order Type step is gone, so seed orderType
+    // once on mount. Subscribe & Save is only seeded when the tenant offers it;
+    // the bag-only rule is still enforced on the Schedule page + safety net.
+    useEffect(() => {
+        if (!preSelectedType) return;
+        if (preSelectedType === 'frequency' && laundryFrequency.length > 0) {
+            setOrderType('frequency');
+        } else if (preSelectedType === 'subscribe-save' && subscribeSaveAvailable) {
+            setOrderType('subscribe-save');
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [preSelectedType, laundryFrequency, subscribeSaveAvailable]);
 
     // Updated handlePlaceOrder using buildOrderPayload (Task 5.3)
     const handlePlaceOrder = async () => {
         if (cart.items.length === 0) {
             toast({ title: "Error", description: "Cart is empty.", status: "error", duration: 3000, isClosable: true });
+            return false;
+        }
+        // Serviceability backstop: never place an order without a validated,
+        // serviceable address, even if the flow was reached out of order.
+        if (!address || !isAddressValidated) {
+            toast({ title: "Address needed", description: "Please enter and confirm a serviceable pickup address.", status: "error", duration: 4000, isClosable: true });
+            setActiveStep(1); // Address step
             return false;
         }
         if (!pickupDate || !pickupTime || !dropoffDate || !dropoffTime) {
@@ -466,6 +508,7 @@ export default function LaundryPickupPage({laundryId,customerId,customerPaymentI
                 if (data.serviceable) {
                     setIsAddressValidated(true);
                     localStorage.setItem('customerAddress', addr);
+                    return true;
                 } else if (data.reason === 'too_far') {
                     // Serviceable zip but beyond the shop's max delivery distance.
                     // Backend already captured it as demand; ask them to call.
@@ -479,6 +522,7 @@ export default function LaundryPickupPage({laundryId,customerId,customerPaymentI
                         isClosable: true,
                     });
                     setIsAddressValidated(false);
+                    return false;
                 } else {
                     toast({
                         title: "Address Not Serviceable",
@@ -488,6 +532,7 @@ export default function LaundryPickupPage({laundryId,customerId,customerPaymentI
                         isClosable: true,
                     });
                     setIsAddressValidated(false);
+                    return false;
                 }
             } else {
                 toast({
@@ -498,6 +543,7 @@ export default function LaundryPickupPage({laundryId,customerId,customerPaymentI
                     isClosable: true,
                 });
                 setIsAddressValidated(false);
+                return false;
             }
         } catch (error) {
             console.error('Error checking serviceability:', error);
@@ -509,26 +555,32 @@ export default function LaundryPickupPage({laundryId,customerId,customerPaymentI
                 isClosable: true,
             });
             setIsAddressValidated(false);
+            return false;
         }
         finally {
             setIsAddressValidating(false);
         }
     };
 
-    // Handle address submission
-    const handleAddressSubmit = async (e) => {
-        e.preventDefault();
+    // Address step Continue: validate serviceability, then advance to Schedule
+    // (step 3) only when the address is confirmed serviceable. A cached-but-
+    // already-validated address still re-validates here so a stale localStorage
+    // entry can never carry an unserviceable address forward.
+    const handleAddressContinue = async () => {
         if (!address) {
             toast({
-                title: "Error",
-                description: "Please enter an address.",
+                title: "Address required",
+                description: "Please enter your pickup address to continue.",
                 status: "error",
                 duration: 3000,
                 isClosable: true,
             });
             return;
         }
-        await validateAddress(address);
+        const ok = await validateAddress(address);
+        if (ok) {
+            setActiveStep(2); // Schedule
+        }
     };
 
     // Google Maps API to populate Address
@@ -540,7 +592,9 @@ export default function LaundryPickupPage({laundryId,customerId,customerPaymentI
         }
     };
 
-    // Smart Defaults: advance step with payment skip logic
+    // Smart Defaults: advance step with payment skip logic.
+    // Steps: 0 Services, 1 Address, 2 Schedule, 3 Payment, 4 Review.
+    // Payment can be skipped when leaving Schedule (step 2).
     const advanceStep = (fromStep) => {
         if (fromStep === 2) {
             // Skip payment step ONLY when we're confident payment is covered:
@@ -557,7 +611,7 @@ export default function LaundryPickupPage({laundryId,customerId,customerPaymentI
                 if (!stripePromise && !customerPaymentId) {
                     setPayByInvoice(true);
                 }
-                setActiveStep(4);
+                setActiveStep(4); // Review
                 return;
             }
         }
@@ -602,8 +656,10 @@ export default function LaundryPickupPage({laundryId,customerId,customerPaymentI
                 if (!stripePromise) setPayByInvoice(true);
             }
 
-            // Jump directly to Review step
-            setActiveStep(4);
+            // Jump to Review (step 5) when we already have a validated address
+            // (cached from a prior order); otherwise land on the Address step (1)
+            // so serviceability is confirmed before the reorder can be placed.
+            setActiveStep(isAddressValidated && address ? 4 : 1);
         }).catch(err => {
             console.error('Reorder fetch failed:', err);
             // Fall back to normal flow on error
@@ -623,76 +679,77 @@ export default function LaundryPickupPage({laundryId,customerId,customerPaymentI
         };
         return gradientMap[laundryData?.themeColor] || gradientMap.blue;
     })();
-    const themeHeroBg = (() => {
-        const heroMap = {
-            blue: "linear-gradient(135deg, #EBF8FF 0%, #BEE3F8 100%)",
-            green: "linear-gradient(135deg, #F0FFF4 0%, #C6F6D5 100%)",
-            purple: "linear-gradient(135deg, #FAF5FF 0%, #D6BCFA 100%)",
-            teal: "linear-gradient(135deg, #E6FFFA 0%, #81E6D9 100%)",
-            orange: "linear-gradient(135deg, #FFFAF0 0%, #FBD38D 100%)",
-            red: "linear-gradient(135deg, #FFF5F5 0%, #FEB2B2 100%)",
-            pink: "linear-gradient(135deg, #FFF5F7 0%, #FBB6CE 100%)",
-            cyan: "linear-gradient(135deg, #EDFDFD 0%, #9DECF9 100%)",
-        };
-        return heroMap[laundryData?.themeColor] || heroMap.blue;
-    })();
 
     return (
         <Box padding={[2,4,6]} bg={themeGradient} minHeight="100vh">
             <Stack spacing={[4,6,8]} maxWidth={["100%", "600px", "800px"]} margin="auto" px={[2, 4, 6]} py={[4, 6, 8]}>
-                {!isAddressValidated ? (
-                    // Address Input Form
-                        <VStack as="form" onSubmit={handleAddressSubmit} spacing={0}>
-                            {/* Hero banner with illustration */}
-                            <Box
-                                w="100%"
-                                bg={themeHeroBg}
-                                borderRadius="2xl"
-                                pt={{ base: 6, md: 10 }}
-                                pb={{ base: 4, md: 6 }}
-                                px={4}
-                                textAlign="center"
-                                mb={6}
-                            >
-                                {laundryData?.laundryLogo ? (
-                                    <Image
-                                        src={laundryData.laundryLogo}
-                                        alt={laundryData?.laundryName}
-                                        mx="auto"
-                                        maxW={{ base: '180px', md: '220px' }}
-                                        maxH={{ base: '100px', md: '120px' }}
-                                        objectFit="contain"
-                                        mb={2}
-                                    />
-                                ) : (
-                                    <Image
-                                        src={LaundryPickupImage}
-                                        alt="Free Laundry Pickup & Delivery"
-                                        mx="auto"
-                                        w={{ base: '260px', md: '340px' }}
-                                        h={{ base: '180px', md: '220px' }}
-                                        objectFit="contain"
-                                    />
-                                )}
-                                <Heading size={{ base: 'md', md: 'lg' }} color="blue.700" mt={4}>
-                                    Welcome to {laundryData?.laundryName}
-                                </Heading>
-                                <Box fontSize="sm" color="gray.500" mt={1}>
-                                    Free Pickup & Delivery
+                {(
+                    // Order Flow with 6-step stepper (services-first; address is step 2)
+                    <>
+                        {/* Show confirmed address with change option once validated */}
+                        {address && isAddressValidated && (
+                            <Flex justify="space-between" align="center" bg="white" borderRadius="lg" px={4} py={2} mb={3} border="1px solid" borderColor="gray.100">
+                                <Box>
+                                    <Box fontSize="xs" color="gray.500">Pickup Address</Box>
+                                    <Box fontSize="sm" fontWeight="500" color="gray.700" noOfLines={1}>{address}</Box>
                                 </Box>
+                                <Button size="xs" variant="ghost" colorScheme="blue" onClick={() => { setIsAddressValidated(false); localStorage.removeItem('customerAddress'); setActiveStep(1); }}>
+                                    Change
+                                </Button>
+                            </Flex>
+                        )}
+                        {laundryData?.laundryLogo && activeStep === 0 && (
+                            <Box mb={2} textAlign="center">
+                                <Image src={laundryData.laundryLogo} alt={laundryData?.laundryName} maxH={{ base: '60px', md: '80px' }} objectFit="contain" mx="auto" />
                             </Box>
+                        )}
+                        <Stepper index={activeStep} size="md" gap="0" colorScheme="blue">
+                            {steps.map((step, index) => (
+                                <Step key={index}>
+                                    <StepIndicator>
+                                        <StepStatus complete={<StepIcon />} incomplete={<StepNumber />} active={<StepNumber />} />
+                                    </StepIndicator>
+                                    <StepTitle fontSize={['xs','sm','md']}>{step.title}</StepTitle>
+                                    {index !== steps.length - 1 && <StepSeparator />}
+                                </Step>
+                            ))}
+                        </Stepper>
 
-                            {/* Form card */}
-                            <Box
-                                w="100%"
-                                bg="white"
-                                borderRadius="2xl"
-                                boxShadow="sm"
-                                border="1px solid"
-                                borderColor="gray.100"
-                                p={{ base: 5, md: 8 }}
-                            >
+                        <Box bg="white" borderRadius="2xl" boxShadow="sm" border="1px solid" borderColor="gray.100" padding={[4,5,6]}>
+                            {/* Step 0: Unified Service Page (full catalog — no order-type filtering) */}
+                            {activeStep === 0 && servicesLoaded && (
+                                <UnifiedServicePage
+                                    laundryServices={laundryServices}
+                                    serviceCategories={serviceCategories}
+                                    cart={cart}
+                                    dispatch={dispatch}
+                                    onContinue={() => setActiveStep(1)}
+                                    themeColor={laundryData?.themeColor || 'blue'}
+                                    contactPhone={contactPhone}
+                                    laundryAddress={laundryAddress}
+                                    addonsTotal={getAddonsTotal(Object.values(selectedAddons), getBilledWeight(cart.items))}
+                                    footerSlot={
+                                        addonsEnabled && laundryAddons.length > 0 ? (
+                                            <AddonPicker
+                                                addons={laundryAddons}
+                                                selected={selectedAddons}
+                                                onChange={setSelectedAddons}
+                                                billedWeight={getBilledWeight(cart.items)}
+                                                saveAsDefault={saveAddonPrefs}
+                                                onSaveAsDefaultChange={setSaveAddonPrefs}
+                                            />
+                                        ) : null
+                                    }
+                                />
+                            )}
+
+                            {/* Step 1: Address */}
+                            {activeStep === 1 && (
                                 <VStack spacing={5} align="stretch">
+                                    <Box>
+                                        <Heading size="md" color="gray.800" mb={1}>Where should we pick up?</Heading>
+                                        <Text fontSize="sm" color="gray.500">Enter your pickup address so we can confirm we serve your area.</Text>
+                                    </Box>
                                     <FormControl id="address" isRequired>
                                         <FormLabel fontSize="sm" fontWeight="600" color="gray.700">
                                             Pickup Address
@@ -707,7 +764,7 @@ export default function LaundryPickupPage({laundryId,customerId,customerPaymentI
                                                 value={address}
                                                 size="lg"
                                                 autoComplete="off"
-                                                onChange={(e) => setAddress(e.target.value)}
+                                                onChange={(e) => { setAddress(e.target.value); if (isAddressValidated) setIsAddressValidated(false); }}
                                             />
                                         </StandaloneSearchBox>
                                     </FormControl>
@@ -734,95 +791,28 @@ export default function LaundryPickupPage({laundryId,customerId,customerPaymentI
                                         />
                                     </FormControl>
                                     <Button
-                                        type="submit"
                                         colorScheme="blue"
                                         size="lg"
                                         borderRadius="xl"
                                         w="100%"
                                         isLoading={isAddressValidating}
-                                        loadingText="Validating..."
+                                        loadingText="Checking your area..."
                                         boxShadow="md"
+                                        onClick={handleAddressContinue}
                                     >
                                         Continue
                                     </Button>
                                 </VStack>
-                            </Box>
-                        </VStack>
-                ) : (
-                    // Order Flow with 4-step stepper
-                    <>
-                        {/* Show current address with change option */}
-                        {address && (
-                            <Flex justify="space-between" align="center" bg="white" borderRadius="lg" px={4} py={2} mb={3} border="1px solid" borderColor="gray.100">
-                                <Box>
-                                    <Box fontSize="xs" color="gray.500">Pickup Address</Box>
-                                    <Box fontSize="sm" fontWeight="500" color="gray.700" noOfLines={1}>{address}</Box>
-                                </Box>
-                                <Button size="xs" variant="ghost" colorScheme="blue" onClick={() => { setIsAddressValidated(false); localStorage.removeItem('customerAddress'); }}>
-                                    Change
-                                </Button>
-                            </Flex>
-                        )}
-                        {laundryData?.laundryLogo && activeStep === 0 && (
-                            <Box mb={2} textAlign="center">
-                                <Image src={laundryData.laundryLogo} alt={laundryData?.laundryName} maxH={{ base: '60px', md: '80px' }} objectFit="contain" mx="auto" />
-                            </Box>
-                        )}
-                        <Stepper index={activeStep} size="md" gap="0" colorScheme="blue">
-                            {steps.map((step, index) => (
-                                <Step key={index}>
-                                    <StepIndicator>
-                                        <StepStatus complete={<StepIcon />} incomplete={<StepNumber />} active={<StepNumber />} />
-                                    </StepIndicator>
-                                    <StepTitle fontSize={['xs','sm','md']}>{step.title}</StepTitle>
-                                    {index !== steps.length - 1 && <StepSeparator />}
-                                </Step>
-                            ))}
-                        </Stepper>
-
-                        <Box bg="white" borderRadius="2xl" boxShadow="sm" border="1px solid" borderColor="gray.100" padding={[4,5,6]}>
-                            {/* Step 0: Order Type Selection */}
-                            {activeStep === 0 && servicesLoaded && (
-                                <OrderTypeSelection
-                                    onSelect={handleOrderTypeSelect}
-                                    frequencyPromotions={frequencyPromotions}
-                                    subscriptionDiscount={laundryData?.subscriptionDiscount || 0}
-                                    laundryFrequency={laundryFrequency}
-                                    themeColor={laundryData?.themeColor || 'blue'}
-                                    preSelectedType={preSelectedType}
-                                    laundryServices={laundryServices}
-                                />
                             )}
 
-                            {/* Step 1: Unified Service Page */}
-                            {activeStep === 1 && servicesLoaded && (
-                                <UnifiedServicePage
-                                    laundryServices={getFilteredServicesForOrderType()}
-                                    serviceCategories={serviceCategories}
-                                    cart={cart}
-                                    dispatch={dispatch}
-                                    onContinue={() => setActiveStep(2)}
-                                    themeColor={laundryData?.themeColor || 'blue'}
-                                    addonsTotal={getAddonsTotal(Object.values(selectedAddons), getBilledWeight(cart.items))}
-                                    footerSlot={
-                                        addonsEnabled && laundryAddons.length > 0 ? (
-                                            <AddonPicker
-                                                addons={laundryAddons}
-                                                selected={selectedAddons}
-                                                onChange={setSelectedAddons}
-                                                billedWeight={getBilledWeight(cart.items)}
-                                                saveAsDefault={saveAddonPrefs}
-                                                onSaveAsDefaultChange={setSaveAddonPrefs}
-                                            />
-                                        ) : null
-                                    }
-                                />
-                            )}
-
-                            {/* Step 2: Schedule Page */}
+                            {/* Step 2: Schedule Page (plan + frequency + schedule) */}
                             {activeStep === 2 && (
                                 <SchedulePage
                                     orderType={orderType}
+                                    setOrderType={handleSelectPlan}
+                                    subscribeSaveAvailable={subscribeSaveAvailable}
+                                    cartIsBagOnly={cartIsBagOnly}
+                                    subscriptionDiscount={laundryData?.subscriptionDiscount || 0}
                                     pickupDate={pickupDate} setPickupDate={setPickupDate}
                                     pickupTime={pickupTime} setPickupTime={setPickupTime}
                                     dropoffDate={dropoffDate} setDropoffDate={setDropoffDate}
@@ -837,7 +827,7 @@ export default function LaundryPickupPage({laundryId,customerId,customerPaymentI
                                     deliveryTimeSlots={deliveryTimeSlots}
                                     deliveryTimeInterval={deliveryTimeInterval}
                                     laundryTimeZone={laundryTimeZone}
-                                    laundryFrequency={orderType === 'one-time' ? [] : laundryFrequency}
+                                    laundryFrequency={laundryFrequency}
                                     frequencyPromotions={frequencyPromotions}
                                     promoDescriptionMessage={promoDescriptionMessage}
                                     setPromoDescriptionMessage={setPromoDescriptionMessage}
@@ -916,7 +906,7 @@ export default function LaundryPickupPage({laundryId,customerId,customerPaymentI
                                     subscriptionDiscount={orderType === 'subscribe-save' ? (laundryData?.subscriptionDiscount || 0) : 0}
                                     selectedAddons={Object.values(selectedAddons)}
                                     onPlaceOrder={handlePlaceOrder}
-                                    onEdit={() => setActiveStep(1)}
+                                    onEdit={() => setActiveStep(0)}
                                     orderProcessing={orderProcessing}
                                 />
                             )}

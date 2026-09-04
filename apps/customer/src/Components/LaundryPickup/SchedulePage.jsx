@@ -33,6 +33,10 @@ import axios from 'axios';
  */
 export default function SchedulePage({
     orderType,
+    setOrderType,
+    subscribeSaveAvailable = false,
+    cartIsBagOnly = false,
+    subscriptionDiscount = 0,
     pickupDate,
     setPickupDate,
     pickupTime,
@@ -406,10 +410,84 @@ export default function SchedulePage({
         : getDateInTimeZone(addDays(new Date(), 1), tz);
     const isFormValid = pickupDate && pickupTime && dropoffDate && dropoffTime;
 
+    // Recurring savings blurb — pulled from the tenant's frequency promotions
+    // (same source the old order-type cards used) so customers see the incentive.
+    const recurringSavings = (frequencyPromotions && frequencyPromotions.length > 0)
+        ? (frequencyPromotions[0].description || 'Save on every recurring order')
+        : '';
+
     // ─── Render ───
 
     return (
         <Stack spacing={5} width="100%" maxW="500px" mx="auto" py={2}>
+            {/* ─── Plan: One-time / Recurring / Subscribe & Save ─── */}
+            {(laundryFrequency && laundryFrequency.length > 0) && (
+                <Box bg="white" borderRadius="2xl" p={{ base: 5, md: 6 }} boxShadow="sm" border="1px solid" borderColor="gray.100">
+                    <Text fontWeight="700" fontSize="sm" color="gray.800" mb={1}>How often?</Text>
+                    <Text fontSize="xs" color="gray.500" mb={3}>Order once, or set up recurring pickup and save.</Text>
+                    <HStack spacing={2} flexWrap="wrap" align="stretch">
+                        <Button
+                            size="sm"
+                            borderRadius="full"
+                            variant={orderType === 'one-time' ? 'solid' : 'outline'}
+                            colorScheme={orderType === 'one-time' ? 'blue' : 'gray'}
+                            onClick={() => setOrderType && setOrderType('one-time')}
+                        >
+                            🧺 One-time
+                        </Button>
+                        <Button
+                            size="sm"
+                            borderRadius="full"
+                            variant={orderType === 'frequency' ? 'solid' : 'outline'}
+                            colorScheme={orderType === 'frequency' ? 'blue' : 'gray'}
+                            onClick={() => setOrderType && setOrderType('frequency')}
+                        >
+                            🔄 Recurring
+                        </Button>
+                        {/* Subscribe & Save only for bag-only carts (rule C) */}
+                        {subscribeSaveAvailable && cartIsBagOnly && (
+                            <Button
+                                size="sm"
+                                borderRadius="full"
+                                variant={orderType === 'subscribe-save' ? 'solid' : 'outline'}
+                                colorScheme={orderType === 'subscribe-save' ? 'green' : 'gray'}
+                                onClick={() => setOrderType && setOrderType('subscribe-save')}
+                            >
+                                💰 Subscribe &amp; Save{subscriptionDiscount > 0 ? ` (${subscriptionDiscount}%)` : ''}
+                            </Button>
+                        )}
+                    </HStack>
+
+                    {/* Savings incentives — surface the value of the recurring plans */}
+                    {(recurringSavings || (subscribeSaveAvailable && cartIsBagOnly && subscriptionDiscount > 0)) && (
+                        <VStack align="stretch" spacing={1} mt={3}>
+                            {recurringSavings && (
+                                <HStack spacing={2}>
+                                    <Text fontSize="lg">🔄</Text>
+                                    <Text fontSize="xs" color="green.700" fontWeight="600">
+                                        Recurring: {recurringSavings}
+                                    </Text>
+                                </HStack>
+                            )}
+                            {subscribeSaveAvailable && cartIsBagOnly && subscriptionDiscount > 0 && (
+                                <HStack spacing={2}>
+                                    <Text fontSize="lg">💰</Text>
+                                    <Text fontSize="xs" color="green.700" fontWeight="600">
+                                        Subscribe &amp; Save: {subscriptionDiscount}% off every order
+                                    </Text>
+                                </HStack>
+                            )}
+                        </VStack>
+                    )}
+
+                    {subscribeSaveAvailable && !cartIsBagOnly && (
+                        <Text fontSize="xs" color="gray.400" mt={2}>
+                            Subscribe &amp; Save is available for bag-only orders.
+                        </Text>
+                    )}
+                </Box>
+            )}
+
             {/* ─── Pickup Type ─── */}
             {uberExists && (
                 <Box bg="white" borderRadius="2xl" p={{ base: 5, md: 6 }} boxShadow="sm" border="1px solid" borderColor="gray.100">
@@ -559,8 +637,9 @@ export default function SchedulePage({
                 )}
             </Box>
 
-            {/* ─── Frequency Selection ─── */}
-            {laundryFrequency && laundryFrequency.length > 0 && (
+            {/* ─── Frequency Selection (only for recurring plans) ─── */}
+            {laundryFrequency && laundryFrequency.length > 0 &&
+              (orderType === 'frequency' || orderType === 'subscribe-save') && (
                 <Box
                     bg="white"
                     borderRadius="2xl"
