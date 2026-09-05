@@ -2997,6 +2997,35 @@ const { open: openCancelUber, ModalUI: CancelUberModal } = useCancelUberHandoff(
                                                 fontSize={fontSize}>${roundToTwo(selectedOrderDetails.subTotal || 0)}</Text>
                                         </Flex>
 
+                                        {/* Discount — shows source (coupon / Recurring / Subscribe & Save) + effective % */}
+                                        {selectedOrderDetails.discountedPrice > 0 && (() => {
+                                            const sub = Number(selectedOrderDetails.subTotal) || 0;
+                                            const disc = Number(selectedOrderDetails.discountedPrice) || 0;
+                                            const pct = sub > 0 ? Math.round((disc / sub) * 100) : 0;
+                                            const hasCoupon = selectedOrderDetails.coupon && selectedOrderDetails.coupon !== 'None';
+                                            let source;
+                                            if (hasCoupon) {
+                                                source = `Coupon ${selectedOrderDetails.coupon}`;
+                                            } else if (selectedOrderDetails.frequency) {
+                                                source = selectedOrderDetails.pricingType === 'per_bag'
+                                                    ? 'Subscribe & Save'
+                                                    : 'Recurring plan';
+                                            } else {
+                                                source = 'Discount';
+                                            }
+                                            const label = pct > 0 ? `${source} (${pct}% off)` : source;
+                                            return (
+                                                <Flex justify="space-between" align="center">
+                                                    <Text fontWeight="medium" fontSize={fontSize} color="green.600">
+                                                        {label}:
+                                                    </Text>
+                                                    <Text fontSize={fontSize} color="green.600">
+                                                        −${roundToTwo(disc)}
+                                                    </Text>
+                                                </Flex>
+                                            );
+                                        })()}
+
                                         {/* Tip — editable in edit mode */}
                                         <Flex justify="space-between" align="center" wrap="wrap" gap={1}>
                                             <Text fontWeight="medium" fontSize={fontSize}>

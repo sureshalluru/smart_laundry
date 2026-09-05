@@ -148,6 +148,7 @@ async def update_delivery_schedule(
     delivery_time_interval = body.get("deliveryTimeInterval")
     tax_rate = body.get("taxRate")
     subscription_discount = body.get("subscriptionDiscount")
+    recurring_discount = body.get("recurringDiscount")
     frequency_intervals = body.get("frequencyIntervals")  # e.g. ["Weekly", "Bi-Weekly", "Monthly"]
 
     if not laundry_id:
@@ -173,6 +174,12 @@ async def update_delivery_schedule(
             cur.execute("""
                 UPDATE shop.laundry_shops SET subscription_discount = %s WHERE laundry_id = %s
             """, (float(subscription_discount), laundry_id))
+
+        # Update recurring-plan discount if provided (separate from Subscribe & Save)
+        if recurring_discount is not None:
+            cur.execute("""
+                UPDATE shop.laundry_shops SET recurring_discount = %s WHERE laundry_id = %s
+            """, (float(recurring_discount), laundry_id))
 
         # Replace all delivery time slots (only if explicitly provided)
         if slots is not None and "deliveryTimeSlots" in body:
@@ -218,7 +225,7 @@ async def get_delivery_schedule(
     with get_db() as conn:
         cur = get_cursor(conn)
 
-        cur.execute("SELECT delivery_time_interval, tax_rate, subscription_discount FROM shop.laundry_shops WHERE laundry_id = %s", (laundryId,))
+        cur.execute("SELECT delivery_time_interval, tax_rate, subscription_discount, recurring_discount FROM shop.laundry_shops WHERE laundry_id = %s", (laundryId,))
         shop = cur.fetchone()
 
         cur.execute("""
@@ -240,6 +247,7 @@ async def get_delivery_schedule(
             "deliveryTimeInterval": shop["delivery_time_interval"] if shop else 2,
             "taxRate": float(shop["tax_rate"]) if shop and shop.get("tax_rate") else 0,
             "subscriptionDiscount": float(shop["subscription_discount"]) if shop and shop.get("subscription_discount") else 0,
+            "recurringDiscount": float(shop["recurring_discount"]) if shop and shop.get("recurring_discount") else 0,
             "deliveryTimeSlots": slots,
             "frequencyIntervals": frequency_intervals,
         }

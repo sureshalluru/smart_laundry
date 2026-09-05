@@ -75,7 +75,7 @@ def _check_laundry_id(cur, laundry_id):
     """Verify laundry exists — exact port from Lambda."""
     cur.execute("""
         SELECT laundry_name, stripe_public_key, stripe_terminal_id,
-               laundry_timezone, user_domain, bag_price, tax_rate, site_content, laundry_logo, subscription_discount
+               laundry_timezone, user_domain, bag_price, tax_rate, site_content, laundry_logo, subscription_discount, recurring_discount
         FROM shop.laundry_shops WHERE laundry_id = %s
     """, (laundry_id,))
     row = cur.fetchone()
@@ -95,6 +95,7 @@ def _check_laundry_id(cur, laundry_id):
         "themeColor": site_content.get("themeColor", "blue"),
         "laundryLogo": row["laundry_logo"] or "",
         "subscriptionDiscount": float(row.get("subscription_discount") or 0),
+        "recurringDiscount": float(row.get("recurring_discount") or 0),
     }
 
 
@@ -103,7 +104,7 @@ def _get_laundry_info(cur, laundry_id, is_customer=None):
     cur.execute("""
         SELECT laundry_name, laundry_timezone, stripe_public_key, stripe_terminal_id,
                delivery_time_interval, user_domain, contact_phone,
-               street, city, state, zip_code, country, serviceable_zip_codes, bag_price, tax_rate, site_content, laundry_logo, subscription_discount,
+               street, city, state, zip_code, country, serviceable_zip_codes, bag_price, tax_rate, site_content, laundry_logo, subscription_discount, recurring_discount,
                hide_home_address, min_weight_enabled, addons_enabled, min_weight_scope,
                delivery_fee_mode, delivery_fee_flat, delivery_fee_base,
                delivery_fee_per_mile, delivery_fee_free_radius_mi,
@@ -260,6 +261,7 @@ def _get_laundry_info(cur, laundry_id, is_customer=None):
         "siteContent": site_content,
         "laundryLogo": shop.get("laundry_logo") or "",
         "subscriptionDiscount": float(shop.get("subscription_discount") or 0),
+        "recurringDiscount": float(shop.get("recurring_discount") or 0),
         # min_weight_enabled surfaced to the customer client is the EFFECTIVE
         # online value: the master flag AND the scope including online. So a
         # tenant scoped to in-store only won't show/apply minimums on the
@@ -328,6 +330,16 @@ def _validate_address(cur, laundry_id, address, conn=None):
         zip_ok = zip_code in serviceable
 
     if not zip_ok:
+        # Record the unserved zip as demand (best-effort). This is the primary
+        # demand signal — a customer wanting service in a zip the tenant doesn't
+        # cover yet. Mirrors the too_far capture below. Never blocks the response.
+        try:
+            cur.execute("""
+                INSERT INTO shop.zip_code_interest (laundry_id, zip_code, address)
+                VALUES (%s, %s, %s)
+            """, (laundry_id, zip_code, address))
+        except Exception as _demand_err:
+            logger.warning(f"zip_code_interest capture failed (zip): {_demand_err}")
         return {"status": "success", "serviceable": False, "reason": "zip"}
 
     # Zip is serviceable. Apply the max-distance gate when configured.

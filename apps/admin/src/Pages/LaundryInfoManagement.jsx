@@ -512,6 +512,7 @@ const SystemSettingsSection = ({ laundryId }) => {
     const toast = useToast();
     const [taxRate, setTaxRate] = useState(0);
     const [subscriptionDiscount, setSubscriptionDiscount] = useState(0);
+    const [recurringDiscount, setRecurringDiscount] = useState(0);
     const [smsEnabled, setSmsEnabled] = useState(false);
     const [smsCount, setSmsCount] = useState(0);
     const [loading, setLoading] = useState(true);
@@ -529,6 +530,7 @@ const SystemSettingsSection = ({ laundryId }) => {
                 const data = res.data?.body || res.data;
                 if (data.taxRate !== undefined) setTaxRate(data.taxRate);
                 if (data.subscriptionDiscount !== undefined) setSubscriptionDiscount(data.subscriptionDiscount);
+                if (data.recurringDiscount !== undefined) setRecurringDiscount(data.recurringDiscount);
             } catch (err) { console.error(err); }
 
             // Fetch SMS settings
@@ -551,7 +553,7 @@ const SystemSettingsSection = ({ laundryId }) => {
         setSaving(true);
         try {
             await axios.put(`${process.env.REACT_APP_AWS_API_URL}/api/laundry/delivery-schedule`, {
-                laundryId, taxRate, subscriptionDiscount,
+                laundryId, taxRate, subscriptionDiscount, recurringDiscount,
             }, { headers: { Authorization: `Bearer ${authToken}` } });
             toast({ title: 'Settings saved!', status: 'success', duration: 3000 });
         } catch (err) {
@@ -611,6 +613,25 @@ const SystemSettingsSection = ({ laundryId }) => {
                     {subscriptionDiscount > 0
                         ? `Customers who subscribe to weekly per-bag service get ${subscriptionDiscount}% off each order.`
                         : 'Set to 0 to disable. Customers choosing weekly subscription on per-bag orders get this % discount.'}
+                </Text>
+            </Box>
+
+            <Box mb={6} maxW="400px" p={4} bg="gray.50" borderRadius="md" border="1px solid" borderColor="gray.200">
+                <Text fontWeight="semibold" mb={2}>🔁 Recurring Plan Discount</Text>
+                <Input
+                    type="number"
+                    step="1"
+                    min="0"
+                    max="50"
+                    value={recurringDiscount}
+                    onChange={(e) => setRecurringDiscount(parseFloat(e.target.value) || 0)}
+                    placeholder="e.g. 5"
+                    mb={2}
+                />
+                <Text fontSize="xs" color="gray.500">
+                    {recurringDiscount > 0
+                        ? `Customers on a recurring pickup plan get ${recurringDiscount}% off every order (applied at weigh-in). Separate from Subscribe & Save.`
+                        : 'Set to 0 to disable. Applies to the Recurring plan (per-lb / per-item recurring pickups), separate from the per-bag Subscribe & Save discount.'}
                 </Text>
             </Box>
 

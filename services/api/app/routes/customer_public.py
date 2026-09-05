@@ -335,6 +335,36 @@ async def customer_place_order(
             except Exception as promo_err:
                 logger.warning(f"Promo application error: {promo_err}")
 
+        # Recurring-plan discount (server-authoritative). Mirrors the weigh-in
+        # recalc in orders_info.py so the placed order stores a real
+        # discounted_price / total_cost — otherwise the discount only lived in
+        # grand_total and never showed on the admin drawer or customer My Orders.
+        #   - per_bag recurring -> subscription_discount (Subscribe & Save)
+        #   - other recurring   -> recurring_discount (plain Recurring plan)
+        # One-time orders (no frequency) untouched. Stacks on a manually entered
+        # coupon; the frequency-promo coupon is not attached when a plan % exists
+        # (option 2 precedence, enforced on the client), so no double-count.
+        if frequency and sub_total > 0:
+            try:
+                with get_db() as conn_pd:
+                    cur_pd = get_cursor(conn_pd)
+                    cur_pd.execute("""
+                        SELECT subscription_discount, recurring_discount
+                        FROM shop.laundry_shops WHERE laundry_id = %s
+                    """, (laundry_id,))
+                    _pd_row = cur_pd.fetchone() or {}
+                _is_bag = (pricing_type == "per_bag")
+                _plan_pct = float(
+                    (_pd_row.get("subscription_discount") if _is_bag else _pd_row.get("recurring_discount")) or 0
+                )
+                if _plan_pct > 0:
+                    _plan_discount = round(sub_total * (_plan_pct / 100), 2)
+                    discounted_price = round(min(discounted_price + _plan_discount, sub_total), 2)
+                    total_cost = round(sub_total - discounted_price, 2)
+                    grand_total = round(total_cost + tip_amount, 2)
+            except Exception as plan_err:
+                logger.warning(f"Recurring plan discount error: {plan_err}")
+
         # Server-authoritative percentage tip.
         # The client is supposed to send the computed dollar tipAmount, but some
         # flows submitted a percentage tip (tipType='percentage', tipPercentage>0)
@@ -1127,6 +1157,8 @@ async def get_customer_order_detail(
                     "grandTotal": float(order["grand_total"] or 0),
                     "subTotal": float(order["sub_total"] or 0),
                     "discountedPrice": float(order["discounted_price"] or 0),
+                    "frequency": order.get("frequency"),
+                    "pricingType": order.get("pricing_type"),
                     "createdAt": str(order["created_at"]),
                     "services": services,
                     "addons": addons,

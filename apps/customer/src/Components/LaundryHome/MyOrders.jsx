@@ -906,7 +906,7 @@ const MyOrders = ({ customerId, laundryId, laundryTimeZone }) => {
                                     <Box textAlign={{ base: 'left', md: 'right' }}>
                                         <Text fontSize={["sm", "md"]}>Payment Status: {(order.orderType === 'Commercial' || order.payByInvoice) && order.paymentStatus === 'Unpaid' ? 'Pay by Invoice' : order.paymentStatus}</Text>
                                         <Text fontSize={["sm", "md"]} fontWeight="bold">
-                                            Total Cost: ${order.totalCost}
+                                            Total Cost: ${Number(order.grandTotal ?? order.totalCost ?? 0).toFixed(2)}
                                         </Text>
                                     </Box>
                                 </Flex>
@@ -1186,12 +1186,30 @@ const MyOrders = ({ customerId, laundryId, laundryTimeZone }) => {
                                                 <Text>${Number(orderDetails.subTotal).toFixed(2)}</Text>
                                             </Flex>
                                         )}
-                                        {orderDetails.discountedPrice > 0 && (
-                                            <Flex justify="space-between" fontSize="sm" color="green.600" mb={1}>
-                                                <Text>Discount{orderDetails.coupon && orderDetails.coupon !== 'None' ? ` (${orderDetails.coupon})` : ''}</Text>
-                                                <Text>−${Number(orderDetails.discountedPrice).toFixed(2)}</Text>
-                                            </Flex>
-                                        )}
+                                        {orderDetails.discountedPrice > 0 && (() => {
+                                            // Derive the discount source label + effective %.
+                                            const sub = Number(orderDetails.subTotal) || 0;
+                                            const disc = Number(orderDetails.discountedPrice) || 0;
+                                            const pct = sub > 0 ? Math.round((disc / sub) * 100) : 0;
+                                            const hasCoupon = orderDetails.coupon && orderDetails.coupon !== 'None';
+                                            let source;
+                                            if (hasCoupon) {
+                                                source = `Coupon ${orderDetails.coupon}`;
+                                            } else if (orderDetails.frequency) {
+                                                source = orderDetails.pricingType === 'per_bag'
+                                                    ? 'Subscribe & Save'
+                                                    : 'Recurring plan';
+                                            } else {
+                                                source = 'Discount';
+                                            }
+                                            const label = pct > 0 ? `${source} (${pct}% off)` : source;
+                                            return (
+                                                <Flex justify="space-between" fontSize="sm" color="green.600" mb={1}>
+                                                    <Text>{label}</Text>
+                                                    <Text>−${disc.toFixed(2)}</Text>
+                                                </Flex>
+                                            );
+                                        })()}
                                         {orderDetails.tip?.tipAmount > 0 && (
                                             <Flex justify="space-between" fontSize="sm" color="gray.600" mb={1}>
                                                 <Text>Tip</Text>

@@ -11,7 +11,8 @@ import {
     Stepper,
     StepTitle,
     FormControl, FormLabel, Input,
-    useSteps, StepIcon, StepNumber, useToast, VStack, Image, Heading, Text, Badge
+    useSteps, StepIcon, StepNumber, useToast, VStack, Image, Heading, Text, Badge,
+    Skeleton, SkeletonText
 } from "@chakra-ui/react";
 import PaymentPage from '../Components/LaundryPickup/PaymentPage';
 import UnifiedServicePage from '../Components/LaundryPickup/UnifiedServicePage';
@@ -162,8 +163,42 @@ export default function LaundryPickupPage({laundryId,customerId,customerPaymentI
         checkCommercialStatus();
     }, [customerId, laundryId, authToken]);
 
-    // Fetch laundry info when the page loads
+    // Fetch laundry info when the page loads.
+    // Perf: stale-while-revalidate. The service catalog rarely changes, so we
+    // render instantly from a per-tenant localStorage cache (no blank / no
+    // skeleton wait for returning customers), then re-fetch in the background
+    // and silently update if anything changed. A short TTL bounds staleness so
+    // a price change is never shown stale for long.
     useEffect(() => {
+        const CACHE_PREFIX = 'slb_laundryInfo_';
+        const CACHE_TTL_MS = 5 * 60 * 1000; // 5 min: show cache instantly, still revalidate every load
+
+        const applyLaundryInfo = (data) => {
+            const mwEnabled = data.minWeightEnabled === true;
+            setMinWeightEnabled(mwEnabled);
+            setLaundryServices(
+                (data.laundryServices || []).map((s) => ({ ...s, minWeightEnabled: mwEnabled }))
+            );
+            setAddonsEnabled(data.addonsEnabled === true);
+            setLaundryAddons(data.laundryAddons || []);
+            setDeliveryTimeSlots(data.deliveryTimeSlots);
+            setLaundryTimeZone(data.laundryTimeZone);
+            setDeliveryTimeInterval(parseInt(data.deliveryTimeInterval, 10));
+            setLaundryFrequency(data.frequencyInterval);
+            setFrequencyPromotions(data.frequencyPromotions || []);
+            setLaundryAddress(data.laundryAddress || '');
+            setContactPhone(data.contactPhone || '');
+            setUberEnv(data.uberEnv || '');
+            setUberExists(data?.uberCredentialsExist === true);
+            setServiceCategories(data.serviceCategories || []);
+            setServicesLoaded(true);
+            if (data.stripePublicKey) {
+                setStripePromise(loadStripe(data.stripePublicKey));
+            } else if (laundryData?.stripePublicKey) {
+                setStripePromise(loadStripe(laundryData.stripePublicKey));
+            }
+        };
+
         const fetchLaundryInfo = async () => {
             if (!authToken) {
                 toast({
@@ -174,76 +209,54 @@ export default function LaundryPickupPage({laundryId,customerId,customerPaymentI
                     isClosable: true,
                 });
                 navigate(`/${laundryId}/login`);
-            } else {
-                try {
-                    const response = await axios.get(`${process.env.REACT_APP_AWS_API_URL}/api/laundry/get-info`, {
-                        params: {
-                            operation: 'getLaundryInfo',
-                            laundryId: laundryId,
-                            isCustomer: true
-                        },
-                        headers: {
-                            'x-api-key': authToken,
-                        },
-                    });
-                    if (response.data.status === 'success') {
-                        {
-                            const mwEnabled = response.data.minWeightEnabled === true;
-                            setMinWeightEnabled(mwEnabled);
-                            // Attach the tenant flag to each service so per-row
-                            // components can show/enforce the minimum without
-                            // extra prop drilling (Phase 2).
-                            setLaundryServices(
-                                (response.data.laundryServices || []).map((s) => ({
-                                    ...s,
-                                    minWeightEnabled: mwEnabled,
-                                }))
-                            );
-                            setAddonsEnabled(response.data.addonsEnabled === true);
-                            setLaundryAddons(response.data.laundryAddons || []);
-                        }
-                        setDeliveryTimeSlots(response.data.deliveryTimeSlots);
-                        setLaundryTimeZone(response.data.laundryTimeZone);
-                        setDeliveryTimeInterval(parseInt(response.data.deliveryTimeInterval, 10));
-                        setLaundryFrequency(response.data.frequencyInterval);
-                        setFrequencyPromotions(response.data.frequencyPromotions || []);
-                        setLaundryAddress(response.data.laundryAddress || '');
-                        setContactPhone(response.data.contactPhone || '');
-                        setUberEnv(response.data.uberEnv || '');
-                        setUberExists(response.data?.uberCredentialsExist === true);
+                return;
+            }
 
-                        // Store service categories
-                        const cats = response.data.serviceCategories || [];
-                        setServiceCategories(cats);
-
-                        setServicesLoaded(true);
-
-                        // Initialize Stripe with the fetched public key
-                        if (laundryData?.stripePublicKey){
-                            setStripePromise(loadStripe(laundryData?.stripePublicKey));
-                        }
-                    } else {
-                        toast({
-                            title: "Error fetching laundry info",
-                            status: "error",
-                            duration: 3000,
-                            isClosable: true,
-                        });
+            // 1) Instant render from a fresh-enough cache (skips the 1s blank).
+            const cacheKey = `${CACHE_PREFIX}${laundryId}`;
+            let cachedPayload = null;
+            try {
+                const raw = localStorage.getItem(cacheKey);
+                if (raw) {
+                    const parsed = JSON.parse(raw);
+                    cachedPayload = parsed?.data || null;
+                    if (cachedPayload && parsed.ts && (Date.now() - parsed.ts) < CACHE_TTL_MS) {
+                        applyLaundryInfo(cachedPayload);
                     }
-                } catch (error) {
-                    toast({
-                        title: "Error",
-                        description: error.message,
-                        status: "error",
-                        duration: 3000,
-                        isClosable: true,
-                    });
                 }
+            } catch (e) {
+                cachedPayload = null; // corrupt cache — ignore, fall through to fetch
+            }
+
+            // 2) Always revalidate in the background; update only if changed.
+            try {
+                const response = await axios.get(`${process.env.REACT_APP_AWS_API_URL}/api/laundry/get-info`, {
+                    params: { operation: 'getLaundryInfo', laundryId: laundryId, isCustomer: true },
+                    headers: { 'x-api-key': authToken },
+                });
+                if (response.data.status === 'success') {
+                    const fresh = response.data;
+                    const changed = JSON.stringify(fresh) !== JSON.stringify(cachedPayload);
+                    if (changed || !servicesLoaded) {
+                        applyLaundryInfo(fresh);
+                    }
+                    try {
+                        localStorage.setItem(cacheKey, JSON.stringify({ ts: Date.now(), data: fresh }));
+                    } catch (e) { /* storage full / disabled — cache is best-effort */ }
+                } else if (!cachedPayload) {
+                    // Only surface an error when we have nothing to show.
+                    toast({ title: "Error fetching laundry info", status: "error", duration: 3000, isClosable: true });
+                }
+            } catch (error) {
+                if (!cachedPayload) {
+                    toast({ title: "Error", description: error.message, status: "error", duration: 3000, isClosable: true });
+                }
+                // If we already rendered from cache, a background failure is silent.
             }
         };
         fetchLaundryInfo();
 
-    }, [toast, navigate, laundryId, authToken, setLaundryTimeZone]);
+    }, [toast, navigate, laundryId, authToken, setLaundryTimeZone]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // Initialize pickupDate and dropoffDate after laundryTimeZone is available
     useEffect(() => {
@@ -341,15 +354,17 @@ export default function LaundryPickupPage({laundryId,customerId,customerPaymentI
             return; // guarded by UI, but never accept S&S for a non-bag cart
         }
         setOrderType(type);
-        if (type === 'subscribe-save') {
-            if (!frequency && laundryFrequency.length > 0) {
-                setFrequency(laundryFrequency[0]);
-            }
-        } else if (type === 'one-time') {
+        if (type === 'one-time') {
             setFrequency(null);
+        } else if (!frequency && laundryFrequency.length > 0) {
+            // Recurring / Subscribe & Save: default the interval so the customer
+            // can continue without an extra tap. Prefer Weekly when the tenant
+            // offers it, else fall back to the first available interval.
+            const weekly = laundryFrequency.find(
+                (f) => String(f).toLowerCase().replace(/[-\s]/g, '') === 'weekly'
+            );
+            setFrequency(weekly || laundryFrequency[0]);
         }
-        // 'frequency' keeps whatever interval is (or isn't) chosen; the Schedule
-        // page requires one before Continue.
     };
 
     // Safety net: if the cart stops being bag-only while Subscribe & Save is
@@ -367,10 +382,21 @@ export default function LaundryPickupPage({laundryId,customerId,customerPaymentI
     // the bag-only rule is still enforced on the Schedule page + safety net.
     useEffect(() => {
         if (!preSelectedType) return;
+        // Seed a default interval (prefer Weekly) so a deep-linked recurring /
+        // Subscribe & Save order can proceed without a manual frequency pick.
+        const seedFrequency = () => {
+            if (frequency || laundryFrequency.length === 0) return;
+            const weekly = laundryFrequency.find(
+                (f) => String(f).toLowerCase().replace(/[-\s]/g, '') === 'weekly'
+            );
+            setFrequency(weekly || laundryFrequency[0]);
+        };
         if (preSelectedType === 'frequency' && laundryFrequency.length > 0) {
             setOrderType('frequency');
+            seedFrequency();
         } else if (preSelectedType === 'subscribe-save' && subscribeSaveAvailable) {
             setOrderType('subscribe-save');
+            seedFrequency();
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [preSelectedType, laundryFrequency, subscribeSaveAvailable]);
@@ -402,8 +428,15 @@ export default function LaundryPickupPage({laundryId,customerId,customerPaymentI
         const billedWeight = getBilledWeight(cart.items);
         const addonsTotal = getAddonsTotal(selectedAddonList, billedWeight);
         const subtotal = getCartSubtotal(cart.items) + addonsTotal;
-        const subscriptionDiscount = orderType === 'subscribe-save' ? (laundryData?.subscriptionDiscount || 0) : 0;
-        const discountAmount = subscriptionDiscount > 0 ? subtotal * (subscriptionDiscount / 100) : 0;
+        // Plan-aware discount: Subscribe & Save (per-bag) uses subscriptionDiscount;
+        // the plain Recurring plan uses recurringDiscount; one-time gets none.
+        // Mirrors the backend weigh-in recalc so the first order matches renewals.
+        const planDiscount = orderType === 'subscribe-save'
+            ? (laundryData?.subscriptionDiscount || 0)
+            : orderType === 'frequency'
+                ? (laundryData?.recurringDiscount || 0)
+                : 0;
+        const discountAmount = planDiscount > 0 ? subtotal * (planDiscount / 100) : 0;
         const taxableAmount = subtotal - discountAmount;
         const taxRate = laundryData?.taxRate || 0;
         const tax = taxRate > 0 ? taxableAmount * (taxRate / 100) : 0;
@@ -716,6 +749,20 @@ export default function LaundryPickupPage({laundryId,customerId,customerPaymentI
                         </Stepper>
 
                         <Box bg="white" borderRadius="2xl" boxShadow="sm" border="1px solid" borderColor="gray.100" padding={[4,5,6]}>
+                            {/* Services skeleton — shown while the catalog loads so the
+                                Services step never flashes an empty white box. */}
+                            {activeStep === 0 && !servicesLoaded && (
+                                <VStack spacing={4} align="stretch" py={2}>
+                                    <Skeleton height="20px" width="140px" borderRadius="md" />
+                                    {[0, 1, 2, 3].map((i) => (
+                                        <Box key={i} p={3} borderRadius="lg" border="1px solid" borderColor="gray.100">
+                                            <Skeleton height="16px" width="60%" mb={2} borderRadius="md" />
+                                            <SkeletonText noOfLines={1} skeletonHeight="3" width="40%" />
+                                        </Box>
+                                    ))}
+                                </VStack>
+                            )}
+
                             {/* Step 0: Unified Service Page (full catalog — no order-type filtering) */}
                             {activeStep === 0 && servicesLoaded && (
                                 <UnifiedServicePage
@@ -813,6 +860,7 @@ export default function LaundryPickupPage({laundryId,customerId,customerPaymentI
                                     subscribeSaveAvailable={subscribeSaveAvailable}
                                     cartIsBagOnly={cartIsBagOnly}
                                     subscriptionDiscount={laundryData?.subscriptionDiscount || 0}
+                                    recurringDiscount={laundryData?.recurringDiscount || 0}
                                     pickupDate={pickupDate} setPickupDate={setPickupDate}
                                     pickupTime={pickupTime} setPickupTime={setPickupTime}
                                     dropoffDate={dropoffDate} setDropoffDate={setDropoffDate}
@@ -903,7 +951,11 @@ export default function LaundryPickupPage({laundryId,customerId,customerPaymentI
                                     promoCode={promoCode}
                                     promoDescriptionMessage={promoDescriptionMessage}
                                     frequency={frequency}
-                                    subscriptionDiscount={orderType === 'subscribe-save' ? (laundryData?.subscriptionDiscount || 0) : 0}
+                                    subscriptionDiscount={orderType === 'subscribe-save'
+                                        ? (laundryData?.subscriptionDiscount || 0)
+                                        : orderType === 'frequency'
+                                            ? (laundryData?.recurringDiscount || 0)
+                                            : 0}
                                     selectedAddons={Object.values(selectedAddons)}
                                     onPlaceOrder={handlePlaceOrder}
                                     onEdit={() => setActiveStep(0)}

@@ -37,6 +37,7 @@ export default function SchedulePage({
     subscribeSaveAvailable = false,
     cartIsBagOnly = false,
     subscriptionDiscount = 0,
+    recurringDiscount = 0,
     pickupDate,
     setPickupDate,
     pickupTime,
@@ -232,9 +233,14 @@ export default function SchedulePage({
 
     useEffect(() => {
         if (frequency) {
-            // Only auto-apply frequency promo codes for "Frequency" order type
-            // Subscribe & Save uses subscriptionDiscount from system settings instead
-            if (orderType !== 'subscribe-save') {
+            // Only auto-apply frequency promo codes for "Frequency" order type.
+            // Subscribe & Save uses subscriptionDiscount from system settings.
+            // Precedence (option 2): when the tenant has configured a recurring
+            // discount %, it REPLACES the legacy auto-applied frequency promo — so
+            // don't attach the promo code; the config % is applied instead (in
+            // handlePlaceOrder here and at weigh-in server-side). This keeps them
+            // from stacking and mirrors the backend recompute exactly.
+            if (orderType !== 'subscribe-save' && !(recurringDiscount > 0)) {
                 const promo = frequencyPromotions
                     ? frequencyPromotions.find((p) => p.frequency === frequency)
                     : null;
@@ -248,7 +254,15 @@ export default function SchedulePage({
                     setPromoDescriptionMessage(`You selected: ${frequency}`);
                 }
             } else {
-                // Subscribe & Save: just note the frequency, no promo auto-apply
+                // Subscribe & Save, or Recurring with a configured discount:
+                // no promo auto-apply. Clear any stale auto-applied frequency
+                // promo so the config discount is the only recurring savings.
+                if (isFreqPromoApplied) {
+                    setLocalPromoCode('');
+                    setPromoCode('');
+                    setIsPromoValid(false);
+                    setIsFreqPromoApplied(false);
+                }
                 setPromoDescriptionMessage('');
             }
         } else if (isFreqPromoApplied) {
@@ -258,7 +272,7 @@ export default function SchedulePage({
             setIsPromoValid(false);
             setIsFreqPromoApplied(false);
         }
-    }, [frequency, frequencyPromotions, isFreqPromoApplied, setPromoCode, setPromoDescriptionMessage, orderType]);
+    }, [frequency, frequencyPromotions, isFreqPromoApplied, setPromoCode, setPromoDescriptionMessage, orderType, recurringDiscount]);
 
     // ─── Promo Code Handlers ───
 
@@ -410,11 +424,14 @@ export default function SchedulePage({
         : getDateInTimeZone(addDays(new Date(), 1), tz);
     const isFormValid = pickupDate && pickupTime && dropoffDate && dropoffTime;
 
-    // Recurring savings blurb — pulled from the tenant's frequency promotions
-    // (same source the old order-type cards used) so customers see the incentive.
-    const recurringSavings = (frequencyPromotions && frequencyPromotions.length > 0)
-        ? (frequencyPromotions[0].description || 'Save on every recurring order')
-        : '';
+    // Recurring savings blurb. Prefer the tenant's configured recurring discount
+    // % (the authoritative number applied at weigh-in); otherwise fall back to
+    // the frequency-promotion description (legacy promo-driven incentive).
+    const recurringSavings = recurringDiscount > 0
+        ? `${recurringDiscount}% off every order`
+        : (frequencyPromotions && frequencyPromotions.length > 0)
+            ? (frequencyPromotions[0].description || 'Save on every recurring order')
+            : '';
 
     // ─── Render ───
 
@@ -442,7 +459,7 @@ export default function SchedulePage({
                             colorScheme={orderType === 'frequency' ? 'blue' : 'gray'}
                             onClick={() => setOrderType && setOrderType('frequency')}
                         >
-                            🔄 Recurring
+                            🔄 Recurring{recurringDiscount > 0 ? ` (${recurringDiscount}%)` : ''}
                         </Button>
                         {/* Subscribe & Save only for bag-only carts (rule C) */}
                         {subscribeSaveAvailable && cartIsBagOnly && (

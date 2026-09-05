@@ -835,6 +835,7 @@ def run():
                     site_content                JSONB DEFAULT '{}'::jsonb,
                     tax_rate                    NUMERIC DEFAULT 0,
                     subscription_discount       NUMERIC DEFAULT 5,
+                    recurring_discount          NUMERIC DEFAULT 0,
                     min_weight_enabled          BOOLEAN DEFAULT false NOT NULL,
                     addons_enabled              BOOLEAN DEFAULT false NOT NULL,
                     min_weight_scope            VARCHAR(20) DEFAULT 'all' NOT NULL,

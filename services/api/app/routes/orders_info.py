@@ -944,21 +944,54 @@ async def update_order_endpoint(
             sub_total = _billing["sub_total"]
             total_cost = sub_total  # Before discount
 
-            # Apply discount if coupon exists — always recalculate based on new subtotal
+            # Recurring-plan discount: honor the tenant's configured % on EVERY
+            # recurring order at weigh-in, so the first order and later renewals
+            # are priced identically (single source of truth = this recalc).
+            #   - per_bag recurring  -> subscription_discount (Subscribe & Save)
+            #   - other recurring    -> recurring_discount (plain Recurring plan)
+            # One-time orders (no frequency) are untouched.
+            order_frequency = current_order.get("frequency")
+            _is_bag = (current_order.get("pricing_type") == "per_bag")
+            _plan_pct = 0.0
+            if order_frequency:
+                cur.execute("""
+                    SELECT subscription_discount, recurring_discount
+                    FROM shop.laundry_shops WHERE laundry_id = %s
+                """, (laundryId,))
+                _disc_row = cur.fetchone() or {}
+                _plan_pct = float(
+                    (_disc_row.get("subscription_discount") if _is_bag else _disc_row.get("recurring_discount")) or 0
+                )
+
+            # Apply coupon discount — always recalculate based on new subtotal.
             discounted_price = 0
             coupon_code = coupon if coupon is not None else current_order.get("coupon")
             if coupon_code:
                 # Recalculate discount from promo based on updated subtotal
                 cur.execute("""
-                    SELECT discount_type, discount_value, minimum_order_value
+                    SELECT discount_type, discount_value, minimum_order_value,
+                           is_online_frequency_promo
                     FROM shop.promotions WHERE laundry_id = %s AND promo_code = %s AND is_active = TRUE
                 """, (laundryId, coupon_code))
                 promo = cur.fetchone()
-                if promo and sub_total >= float(promo["minimum_order_value"] or 0):
+                # Precedence (option 2): when a configured recurring discount is in
+                # effect, it REPLACES the legacy auto-applied frequency promo rather
+                # than stacking with it. So skip the coupon discount if the coupon is
+                # an online frequency promo AND a plan % will apply. Manually-entered
+                # coupons (not frequency promos) still stack on top.
+                _skip_freq_promo = bool(promo and promo.get("is_online_frequency_promo") and _plan_pct > 0)
+                if promo and not _skip_freq_promo and sub_total >= float(promo["minimum_order_value"] or 0):
                     if promo["discount_type"] == "percentage":
                         discounted_price = round(sub_total * (float(promo["discount_value"] or 0) / 100), 2)
                     else:
                         discounted_price = min(float(promo["discount_value"] or 0), sub_total)
+
+            # Fold the plan discount into discounted_price so total_cost /
+            # grand_total / tip math below flow unchanged and the stored discount
+            # reflects everything the customer received. Capped at the subtotal.
+            if _plan_pct > 0:
+                _plan_discount = round(sub_total * (_plan_pct / 100), 2)
+                discounted_price = round(min(discounted_price + _plan_discount, sub_total), 2)
 
             if discounted_price > 0:
                 total_cost = round(sub_total - discounted_price, 2)
