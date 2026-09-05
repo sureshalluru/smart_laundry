@@ -549,6 +549,7 @@ export default function SchedulePage({
                                 value={pickupTime}
                                 placeholder="Select Pickup Time Slot"
                                 onChange={(e) => setPickupTime(e.target.value)}
+                                isDisabled={pickupDate && getAvailableTimeSlots(pickupDate).length === 0}
                             >
                                 {getAvailableTimeSlots(pickupDate).map((timeSlot, index) => (
                                     <option key={index} value={timeSlot}>
@@ -558,6 +559,13 @@ export default function SchedulePage({
                             </Select>
                         </FormControl>
                     </Stack>
+                    {/* Explain why Continue is blocked when the chosen date has no
+                        pickup windows (e.g. a day the tenant doesn't operate). */}
+                    {pickupDate && getAvailableTimeSlots(pickupDate).length === 0 && (
+                        <Text fontSize="sm" color="orange.600" fontWeight="600" mt={3}>
+                            Pickup is not available on this date. Please select another pickup date.
+                        </Text>
+                    )}
                 </Box>
             )}
 
@@ -616,6 +624,7 @@ export default function SchedulePage({
                             value={dropoffTime}
                             placeholder="Select Drop-off Time Slot"
                             onChange={(e) => setDropoffTime(e.target.value)}
+                            isDisabled={dropoffDate && getAvailableTimeSlots(dropoffDate).length === 0}
                         >
                             {getAvailableTimeSlots(dropoffDate).map((timeSlot, index) => (
                                 <option key={index} value={timeSlot}>
@@ -625,6 +634,11 @@ export default function SchedulePage({
                         </Select>
                     </FormControl>
                 </Stack>
+                {dropoffDate && getAvailableTimeSlots(dropoffDate).length === 0 && (
+                    <Text fontSize="sm" color="orange.600" fontWeight="600" mt={3}>
+                        Drop-off is not available on this date. Please select another drop-off date.
+                    </Text>
+                )}
             </Box>
 
             {/* ─── Dropoff Service Choice ─── */}

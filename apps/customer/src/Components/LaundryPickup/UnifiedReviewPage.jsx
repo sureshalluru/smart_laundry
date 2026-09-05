@@ -455,7 +455,7 @@ export default function UnifiedReviewPage({
         {deliveryFee > 0 && (
           <Flex justify="space-between" align="center" mt={1}>
             <Text fontSize="sm" color="gray.500">
-              Delivery fee{deliveryFeeInfo.distanceMi != null ? ` (${deliveryFeeInfo.distanceMi.toFixed(1)} mi)` : ''}
+              Distance-Based Delivery Fee
             </Text>
             <Text fontSize="sm" color="gray.500">${deliveryFee.toFixed(2)}</Text>
           </Flex>

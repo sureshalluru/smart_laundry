@@ -60,7 +60,7 @@ async def validate_laundry(
             return _get_laundry_info(cur, laundryId, is_cust)
 
         elif operation == 'validateAddress':
-            return _validate_address(cur, laundryId, address, conn=conn)
+            return _validate_address(cur, laundryId, address, conn=conn, customer_id=customerId)
 
         elif operation == 'checkPhoneNumber':
             return _check_phone_number(cur, phoneNumber, laundryId)
@@ -74,9 +74,13 @@ async def validate_laundry(
 def _check_laundry_id(cur, laundry_id):
     """Verify laundry exists — exact port from Lambda."""
     cur.execute("""
-        SELECT laundry_name, stripe_public_key, stripe_terminal_id,
-               laundry_timezone, user_domain, bag_price, tax_rate, site_content, laundry_logo, subscription_discount, recurring_discount
-        FROM shop.laundry_shops WHERE laundry_id = %s
+        SELECT ls.laundry_name, ls.stripe_public_key, ls.stripe_terminal_id,
+               ls.laundry_timezone, ls.user_domain, ls.bag_price, ls.tax_rate, ls.site_content,
+               ls.laundry_logo, ls.subscription_discount, ls.recurring_discount,
+               COALESCE(rpc.is_active, FALSE) AS referrals_enabled
+        FROM shop.laundry_shops ls
+        LEFT JOIN shop.referral_program_config rpc ON rpc.laundry_id = ls.laundry_id
+        WHERE ls.laundry_id = %s
     """, (laundry_id,))
     row = cur.fetchone()
     if not row:
@@ -96,6 +100,7 @@ def _check_laundry_id(cur, laundry_id):
         "laundryLogo": row["laundry_logo"] or "",
         "subscriptionDiscount": float(row.get("subscription_discount") or 0),
         "recurringDiscount": float(row.get("recurring_discount") or 0),
+        "referralsEnabled": bool(row.get("referrals_enabled")),
     }
 
 
@@ -285,7 +290,7 @@ def _get_laundry_info(cur, laundry_id, is_customer=None):
     }
 
 
-def _validate_address(cur, laundry_id, address, conn=None):
+def _validate_address(cur, laundry_id, address, conn=None, customer_id=None):
     """Check if address zip code is serviceable, and (optionally) within the
     tenant's maximum serviceable driving distance.
 
@@ -318,6 +323,23 @@ def _validate_address(cur, laundry_id, address, conn=None):
     if not row:
         return {"status": "error", "message": "Laundry not found"}
 
+    # Resolve the signed-in customer's contact so a demand row captures who to
+    # reach if the tenant later expands into their area. Best-effort; anonymous
+    # (pre-login) checks simply record no contact.
+    _cust_email, _cust_phone = None, None
+    if customer_id:
+        try:
+            cur.execute(
+                "SELECT email, phone_number FROM shop.customers WHERE customer_id = %s",
+                (customer_id,),
+            )
+            _c = cur.fetchone()
+            if _c:
+                _cust_email = _c.get("email") or None
+                _cust_phone = _c.get("phone_number") or None
+        except Exception as _cust_err:
+            logger.warning(f"customer contact lookup failed for zip demand: {_cust_err}")
+
     # Demo zip code: 78664 is always serviceable for all laundries (for demos/testing).
     # Still subject to the max-distance gate below.
     zip_ok = False
@@ -335,9 +357,9 @@ def _validate_address(cur, laundry_id, address, conn=None):
         # cover yet. Mirrors the too_far capture below. Never blocks the response.
         try:
             cur.execute("""
-                INSERT INTO shop.zip_code_interest (laundry_id, zip_code, address)
-                VALUES (%s, %s, %s)
-            """, (laundry_id, zip_code, address))
+                INSERT INTO shop.zip_code_interest (laundry_id, zip_code, address, email, phone)
+                VALUES (%s, %s, %s, %s, %s)
+            """, (laundry_id, zip_code, address, _cust_email, _cust_phone))
         except Exception as _demand_err:
             logger.warning(f"zip_code_interest capture failed (zip): {_demand_err}")
         return {"status": "success", "serviceable": False, "reason": "zip"}
@@ -363,9 +385,9 @@ def _validate_address(cur, laundry_id, address, conn=None):
                 # Record the out-of-range address as demand (best-effort).
                 try:
                     cur.execute("""
-                        INSERT INTO shop.zip_code_interest (laundry_id, zip_code, address)
-                        VALUES (%s, %s, %s)
-                    """, (laundry_id, zip_code, address))
+                        INSERT INTO shop.zip_code_interest (laundry_id, zip_code, address, email, phone)
+                        VALUES (%s, %s, %s, %s, %s)
+                    """, (laundry_id, zip_code, address, _cust_email, _cust_phone))
                 except Exception as _demand_err:
                     logger.warning(f"zip_code_interest capture failed (too_far): {_demand_err}")
                 return {
@@ -459,11 +481,12 @@ async def validate_address_public(
     operation: str = Query("validateAddress"),
     laundryId: str = Query(...),
     address: str = Query(...),
+    customerId: Optional[str] = Query(None),
 ):
     """Validate customer address — public endpoint (no auth required)."""
     with get_db() as conn:
         cur = get_cursor(conn)
-        return _validate_address(cur, laundryId, address, conn=conn)
+        return _validate_address(cur, laundryId, address, conn=conn, customer_id=customerId)
 
 
 @router.post("/zip-interest")

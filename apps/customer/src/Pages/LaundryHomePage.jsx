@@ -76,11 +76,13 @@ const LaundryHomePage = ({laundryId, customerId, customerPaymentId: initialCusto
         navigate(`/${laundryId}/login`);
     };
 
-    // Sidebar items with routes
+    // Sidebar items with routes. The Referrals item only appears when the
+    // tenant's referral program is active (referralsEnabled from laundryData);
+    // hidden otherwise so clients don't see a dead nav link.
     const sidebarItems = [
         {label: 'Schedule Order', icon: FiCalendar, path: 'schedule-order'},
         {label: 'My Orders', icon: FiList, path: 'my-orders'},
-        {label: 'Referrals', icon: FiGift, path: 'referrals'},
+        ...(laundryData?.referralsEnabled ? [{label: 'Referrals', icon: FiGift, path: 'referrals'}] : []),
         {label: 'Account', icon: FiUser, path: 'account'},
         {label: 'Payment Methods', icon: FaWallet, path: 'payment'},
         {label: 'FAQ', icon: FiHelpCircle, path: 'faq'}

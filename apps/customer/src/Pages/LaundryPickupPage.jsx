@@ -31,6 +31,23 @@ import { toZonedTime, format } from 'date-fns-tz';
 import {addDays} from 'date-fns';
 import {LaundryContext} from "../Components/Contexts/LaundryContext";
 
+// Format a raw phone into (AAA) BBB-CCCC for display; strips a leading country
+// code and non-digits. Falls back to the original when it isn't 10 digits.
+const formatPhone = (raw) => {
+    if (!raw) return '';
+    let digits = String(raw).replace(/\D/g, '');
+    if (digits.length === 11 && digits.startsWith('1')) digits = digits.slice(1);
+    if (digits.length === 10) return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
+    return raw;
+};
+// tel: href with a leading + and country code so it dials on mobile.
+const telHref = (raw) => {
+    if (!raw) return '';
+    let digits = String(raw).replace(/\D/g, '');
+    if (digits.length === 10) digits = `1${digits}`;
+    return `tel:+${digits}`;
+};
+
 export default function LaundryPickupPage({laundryId,customerId,customerPaymentId,setCustomerPaymentId, laundryTimeZone, setLaundryTimeZone, specialInstructions, setSpecialInstructions}) {
     // Fixed 5-step stepper (Order Type + Services + Schedule + Payment + Review)
     // Effortless-ordering flow: lead with services, ask for address only after
@@ -105,6 +122,10 @@ export default function LaundryPickupPage({laundryId,customerId,customerPaymentI
     const [addressInstructions,setAddressInstructions] = useState('');
     const [doorNumber, setDoorNumber] = useState('');
     const [isAddressValidated, setIsAddressValidated] = useState(!!localStorage.getItem('customerAddress'));
+    // Persistent "outside delivery range" notice (serviceable zip but beyond the
+    // max distance). Rendered as a dismissible box with a clickable phone link —
+    // a toast can't hold a tel: link and disappears too fast to read.
+    const [tooFar, setTooFar] = useState(null); // { contactPhone } | null
 
     // For Google Maps API
     const searchBoxRef = useRef(null);
@@ -530,6 +551,9 @@ export default function LaundryPickupPage({laundryId,customerId,customerPaymentI
                         operation: 'validateAddress',
                         laundryId: laundryId,
                         address: addr,
+                        // Pass the signed-in customer so unserved/too-far attempts
+                        // are recorded in Zip Demand with their email + phone.
+                        customerId: customerId || undefined,
                     },
                     headers: {
                         'x-api-key': process.env.REACT_APP_AWS_API_KEY,
@@ -540,20 +564,15 @@ export default function LaundryPickupPage({laundryId,customerId,customerPaymentI
             if (data.status === 'success') {
                 if (data.serviceable) {
                     setIsAddressValidated(true);
+                    setTooFar(null);
                     localStorage.setItem('customerAddress', addr);
                     return true;
                 } else if (data.reason === 'too_far') {
                     // Serviceable zip but beyond the shop's max delivery distance.
-                    // Backend already captured it as demand; ask them to call.
-                    toast({
-                        title: "Outside delivery range",
-                        description: data.contactPhone
-                            ? `This address is beyond our delivery range. Please call us at ${data.contactPhone}.`
-                            : "This address is beyond our delivery range. Please contact us.",
-                        status: "warning",
-                        duration: 8000,
-                        isClosable: true,
-                    });
+                    // Backend already captured it as demand. Show a PERSISTENT box
+                    // (with a clickable, formatted phone) rather than a toast that
+                    // vanishes before the customer can read/tap the number.
+                    setTooFar({ contactPhone: data.contactPhone || '' });
                     setIsAddressValidated(false);
                     return false;
                 } else {
@@ -811,10 +830,33 @@ export default function LaundryPickupPage({laundryId,customerId,customerPaymentI
                                                 value={address}
                                                 size="lg"
                                                 autoComplete="off"
-                                                onChange={(e) => { setAddress(e.target.value); if (isAddressValidated) setIsAddressValidated(false); }}
+                                                onChange={(e) => { setAddress(e.target.value); if (isAddressValidated) setIsAddressValidated(false); if (tooFar) setTooFar(null); }}
                                             />
                                         </StandaloneSearchBox>
                                     </FormControl>
+
+                                    {/* Outside delivery range — serviceable zip but beyond max
+                                        distance. Persistent + dismissible with a clickable phone. */}
+                                    {tooFar && (
+                                        <Box bg="orange.50" borderRadius="xl" p={4} border="1px solid" borderColor="orange.200">
+                                            <Flex justify="space-between" align="start" mb={1}>
+                                                <Text fontWeight="700" color="orange.700" fontSize="sm">
+                                                    This address is outside our delivery range
+                                                </Text>
+                                                <Button variant="ghost" size="xs" color="orange.700" onClick={() => setTooFar(null)} aria-label="Dismiss">✕</Button>
+                                            </Flex>
+                                            <Text fontSize="xs" color="gray.600" mb={2}>
+                                                This address is beyond our standard delivery range.
+                                                {tooFar.contactPhone ? ' Please give us a call and we\'ll see what we can do.' : ' Please contact us and we\'ll see what we can do.'}
+                                            </Text>
+                                            {tooFar.contactPhone && (
+                                                <Button as="a" href={telHref(tooFar.contactPhone)} size="sm" colorScheme="orange">
+                                                    Call {formatPhone(tooFar.contactPhone)}
+                                                </Button>
+                                            )}
+                                        </Box>
+                                    )}
+
                                     <FormControl id="doorNumber">
                                         <FormLabel fontSize="sm" fontWeight="600" color="gray.700">
                                             Apartment or Unit Number

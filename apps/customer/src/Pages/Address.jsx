@@ -18,6 +18,28 @@ import { StandaloneSearchBox } from '@react-google-maps/api';
 import axios from "axios";
 import LaundryPickupImage from "../images/laundry-pickup.svg";
 
+// Format a raw phone string into (AAA) BBB-CCCC for display. Strips a leading
+// country code (1) and any non-digits. Falls back to the original if it can't
+// find 10 digits.
+const formatPhone = (raw) => {
+    if (!raw) return '';
+    let digits = String(raw).replace(/\D/g, '');
+    if (digits.length === 11 && digits.startsWith('1')) digits = digits.slice(1);
+    if (digits.length === 10) {
+        return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
+    }
+    return raw;
+};
+
+// Build a tel: href — keep digits with a leading + for the country code so it
+// dials correctly on mobile.
+const telHref = (raw) => {
+    if (!raw) return '';
+    let digits = String(raw).replace(/\D/g, '');
+    if (digits.length === 10) digits = `1${digits}`;
+    return `tel:+${digits}`;
+};
+
 const Address = () => {
     const { laundryData } = useContext(LaundryContext);
     const { laundryId } = useParams();
@@ -119,6 +141,8 @@ const Address = () => {
     const handleAddressChange = (e) => {
         setAddress(e.target.value);
         setIsAddressSelected(false);
+        // Editing the address dismisses the outside-range warning.
+        if (tooFar) setTooFar(null);
     };
 
     const themeGradient = (() => {
@@ -210,21 +234,32 @@ const Address = () => {
                     {tooFar && (
                         <Box bg="orange.50" borderRadius="xl" p={5} boxShadow="md" w="full" mt={4} border="1px solid" borderColor="orange.200">
                             <VStack spacing={2} align="stretch">
-                                <Text fontWeight="700" color="orange.700" fontSize="sm">
-                                    This address is outside our delivery range
-                                </Text>
+                                <HStack justify="space-between" align="start">
+                                    <Text fontWeight="700" color="orange.700" fontSize="sm">
+                                        This address is outside our delivery range
+                                    </Text>
+                                    <Button
+                                        variant="ghost"
+                                        size="xs"
+                                        color="orange.700"
+                                        onClick={() => setTooFar(null)}
+                                        aria-label="Dismiss"
+                                    >
+                                        ✕
+                                    </Button>
+                                </HStack>
                                 <Text fontSize="xs" color="gray.600">
                                     We'd love to serve you! This address is a bit too far for our standard delivery.
-                                    Please give us a call{tooFar.contactPhone ? '' : ''} and we'll see what we can do.
+                                    {tooFar.contactPhone ? ' Please give us a call and we\'ll see what we can do.' : ' Please contact us and we\'ll see what we can do.'}
                                 </Text>
                                 {tooFar.contactPhone && (
                                     <Button
                                         as="a"
-                                        href={`tel:${tooFar.contactPhone}`}
+                                        href={telHref(tooFar.contactPhone)}
                                         size="sm"
                                         colorScheme="orange"
                                     >
-                                        Call {tooFar.contactPhone}
+                                        Call {formatPhone(tooFar.contactPhone)}
                                     </Button>
                                 )}
                             </VStack>

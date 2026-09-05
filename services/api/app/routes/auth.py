@@ -413,18 +413,22 @@ async def send_otp(body: dict = Body(...)):
     if not phone:
         raise HTTPException(status_code=400, detail="Phone number required")
 
-    # Look up laundry name for branded SMS
-    brand_name = "Your Laundry"
+    # Look up laundry name for branded SMS. Fall back to a neutral brand so the
+    # message never reads "Your Your Laundry" when no tenant name is available.
+    brand_name = None
     if laundry_id:
         try:
             with get_db() as conn:
                 cur = get_cursor(conn)
                 cur.execute("SELECT laundry_name FROM shop.laundry_shops WHERE laundry_id = %s", (laundry_id,))
                 shop = cur.fetchone()
-                if shop:
+                if shop and shop.get("laundry_name"):
                     brand_name = shop["laundry_name"]
         except Exception:
             pass
+    # Message reads "Your <Brand> verification code" when we have a brand, else a
+    # clean generic line with no doubled "Your".
+    otp_brand_prefix = f"Your {brand_name}" if brand_name else "Your"
 
     # Test mode: phone numbers starting with +1555 bypass real OTP
     # OTP is always 123456 for test numbers
@@ -451,7 +455,7 @@ async def send_otp(body: dict = Body(...)):
             _otp_store[phone] = {"otp": otp, "attempts": 0}
             client = Client(settings.twilio_account_sid, settings.twilio_auth_token)
             client.messages.create(
-                body=f"Your {brand_name} verification code is: {otp}",
+                body=f"{otp_brand_prefix} verification code is: {otp}",
                 from_=settings.twilio_phone_number,
                 to=phone,
             )
@@ -591,9 +595,10 @@ async def customer_register(body: dict = Body(...)):
                 VALUES (%s, %s) ON CONFLICT DO NOTHING
             """, (customer_id, laundry_id))
 
-    # Send OTP for verification
+    # Send OTP for verification. Pass laundryId so the SMS is branded with the
+    # tenant name (e.g. "Fetch & Fold Concierge") instead of a generic fallback.
     try:
-        otp_result = await send_otp({"phoneNumber": phone})
+        otp_result = await send_otp({"phoneNumber": phone, "laundryId": laundry_id})
     except Exception as e:
         otp_result = None
 
